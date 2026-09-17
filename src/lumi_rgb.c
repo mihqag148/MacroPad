@@ -13,6 +13,8 @@
 #include <zmk/behavior.h>
 #include <zmk/keymap.h>
 
+#include "lumi_rgb.h"
+
 LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 
 #if !DT_HAS_CHOSEN(zmk_underglow)
@@ -39,13 +41,6 @@ enum lumi_rgb_command {
     LUMI_RGB_AUTO_LAYER = 7,
 };
 
-enum lumi_rgb_effect {
-    LUMI_EFFECT_RAINBOW = 0,
-    LUMI_EFFECT_PURPLE_PINGPONG = 1,
-    LUMI_EFFECT_ORANGE_BLINK = 2,
-    LUMI_EFFECT_COUNT,
-};
-
 BUILD_ASSERT(LED_COUNT == 4, "Lumi RGB effects expect exactly 4 WS2812B LEDs");
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
@@ -57,8 +52,9 @@ static uint8_t fusion_tick;
 
 static bool led_enabled = true;
 static bool auto_by_layer = true;
-static uint8_t manual_effect = LUMI_EFFECT_RAINBOW;
+static uint8_t manual_effect = LUMI_RGB_EFFECT_RAINBOW;
 static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
+static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
     color.r = ((uint16_t)color.r * scale) / 255;
@@ -134,31 +130,76 @@ static void render_fusion360(void) {
     fusion_tick++;
 }
 
+static void render_solid(void) {
+    fill(scale_rgb(manual_color, user_brightness));
+}
+
 static uint8_t layer_effect(void) {
     switch ((int)zmk_keymap_highest_layer_active()) {
     case 1:
-        return LUMI_EFFECT_PURPLE_PINGPONG;
+        return LUMI_RGB_EFFECT_PURPLE_PINGPONG;
     case 2:
-        return LUMI_EFFECT_ORANGE_BLINK;
+        return LUMI_RGB_EFFECT_ORANGE_BLINK;
     case 0:
     default:
-        return LUMI_EFFECT_RAINBOW;
+        return LUMI_RGB_EFFECT_RAINBOW;
     }
 }
 
 static void render_effect(uint8_t effect) {
     switch (effect) {
-    case LUMI_EFFECT_PURPLE_PINGPONG:
+    case LUMI_RGB_EFFECT_PURPLE_PINGPONG:
         render_media();
         break;
-    case LUMI_EFFECT_ORANGE_BLINK:
+    case LUMI_RGB_EFFECT_ORANGE_BLINK:
         render_fusion360();
         break;
-    case LUMI_EFFECT_RAINBOW:
+    case LUMI_RGB_EFFECT_SOLID:
+        render_solid();
+        break;
+    case LUMI_RGB_EFFECT_RAINBOW:
     default:
         render_office();
         break;
     }
+}
+
+void lumi_rgb_set_enabled(bool enabled) {
+    led_enabled = enabled;
+}
+
+void lumi_rgb_set_brightness_percent(uint8_t percent) {
+    if (percent < 5) {
+        percent = 5;
+    } else if (percent > 50) {
+        percent = 50;
+    }
+
+    user_brightness = (uint8_t)(((uint16_t)percent * 255U) / 100U);
+}
+
+void lumi_rgb_set_auto(bool enabled) {
+    auto_by_layer = enabled;
+    if (enabled) {
+        led_enabled = true;
+    }
+}
+
+void lumi_rgb_set_effect(uint8_t effect) {
+    if (effect >= LUMI_RGB_EFFECT_COUNT) {
+        return;
+    }
+
+    manual_effect = effect;
+    auto_by_layer = false;
+    led_enabled = true;
+}
+
+void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
+    manual_color = (struct led_rgb){.r = r, .g = g, .b = b};
+    manual_effect = LUMI_RGB_EFFECT_SOLID;
+    auto_by_layer = false;
+    led_enabled = true;
 }
 
 static void lumi_rgb_work_handler(struct k_work *work);
@@ -204,46 +245,14 @@ SYS_INIT(lumi_rgb_init, APPLICATION, 90);
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 static const struct behavior_parameter_value_metadata lumi_rgb_commands[] = {
-    {
-        .display_name = "Toggle LEDs",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_TOGGLE,
-    },
-    {
-        .display_name = "LEDs On",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_ON,
-    },
-    {
-        .display_name = "LEDs Off",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_OFF,
-    },
-    {
-        .display_name = "Brightness Up",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_BRIGHTER,
-    },
-    {
-        .display_name = "Brightness Down",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_DIMMER,
-    },
-    {
-        .display_name = "Next Effect",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_NEXT_EFFECT,
-    },
-    {
-        .display_name = "Previous Effect",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_PREV_EFFECT,
-    },
-    {
-        .display_name = "Auto by Layer",
-        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
-        .value = LUMI_RGB_AUTO_LAYER,
-    },
+    {.display_name = "Toggle LEDs", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_TOGGLE},
+    {.display_name = "LEDs On", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_ON},
+    {.display_name = "LEDs Off", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_OFF},
+    {.display_name = "Brightness Up", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_BRIGHTER},
+    {.display_name = "Brightness Down", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_DIMMER},
+    {.display_name = "Next Effect", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_NEXT_EFFECT},
+    {.display_name = "Previous Effect", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_PREV_EFFECT},
+    {.display_name = "Auto by Layer", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = LUMI_RGB_AUTO_LAYER},
 };
 
 static const struct behavior_parameter_metadata_set lumi_rgb_metadata_sets[] = {
@@ -268,10 +277,10 @@ static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
         led_enabled = !led_enabled;
         break;
     case LUMI_RGB_ON:
-        led_enabled = true;
+        lumi_rgb_set_enabled(true);
         break;
     case LUMI_RGB_OFF:
-        led_enabled = false;
+        lumi_rgb_set_enabled(false);
         break;
     case LUMI_RGB_BRIGHTER:
         if (user_brightness < MAX_BRIGHTNESS) {
@@ -289,7 +298,7 @@ static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
         if (auto_by_layer) {
             manual_effect = layer_effect();
         }
-        manual_effect = (manual_effect + 1) % LUMI_EFFECT_COUNT;
+        manual_effect = (manual_effect + 1) % LUMI_RGB_EFFECT_COUNT;
         auto_by_layer = false;
         led_enabled = true;
         break;
@@ -297,13 +306,12 @@ static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
         if (auto_by_layer) {
             manual_effect = layer_effect();
         }
-        manual_effect = (manual_effect + LUMI_EFFECT_COUNT - 1) % LUMI_EFFECT_COUNT;
+        manual_effect = (manual_effect + LUMI_RGB_EFFECT_COUNT - 1) % LUMI_RGB_EFFECT_COUNT;
         auto_by_layer = false;
         led_enabled = true;
         break;
     case LUMI_RGB_AUTO_LAYER:
-        auto_by_layer = true;
-        led_enabled = true;
+        lumi_rgb_set_auto(true);
         break;
     default:
         return -ENOTSUP;
