@@ -526,7 +526,10 @@ lv_obj_set_style_border_side(
     }
     /* Dedicated 28px footer, outside the 144px grid. */
     /* Top status bar */
-layer_label = make_label(screen, &lv_font_montserrat_12);
+layer_label = make_label(screen, &lv_font_montserrat_14);
+    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
+lv_obj_set_style_text_letter_space(output_label, -1, 0);
+lv_obj_set_style_text_letter_space(battery, -1, 0);
 
 lv_obj_set_pos(
     layer_label,
@@ -539,7 +542,10 @@ lv_obj_set_width(
     125
 );
 
-output_label = make_label(screen, &lv_font_montserrat_12);
+output_label = make_label(screen, &lv_font_montserrat_14);
+    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
+lv_obj_set_style_text_letter_space(output_label, -1, 0);
+lv_obj_set_style_text_letter_space(battery, -1, 0);
 
 lv_obj_set_pos(
     output_label,
@@ -554,7 +560,10 @@ lv_obj_set_width(
     lumi_output_init();
     zmk_widget_battery_status_init(&battery_widget, screen);
     lv_obj_t *battery = zmk_widget_battery_status_obj(&battery_widget);
-    lv_obj_set_style_text_font(battery, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(battery, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
+lv_obj_set_style_text_letter_space(output_label, -1, 0);
+lv_obj_set_style_text_letter_space(battery, -1, 0);
     lv_obj_set_style_text_color(battery, lv_color_white(), 0);
     lv_obj_set_width(battery, 70);
     lv_obj_set_style_text_align(battery, LV_TEXT_ALIGN_RIGHT, 0);
@@ -643,6 +652,12 @@ popup_text = make_label(
 lv_obj_set_style_text_color(
     popup_text,
     lv_color_hex(0xFFFFFF),
+    0
+);
+
+lv_obj_set_style_text_letter_space(
+    popup_text,
+    -1,
     0
 );
 
