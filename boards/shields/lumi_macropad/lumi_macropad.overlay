@@ -161,3 +161,13 @@ row-gpios
     kscan = <&kscan0>;
     transform = <&default_transform>;
 };
+
+
+/* Dedicated USB serial port for LumiPad PC app.
+ * ZMK Studio keeps using its own CDC ACM interface.
+ */
+&zephyr_udc0 {
+    lumi_app_uart: lumi_app_uart {
+        compatible = "zephyr,cdc-acm-uart";
+    };
+};
