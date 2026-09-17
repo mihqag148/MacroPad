@@ -133,7 +133,7 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
 
     lv_obj_set_style_border_color(
         tiles[i],
-        lv_color_hex(0xD8F8FF),
+        pressed ? lv_color_hex(0x7EEBFF) : lv_color_hex(0xD8F8FF),
         0
     );
 
