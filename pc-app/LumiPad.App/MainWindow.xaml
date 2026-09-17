@@ -1,0 +1,179 @@
+<Window x:Class="LumiPad.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LumiPad" Width="1040" Height="660"
+        MinWidth="920" MinHeight="600"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="18"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="18"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel>
+                <TextBlock Text="LumiPad" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock Text="Now Playing + RGB Control" Margin="1,2,0,0"
+                           Foreground="{StaticResource Muted}" FontSize="13"/>
+            </StackPanel>
+
+            <Border Grid.Column="1" Background="{StaticResource Card2}"
+                    CornerRadius="18" Padding="14,8">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="DeviceDot" Width="9" Height="9"
+                             Fill="#66666A" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="DeviceStatus" Text="Not connected"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.14*"/>
+                <ColumnDefinition Width="18"/>
+                <ColumnDefinition Width="0.86*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{StaticResource Card}" CornerRadius="28" Padding="28">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="22"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="NOW PLAYING" FontSize="12"
+                               Foreground="{StaticResource Muted}" FontWeight="SemiBold"/>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="26"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Width="180" Height="180" CornerRadius="30"
+                                Background="#202023" BorderBrush="#343437" BorderThickness="1">
+                            <Grid>
+                                <TextBlock Text="▶" FontSize="50" Foreground="#FFFFFF"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock x:Name="TitleText" Text="Nothing Playing"
+                                       FontSize="26" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" MaxHeight="72"/>
+                            <TextBlock x:Name="ArtistText" Text="Lumi MacroPad"
+                                       FontSize="16" Foreground="{StaticResource Muted}"
+                                       Margin="0,8,0,24"/>
+
+                            <ProgressBar x:Name="TrackProgress"
+                                         Minimum="0" Maximum="1" Value="0"
+                                         Height="5" BorderThickness="0"
+                                         Foreground="White" Background="#343437"/>
+
+                            <Grid Margin="0,7,0,0">
+                                <TextBlock x:Name="ElapsedText" Text="0:00"
+                                           FontSize="12" Foreground="{StaticResource Muted}"/>
+                                <TextBlock x:Name="DurationText" Text="0:00"
+                                           HorizontalAlignment="Right"
+                                           FontSize="12" Foreground="{StaticResource Muted}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal"
+                                HorizontalAlignment="Center" Margin="0,26,0,0">
+                        <Button x:Name="PrevButton" Content="◀◀" FontSize="18"
+                                Click="PrevButton_Click"/>
+                        <Button x:Name="PlayButton" Content="▶ / ❚❚" FontSize="18"
+                                Click="PlayButton_Click"/>
+                        <Button x:Name="NextButton" Content="▶▶" FontSize="18"
+                                Click="NextButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Background="{StaticResource Card}" CornerRadius="28" Padding="28">
+                <StackPanel>
+                    <TextBlock Text="RGB" FontSize="12"
+                               Foreground="{StaticResource Muted}" FontWeight="SemiBold"/>
+                    <TextBlock Text="4 × WS2812B" FontSize="24" FontWeight="SemiBold"
+                               Margin="0,8,0,24"/>
+
+                    <CheckBox x:Name="LedEnabled" Content="LED enabled"
+                              Foreground="White" IsChecked="True"
+                              Checked="LedEnabled_Changed"
+                              Unchecked="LedEnabled_Changed"
+                              Margin="0,0,0,20"/>
+
+                    <TextBlock Text="Mode" Foreground="{StaticResource Muted}" Margin="0,0,0,7"/>
+                    <ComboBox x:Name="EffectCombo" SelectionChanged="EffectCombo_SelectionChanged">
+                        <ComboBoxItem Content="Auto by Layer" Tag="-1" IsSelected="True"/>
+                        <ComboBoxItem Content="Rainbow" Tag="0"/>
+                        <ComboBoxItem Content="Warm Purple Ping-Pong" Tag="1"/>
+                        <ComboBoxItem Content="Orange Blink" Tag="2"/>
+                        <ComboBoxItem Content="Solid Color" Tag="3"/>
+                    </ComboBox>
+
+                    <Grid Margin="0,24,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Brightness" Foreground="{StaticResource Muted}"/>
+                        <TextBlock x:Name="BrightnessText" Grid.Column="1" Text="25%"/>
+                    </Grid>
+                    <Slider x:Name="BrightnessSlider" Minimum="5" Maximum="50" Value="25"
+                            TickFrequency="5" IsSnapToTickEnabled="True"
+                            ValueChanged="BrightnessSlider_ValueChanged"
+                            Margin="0,8,0,24"/>
+
+                    <TextBlock Text="Solid color" Foreground="{StaticResource Muted}" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Border x:Name="ColorPreview" Width="56" Height="36"
+                                CornerRadius="10" Background="#FF7800"
+                                BorderBrush="#444448" BorderThickness="1" Margin="0,0,12,0"/>
+                        <Button Content="Choose color" Click="ChooseColor_Click"/>
+                    </StackPanel>
+
+                    <TextBlock Text="RGB changes are sent directly to the macropad."
+                               TextWrapping="Wrap" Foreground="{StaticResource Muted}"
+                               FontSize="12" Margin="0,26,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="4" Background="{StaticResource Card2}"
+                CornerRadius="18" Padding="14,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="BottomStatus"
+                           Text="Connect the macropad by USB, then press Detect LumiPad."
+                           Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="DetectButton" Content="Detect LumiPad"
+                            Click="DetectButton_Click"/>
+                    <Button Content="Disconnect" Click="DisconnectButton_Click" Margin="0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
