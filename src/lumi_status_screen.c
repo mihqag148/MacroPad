@@ -170,12 +170,14 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
         0
     );
 
-    lv_obj_align(
+   lv_obj_align(
     icons[i],
     LV_ALIGN_CENTER,
     0,
     pressed ? 3 : 0
 );
+
+}   // <- THÊM DÒNG NÀY
 
 static void update_page(struct page_state state) {
     static struct page_state previous;
