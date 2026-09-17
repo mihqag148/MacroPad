@@ -21,7 +21,7 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/keys.h>
 #include <zmk/keymap.h>
-#include "lumi_panel.h"
+#include "lumi_panel.h"\n#include "lumi_now_playing.h"
 
 #define KEY_COUNT 12
 #define COLS 4
@@ -427,7 +427,7 @@ static void refresh_popup(lv_timer_t *timer) {
         /* Nếu popup chưa hiện thì trượt từ dưới lên */
         if (!popup_visible) {
 
-            lv_obj_clear_flag(popup, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(popup, LV_OBJ_FLAG_HIDDEN);\n            lv_obj_move_foreground(popup);
 
             lv_obj_set_y(popup, 172);
             lv_obj_set_style_opa(popup, 0, 0);
@@ -727,7 +727,7 @@ lv_obj_add_flag(
     popup,
     LV_OBJ_FLAG_HIDDEN
 );
-   lumi_page_init();
+   lumi_page_init();\n    lumi_now_playing_init(screen);
 k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
