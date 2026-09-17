@@ -74,7 +74,7 @@ dịch được; hướng/màu panel và chất lượng tín hiệu SPI cần x
 1. Copy toàn bộ nội dung thư mục này vào root repo ZMK của bạn.
 2. Commit + Push lên GitHub.
 3. Mở tab Actions -> `Build ZMK firmware`.
-4. Khi build xanh, tải artifact `firmware`; giải nén lấy `lumi_macropad_nice_nano_v2-zmk.uf2`.
+4. Khi build xanh, tải artifact `firmware`; giải nén lấy `lumi_macropad_nice_nano_v2.uf2`.
 5. Double-reset nice!nano để hiện ổ USB bootloader.
 6. Copy file `.uf2` vào ổ đó.
 
