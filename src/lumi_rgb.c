@@ -11,9 +11,7 @@
 
 #include <drivers/behavior.h>
 #include <zmk/behavior.h>
-#include <zmk/battery.h>
 #include <zmk/keymap.h>
-#include <zmk/usb.h>
 
 LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 
@@ -26,7 +24,6 @@ LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 #define FRAME_MS 80
 
 #define DEFAULT_BRIGHTNESS 64 /* ~25% */
-#define CHARGE_BRIGHTNESS 64  /* ~25% */
 #define MIN_BRIGHTNESS 13     /* ~5% */
 #define MAX_BRIGHTNESS 128    /* ~50% */
 #define BRIGHTNESS_STEP 13    /* ~5% */
@@ -96,27 +93,6 @@ static struct led_rgb wheel(uint8_t pos, uint8_t brightness) {
 static void fill(struct led_rgb color) {
     for (int i = 0; i < LED_COUNT; i++) {
         pixels[i] = color;
-    }
-}
-
-static void render_charging(uint8_t soc) {
-    fill((struct led_rgb){0});
-
-    if (soc >= 100) {
-        fill((struct led_rgb){.r = 0, .g = CHARGE_BRIGHTNESS, .b = 0});
-        return;
-    }
-
-    uint8_t lit = (soc + 24) / 25;
-    if (lit < 1) {
-        lit = 1;
-    }
-    if (lit > LED_COUNT) {
-        lit = LED_COUNT;
-    }
-
-    for (int i = 0; i < lit; i++) {
-        pixels[i] = (struct led_rgb){.r = CHARGE_BRIGHTNESS, .g = 0, .b = 0};
     }
 }
 
@@ -196,15 +172,7 @@ static void lumi_rgb_work_handler(struct k_work *work) {
         return;
     }
 
-    bool usb_powered = false;
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    usb_powered = zmk_usb_is_powered();
-#endif
-
-    if (usb_powered) {
-        /* Charging indication always has priority over manual LED controls. */
-        render_charging(zmk_battery_state_of_charge());
-    } else if (!led_enabled) {
+    if (!led_enabled) {
         fill((struct led_rgb){0});
     } else {
         render_effect(auto_by_layer ? layer_effect() : manual_effect);
