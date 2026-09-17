@@ -1,0 +1,41 @@
+name: Build LumiPad Windows app
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "pc-app/**"
+      - ".github/workflows/windows-app.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore pc-app/LumiPad.App/LumiPad.App.csproj
+
+      - name: Publish
+        run: >
+          dotnet publish pc-app/LumiPad.App/LumiPad.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/LumiPad
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumiPad-Windows-x64
+          path: publish/LumiPad/**
