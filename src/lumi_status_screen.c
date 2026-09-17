@@ -626,6 +626,9 @@ lv_obj_set_pos(
     245,
     5
 );
+    
+popup = lv_obj_create(screen);
+lv_obj_remove_style_all(popup);
 
 /* Pill nhỏ nằm sát phía dưới */
 lv_obj_set_pos(popup, 70, 172);
