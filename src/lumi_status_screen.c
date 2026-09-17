@@ -335,6 +335,64 @@ static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font) {
     return label;
 }
 
+static void refresh_popup(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+
+    int action = atomic_set(&popup_action, POPUP_NONE);
+    uint32_t now = lv_tick_get();
+
+    if (action != POPUP_NONE) {
+        const char *icon = LV_SYMBOL_SETTINGS;
+        const char *text = "";
+
+        switch (action) {
+        case POPUP_VOL_UP:
+            icon = LV_SYMBOL_VOLUME_MAX;
+            text = "VOLUME +";
+            break;
+
+        case POPUP_VOL_DOWN:
+            icon = LV_SYMBOL_VOLUME_MID;
+            text = "VOLUME -";
+            break;
+
+        case POPUP_NEXT:
+            icon = LV_SYMBOL_NEXT;
+            text = "NEXT TRACK";
+            break;
+
+        case POPUP_PREVIOUS:
+            icon = LV_SYMBOL_PREV;
+            text = "PREVIOUS";
+            break;
+
+        case POPUP_PAGE_UP:
+            icon = LV_SYMBOL_UP;
+            text = "PAGE UP";
+            break;
+
+        case POPUP_PAGE_DOWN:
+            icon = LV_SYMBOL_DOWN;
+            text = "PAGE DOWN";
+            break;
+        }
+
+        lv_label_set_text(popup_icon, icon);
+        lv_label_set_text(popup_text, text);
+
+        lv_obj_clear_flag(popup, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(popup);
+
+        popup_until = now + 800;
+    }
+
+    if (!lv_obj_has_flag(popup, LV_OBJ_FLAG_HIDDEN) &&
+        (int32_t)(now - popup_until) >= 0) {
+
+        lv_obj_add_flag(popup, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
     lv_obj_t *screen = lv_obj_create(NULL);
