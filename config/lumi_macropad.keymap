@@ -2,6 +2,14 @@
 #include <dt-bindings/zmk/keys.h>
 
 / {
+    behaviors {
+        lumi_rgb: lumi_rgb {
+            compatible = "zmk,behavior-lumi-rgb";
+            #binding-cells = <1>;
+            display-name = "Lumi RGB";
+        };
+    };
+
     // Hold these two keys together to unlock ZMK Studio:
     // physical key 1 (COPY/PLAY/UNDO) + physical key 12 (ESC).
     combos {
