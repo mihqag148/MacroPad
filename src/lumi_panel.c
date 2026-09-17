@@ -21,7 +21,7 @@ int lumi_panel_init(void) {
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
         return -ENODEV;
     }
-    uint8_t command = 0x20; /* INVOFF */
+    uint8_t command = 0x21; /* INVON */
     struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
     const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
     int err = gpio_pin_set_dt(&dc, 1);
