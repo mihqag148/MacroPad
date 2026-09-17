@@ -125,12 +125,36 @@ static struct page_state read_page(const zmk_event_t *eh) {
 }
 
 static void set_tile_pressed(uint8_t i, bool pressed) {
-    lv_obj_set_style_bg_color(tiles[i], pressed ? accent : lv_color_hex(0x111820), 0);
-    lv_obj_set_style_border_color(tiles[i], pressed ? accent : lv_color_hex(0x43505c), 0);
-    lv_obj_set_style_text_color(icons[i], pressed ? lv_color_hex(0x101820) : accent, 0);
-    lv_obj_set_style_text_color(captions[i],
-                                pressed ? lv_color_hex(0x101820) : lv_color_white(), 0);
-    lv_obj_align(icons[i], LV_ALIGN_TOP_MID, 0, pressed ? 8 : 3);
+    lv_obj_set_style_bg_color(
+        tiles[i],
+        pressed ? lv_color_hex(0x18333D) : lv_color_hex(0x000000),
+        0
+    );
+
+    lv_obj_set_style_border_color(
+        tiles[i],
+        lv_color_hex(0xD8F8FF),
+        0
+    );
+
+    lv_obj_set_style_text_color(
+        icons[i],
+        lv_color_hex(0xD8F8FF),
+        0
+    );
+
+    lv_obj_set_style_text_color(
+        captions[i],
+        lv_color_hex(0xFFFFFF),
+        0
+    );
+
+    lv_obj_align(
+        icons[i],
+        LV_ALIGN_TOP_MID,
+        0,
+        pressed ? 8 : 3
+    );
 }
 
 static void update_page(struct page_state state) {
@@ -251,7 +275,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_remove_style_all(screen);
     lv_obj_set_size(screen, 320, 172);
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x090d12), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     for (uint8_t i = 0; i < KEY_COUNT; i++) {
