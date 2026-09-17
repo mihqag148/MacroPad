@@ -106,7 +106,8 @@
         gctrl = <0x35>;
         vrhs = <0x12>;
         vdvs = <0x20>;
-        mdac = <0xA0>;
+        // Base code.py: MV (landscape) + BGR, no MY mirror.
+        mdac = <0x28>;
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
