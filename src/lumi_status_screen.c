@@ -40,6 +40,7 @@ static lv_obj_t *popup_icon;
 static lv_obj_t *popup_text;
 
 static uint32_t popup_until;
+static bool popup_visible = false;
 
 enum {
     POPUP_NONE = 0,
@@ -334,7 +335,48 @@ static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font) {
     lv_obj_set_style_text_color(label, lv_color_white(), 0);
     return label;
 }
+static void popup_anim_y_cb(void *obj, int32_t value) {
+    lv_obj_set_y((lv_obj_t *)obj, value);
+}
 
+static void popup_anim_opa_cb(void *obj, int32_t value) {
+    lv_obj_set_style_opa((lv_obj_t *)obj, value, 0);
+}
+
+static void popup_animate(int32_t y_from,
+                          int32_t y_to,
+                          int32_t opa_from,
+                          int32_t opa_to,
+                          uint32_t time_ms,
+                          bool showing) {
+
+    lv_anim_del(popup, popup_anim_y_cb);
+    lv_anim_del(popup, popup_anim_opa_cb);
+
+    lv_anim_t a;
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, popup);
+    lv_anim_set_exec_cb(&a, popup_anim_y_cb);
+    lv_anim_set_values(&a, y_from, y_to);
+    lv_anim_set_time(&a, time_ms);
+    lv_anim_set_path_cb(
+        &a,
+        showing ? lv_anim_path_ease_out : lv_anim_path_ease_in
+    );
+    lv_anim_start(&a);
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, popup);
+    lv_anim_set_exec_cb(&a, popup_anim_opa_cb);
+    lv_anim_set_values(&a, opa_from, opa_to);
+    lv_anim_set_time(&a, time_ms);
+    lv_anim_set_path_cb(
+        &a,
+        showing ? lv_anim_path_ease_out : lv_anim_path_ease_in
+    );
+    lv_anim_start(&a);
+}
 static void refresh_popup(lv_timer_t *timer) {
     ARG_UNUSED(timer);
 
@@ -346,6 +388,7 @@ static void refresh_popup(lv_timer_t *timer) {
         const char *text = "";
 
         switch (action) {
+
         case POPUP_VOL_UP:
             icon = LV_SYMBOL_VOLUME_MAX;
             text = "VOLUME +";
@@ -358,7 +401,7 @@ static void refresh_popup(lv_timer_t *timer) {
 
         case POPUP_NEXT:
             icon = LV_SYMBOL_NEXT;
-            text = "NEXT TRACK";
+            text = "NEXT";
             break;
 
         case POPUP_PREVIOUS:
@@ -380,16 +423,46 @@ static void refresh_popup(lv_timer_t *timer) {
         lv_label_set_text(popup_icon, icon);
         lv_label_set_text(popup_text, text);
 
-        lv_obj_clear_flag(popup, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(popup);
+        /* Nếu popup chưa hiện thì trượt từ dưới lên */
+        if (!popup_visible) {
 
-        popup_until = now + 800;
+            lv_obj_clear_flag(popup, LV_OBJ_FLAG_HIDDEN);
+
+            lv_obj_set_y(popup, 172);
+            lv_obj_set_style_opa(popup, 0, 0);
+
+            popup_animate(
+                172,
+                116,
+                0,
+                255,
+                180,
+                true
+            );
+
+            popup_visible = true;
+        }
+
+        /* Xoay tiếp thì chỉ kéo dài thời gian hiện,
+         * không chạy lại animation liên tục.
+         */
+        popup_until = now + 650;
     }
 
-    if (!lv_obj_has_flag(popup, LV_OBJ_FLAG_HIDDEN) &&
+    /* Hết thời gian thì trượt xuống */
+    if (popup_visible &&
         (int32_t)(now - popup_until) >= 0) {
 
-        lv_obj_add_flag(popup, LV_OBJ_FLAG_HIDDEN);
+        popup_animate(
+            lv_obj_get_y(popup),
+            172,
+            255,
+            0,
+            160,
+            false
+        );
+
+        popup_visible = false;
     }
 }
 
@@ -432,24 +505,34 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_set_width(battery, 70);
     lv_obj_set_style_text_align(battery, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_pos(battery, 245, 152);
-    popup = lv_obj_create(screen);
+   popup = lv_obj_create(screen);
 lv_obj_remove_style_all(popup);
 
-lv_obj_set_pos(popup, 20, 20);
-lv_obj_set_size(popup, 280, 125);
+/* Pill nhỏ nằm sát phía dưới */
+lv_obj_set_pos(popup, 70, 172);
+lv_obj_set_size(popup, 180, 44);
 
+/* Nền tối hơi trong */
 lv_obj_set_style_bg_color(
     popup,
-    lv_color_hex(0x000000),
+    lv_color_hex(0x151719),
     0
 );
 
 lv_obj_set_style_bg_opa(
     popup,
-    LV_OPA_COVER,
+    235,
     0
 );
 
+/* Bo tròn kiểu capsule */
+lv_obj_set_style_radius(
+    popup,
+    22,
+    0
+);
+
+/* Viền rất nhẹ */
 lv_obj_set_style_border_width(
     popup,
     1,
@@ -458,10 +541,23 @@ lv_obj_set_style_border_width(
 
 lv_obj_set_style_border_color(
     popup,
-    lv_color_hex(0xD8F8FF),
+    lv_color_hex(0xFFFFFF),
     0
 );
 
+lv_obj_set_style_border_opa(
+    popup,
+    55,
+    0
+);
+
+/* Không cho object bắt touch/click */
+lv_obj_clear_flag(
+    popup,
+    LV_OBJ_FLAG_CLICKABLE
+);
+
+/* ICON */
 popup_icon = make_label(
     popup,
     &lv_font_montserrat_20
@@ -469,20 +565,21 @@ popup_icon = make_label(
 
 lv_obj_set_style_text_color(
     popup_icon,
-    lv_color_hex(0xD8F8FF),
+    lv_color_hex(0xFFFFFF),
     0
 );
 
 lv_obj_align(
     popup_icon,
-    LV_ALIGN_CENTER,
-    0,
-    -20
+    LV_ALIGN_LEFT_MID,
+    14,
+    0
 );
 
+/* TEXT */
 popup_text = make_label(
     popup,
-    &lv_font_montserrat_20
+    &lv_font_montserrat_16
 );
 
 lv_obj_set_style_text_color(
@@ -493,24 +590,20 @@ lv_obj_set_style_text_color(
 
 lv_obj_align(
     popup_text,
-    LV_ALIGN_CENTER,
-    0,
-    20
+    LV_ALIGN_LEFT_MID,
+    48,
+    0
 );
 
 lv_obj_add_flag(
     popup,
     LV_OBJ_FLAG_HIDDEN
 );
+   lumi_page_init();
+k_work_schedule(&page_poll_work, K_MSEC(500));
 
-lv_timer_create(
-    refresh_popup,
-    20,
-    NULL
-);
-    lumi_page_init();
-    k_work_schedule(&page_poll_work, K_MSEC(500));
-    lv_timer_create(refresh_pressed, 20, NULL);
-    lv_timer_create(refresh_popup, 20, NULL);
-    return screen;
+lv_timer_create(refresh_pressed, 20, NULL);
+lv_timer_create(refresh_popup, 20, NULL);
+
+return screen;
 }
