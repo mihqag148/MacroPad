@@ -278,13 +278,11 @@ static const struct behavior_parameter_value_metadata lumi_rgb_commands[] = {
     },
 };
 
-static const struct behavior_parameter_metadata_set lumi_rgb_metadata_set = {
-    .param1_values = lumi_rgb_commands,
-    .param1_values_len = ARRAY_SIZE(lumi_rgb_commands),
-};
-
 static const struct behavior_parameter_metadata_set lumi_rgb_metadata_sets[] = {
-    lumi_rgb_metadata_set,
+    {
+        .param1_values = lumi_rgb_commands,
+        .param1_values_len = ARRAY_SIZE(lumi_rgb_commands),
+    },
 };
 
 static const struct behavior_parameter_metadata lumi_rgb_metadata = {
