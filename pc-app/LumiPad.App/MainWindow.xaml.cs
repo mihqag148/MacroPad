@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Forms = System.Windows.Forms;
+using MediaColor = System.Windows.Media.Color;
 
 namespace LumiPad.App;
 
@@ -87,7 +88,7 @@ public partial class MainWindow : Window
     {
         DetectButton.IsEnabled = false;
         DeviceStatus.Text = "Detecting…";
-        DeviceDot.Fill = new SolidColorBrush(Color.FromRgb(255, 159, 10));
+        DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
         BottomStatus.Text = "Searching USB COM ports for LumiPad…";
 
         var port = await _serial.AutoDetectAsync();
@@ -95,13 +96,13 @@ public partial class MainWindow : Window
         if (port is null)
         {
             DeviceStatus.Text = "Not connected";
-            DeviceDot.Fill = new SolidColorBrush(Color.FromRgb(99, 99, 102));
+            DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
             BottomStatus.Text = "LumiPad port not found. Flash the newest firmware and reconnect USB.";
         }
         else
         {
             DeviceStatus.Text = $"Connected · {port}";
-            DeviceDot.Fill = new SolidColorBrush(Color.FromRgb(48, 209, 88));
+            DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
             BottomStatus.Text = "Connected. Now Playing and RGB controls are live.";
             SendAllRgb();
         }
@@ -113,7 +114,7 @@ public partial class MainWindow : Window
     {
         _serial.Disconnect();
         DeviceStatus.Text = "Not connected";
-        DeviceDot.Fill = new SolidColorBrush(Color.FromRgb(99, 99, 102));
+        DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
         BottomStatus.Text = "Disconnected.";
     }
 
@@ -180,7 +181,7 @@ public partial class MainWindow : Window
         _g = dialog.Color.G;
         _b = dialog.Color.B;
 
-        ColorPreview.Background = new SolidColorBrush(Color.FromRgb(_r, _g, _b));
+        ColorPreview.Background = new SolidColorBrush(MediaColor.FromRgb(_r, _g, _b));
 
         EffectCombo.SelectedIndex = 4;
         _serial.SetSolid(_r, _g, _b);
