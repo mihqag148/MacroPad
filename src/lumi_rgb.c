@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 
+#define DT_DRV_COMPAT zmk_behavior_lumi_rgb
+
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/led_strip.h>
@@ -7,6 +9,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include <drivers/behavior.h>
+#include <zmk/behavior.h>
 #include <zmk/battery.h>
 #include <zmk/keymap.h>
 #include <zmk/usb.h>
@@ -20,15 +24,44 @@ LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 #define STRIP_NODE DT_CHOSEN(zmk_underglow)
 #define LED_COUNT DT_PROP(STRIP_NODE, chain_length)
 #define FRAME_MS 80
-#define MAX_BRIGHTNESS 64 /* ~25% of 255 */
+
+#define DEFAULT_BRIGHTNESS 64 /* ~25% */
+#define CHARGE_BRIGHTNESS 64  /* ~25% */
+#define MIN_BRIGHTNESS 13     /* ~5% */
+#define MAX_BRIGHTNESS 128    /* ~50% */
+#define BRIGHTNESS_STEP 13    /* ~5% */
+
+enum lumi_rgb_command {
+    LUMI_RGB_TOGGLE = 0,
+    LUMI_RGB_ON = 1,
+    LUMI_RGB_OFF = 2,
+    LUMI_RGB_BRIGHTER = 3,
+    LUMI_RGB_DIMMER = 4,
+    LUMI_RGB_NEXT_EFFECT = 5,
+    LUMI_RGB_PREV_EFFECT = 6,
+    LUMI_RGB_AUTO_LAYER = 7,
+};
+
+enum lumi_rgb_effect {
+    LUMI_EFFECT_RAINBOW = 0,
+    LUMI_EFFECT_PURPLE_PINGPONG = 1,
+    LUMI_EFFECT_ORANGE_BLINK = 2,
+    LUMI_EFFECT_COUNT,
+};
 
 BUILD_ASSERT(LED_COUNT == 4, "Lumi RGB effects expect exactly 4 WS2812B LEDs");
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[LED_COUNT];
+
 static uint8_t rainbow_step;
 static uint8_t media_tick;
 static uint8_t fusion_tick;
+
+static bool led_enabled = true;
+static bool auto_by_layer = true;
+static uint8_t manual_effect = LUMI_EFFECT_RAINBOW;
+static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
     color.r = ((uint16_t)color.r * scale) / 255;
@@ -37,7 +70,7 @@ static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
     return color;
 }
 
-static struct led_rgb wheel(uint8_t pos) {
+static struct led_rgb wheel(uint8_t pos, uint8_t brightness) {
     struct led_rgb color = {0};
 
     pos = 255 - pos;
@@ -57,7 +90,7 @@ static struct led_rgb wheel(uint8_t pos) {
         color.b = 0;
     }
 
-    return scale_rgb(color, MAX_BRIGHTNESS);
+    return scale_rgb(color, brightness);
 }
 
 static void fill(struct led_rgb color) {
@@ -70,7 +103,7 @@ static void render_charging(uint8_t soc) {
     fill((struct led_rgb){0});
 
     if (soc >= 100) {
-        fill((struct led_rgb){.r = 0, .g = MAX_BRIGHTNESS, .b = 0});
+        fill((struct led_rgb){.r = 0, .g = CHARGE_BRIGHTNESS, .b = 0});
         return;
     }
 
@@ -83,21 +116,30 @@ static void render_charging(uint8_t soc) {
     }
 
     for (int i = 0; i < lit; i++) {
-        pixels[i] = (struct led_rgb){.r = MAX_BRIGHTNESS, .g = 0, .b = 0};
+        pixels[i] = (struct led_rgb){.r = CHARGE_BRIGHTNESS, .g = 0, .b = 0};
     }
 }
 
 static void render_office(void) {
     for (int i = 0; i < LED_COUNT; i++) {
-        pixels[i] = wheel((uint8_t)(rainbow_step + i * (256 / LED_COUNT)));
+        pixels[i] = wheel((uint8_t)(rainbow_step + i * (256 / LED_COUNT)), user_brightness);
     }
     rainbow_step += 4;
 }
 
 static void render_media(void) {
     static const uint8_t path[] = {0, 1, 2, 3, 2, 1};
-    const struct led_rgb dim_purple = {.r = 10, .g = 0, .b = 8};
-    const struct led_rgb warm_purple = {.r = MAX_BRIGHTNESS, .g = 4, .b = 46};
+
+    const struct led_rgb dim_purple = {
+        .r = user_brightness / 8,
+        .g = 0,
+        .b = user_brightness / 10,
+    };
+    const struct led_rgb warm_purple = {
+        .r = user_brightness,
+        .g = user_brightness / 16,
+        .b = (uint8_t)(((uint16_t)user_brightness * 3) / 4),
+    };
 
     fill(dim_purple);
     pixels[path[(media_tick / 2) % ARRAY_SIZE(path)]] = warm_purple;
@@ -106,10 +148,41 @@ static void render_media(void) {
 
 static void render_fusion360(void) {
     bool on = ((fusion_tick / 6) % 2) == 0;
-    const struct led_rgb orange = {.r = MAX_BRIGHTNESS, .g = 22, .b = 0};
+    const struct led_rgb orange = {
+        .r = user_brightness,
+        .g = user_brightness / 3,
+        .b = 0,
+    };
 
     fill(on ? orange : (struct led_rgb){0});
     fusion_tick++;
+}
+
+static uint8_t layer_effect(void) {
+    switch ((int)zmk_keymap_highest_layer_active()) {
+    case 1:
+        return LUMI_EFFECT_PURPLE_PINGPONG;
+    case 2:
+        return LUMI_EFFECT_ORANGE_BLINK;
+    case 0:
+    default:
+        return LUMI_EFFECT_RAINBOW;
+    }
+}
+
+static void render_effect(uint8_t effect) {
+    switch (effect) {
+    case LUMI_EFFECT_PURPLE_PINGPONG:
+        render_media();
+        break;
+    case LUMI_EFFECT_ORANGE_BLINK:
+        render_fusion360();
+        break;
+    case LUMI_EFFECT_RAINBOW:
+    default:
+        render_office();
+        break;
+    }
 }
 
 static void lumi_rgb_work_handler(struct k_work *work);
@@ -129,20 +202,12 @@ static void lumi_rgb_work_handler(struct k_work *work) {
 #endif
 
     if (usb_powered) {
+        /* Charging indication always has priority over manual LED controls. */
         render_charging(zmk_battery_state_of_charge());
+    } else if (!led_enabled) {
+        fill((struct led_rgb){0});
     } else {
-        switch ((int)zmk_keymap_highest_layer_active()) {
-        case 1:
-            render_media();
-            break;
-        case 2:
-            render_fusion360();
-            break;
-        case 0:
-        default:
-            render_office();
-            break;
-        }
+        render_effect(auto_by_layer ? layer_effect() : manual_effect);
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
@@ -166,3 +231,138 @@ static int lumi_rgb_init(void) {
 }
 
 SYS_INIT(lumi_rgb_init, APPLICATION, 90);
+
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+static const struct behavior_parameter_value_metadata lumi_rgb_commands[] = {
+    {
+        .display_name = "Toggle LEDs",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_TOGGLE,
+    },
+    {
+        .display_name = "LEDs On",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_ON,
+    },
+    {
+        .display_name = "LEDs Off",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_OFF,
+    },
+    {
+        .display_name = "Brightness Up",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_BRIGHTER,
+    },
+    {
+        .display_name = "Brightness Down",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_DIMMER,
+    },
+    {
+        .display_name = "Next Effect",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_NEXT_EFFECT,
+    },
+    {
+        .display_name = "Previous Effect",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_PREV_EFFECT,
+    },
+    {
+        .display_name = "Auto by Layer",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = LUMI_RGB_AUTO_LAYER,
+    },
+};
+
+static const struct behavior_parameter_metadata_set lumi_rgb_metadata_set = {
+    .param1_values = lumi_rgb_commands,
+    .param1_values_len = ARRAY_SIZE(lumi_rgb_commands),
+};
+
+static const struct behavior_parameter_metadata_set lumi_rgb_metadata_sets[] = {
+    lumi_rgb_metadata_set,
+};
+
+static const struct behavior_parameter_metadata lumi_rgb_metadata = {
+    .sets_len = ARRAY_SIZE(lumi_rgb_metadata_sets),
+    .sets = lumi_rgb_metadata_sets,
+};
+#endif
+
+static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
+                                    struct zmk_behavior_binding_event event) {
+    ARG_UNUSED(event);
+
+    switch (binding->param1) {
+    case LUMI_RGB_TOGGLE:
+        led_enabled = !led_enabled;
+        break;
+    case LUMI_RGB_ON:
+        led_enabled = true;
+        break;
+    case LUMI_RGB_OFF:
+        led_enabled = false;
+        break;
+    case LUMI_RGB_BRIGHTER:
+        if (user_brightness < MAX_BRIGHTNESS) {
+            uint16_t next = user_brightness + BRIGHTNESS_STEP;
+            user_brightness = next > MAX_BRIGHTNESS ? MAX_BRIGHTNESS : (uint8_t)next;
+        }
+        break;
+    case LUMI_RGB_DIMMER:
+        if (user_brightness > MIN_BRIGHTNESS) {
+            int next = user_brightness - BRIGHTNESS_STEP;
+            user_brightness = next < MIN_BRIGHTNESS ? MIN_BRIGHTNESS : (uint8_t)next;
+        }
+        break;
+    case LUMI_RGB_NEXT_EFFECT:
+        if (auto_by_layer) {
+            manual_effect = layer_effect();
+        }
+        manual_effect = (manual_effect + 1) % LUMI_EFFECT_COUNT;
+        auto_by_layer = false;
+        led_enabled = true;
+        break;
+    case LUMI_RGB_PREV_EFFECT:
+        if (auto_by_layer) {
+            manual_effect = layer_effect();
+        }
+        manual_effect = (manual_effect + LUMI_EFFECT_COUNT - 1) % LUMI_EFFECT_COUNT;
+        auto_by_layer = false;
+        led_enabled = true;
+        break;
+    case LUMI_RGB_AUTO_LAYER:
+        auto_by_layer = true;
+        led_enabled = true;
+        break;
+    default:
+        return -ENOTSUP;
+    }
+
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+static int lumi_rgb_binding_released(struct zmk_behavior_binding *binding,
+                                     struct zmk_behavior_binding_event event) {
+    ARG_UNUSED(binding);
+    ARG_UNUSED(event);
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+static const struct behavior_driver_api lumi_rgb_behavior_driver_api = {
+    .binding_pressed = lumi_rgb_binding_pressed,
+    .binding_released = lumi_rgb_binding_released,
+    .locality = BEHAVIOR_LOCALITY_GLOBAL,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    .parameter_metadata = &lumi_rgb_metadata,
+#endif
+};
+
+BEHAVIOR_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL,
+                        CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &lumi_rgb_behavior_driver_api);
+
+#endif
