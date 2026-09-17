@@ -528,52 +528,18 @@ lv_obj_set_style_border_side(
     }
     /* Dedicated 28px footer, outside the 144px grid. */
     /* Top status bar */
-layer_label = make_label(screen, &lv_font_montserrat_14);
-    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
-lv_obj_set_style_text_letter_space(output_label, -1, 0);
-lv_obj_set_style_text_letter_space(battery, -1, 0);
+/* Top status bar */
+... code layer ...
 
-lv_obj_set_pos(
-    layer_label,
-    5,
-    5
-);
+/* Output */
+... code output ...
 
-lv_obj_set_width(
-    layer_label,
-    125
-);
+/* Battery */
+... tạo battery ...
+... chỉnh font battery ...
+... chỉnh vị trí battery ...
 
-output_label = make_label(screen, &lv_font_montserrat_14);
-    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
-lv_obj_set_style_text_letter_space(output_label, -1, 0);
-lv_obj_set_style_text_letter_space(battery, -1, 0);
-
-lv_obj_set_pos(
-    output_label,
-    135,
-    5
-);
-
-lv_obj_set_width(
-    output_label,
-    100
-);
-    lumi_output_init();
-    zmk_widget_battery_status_init(&battery_widget, screen);
-    lv_obj_t *battery = zmk_widget_battery_status_obj(&battery_widget);
-    lv_obj_set_style_text_font(battery, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_letter_space(layer_label, -1, 0);
-lv_obj_set_style_text_letter_space(output_label, -1, 0);
-lv_obj_set_style_text_letter_space(battery, -1, 0);
-    lv_obj_set_style_text_color(battery, lv_color_white(), 0);
-    lv_obj_set_width(battery, 70);
-    lv_obj_set_style_text_align(battery, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(
-    battery,
-    245,
-    5
-);
+popup = lv_obj_create(screen);
    popup = lv_obj_create(screen);
 lv_obj_remove_style_all(popup);
 
