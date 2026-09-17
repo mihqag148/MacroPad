@@ -18,6 +18,8 @@
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
+#include <zmk/events/keycode_state_changed.h>
+#include <zmk/keys.h>
 #include <zmk/keymap.h>
 #include "lumi_panel.h"
 
@@ -31,6 +33,23 @@ static lv_obj_t *tiles[KEY_COUNT], *icons[KEY_COUNT], *captions[KEY_COUNT];
 static lv_obj_t *layer_label, *output_label;
 static struct zmk_widget_battery_status battery_widget;
 static atomic_t held_keys, tapped_keys;
+static atomic_t popup_action;
+
+static lv_obj_t *popup;
+static lv_obj_t *popup_icon;
+static lv_obj_t *popup_text;
+
+static uint32_t popup_until;
+
+enum {
+    POPUP_NONE = 0,
+    POPUP_VOL_UP,
+    POPUP_VOL_DOWN,
+    POPUP_NEXT,
+    POPUP_PREVIOUS,
+    POPUP_PAGE_UP,
+    POPUP_PAGE_DOWN,
+};
 static uint32_t press_started[KEY_COUNT];
 static bool highlighted[KEY_COUNT];
 static lv_color_t accent;
