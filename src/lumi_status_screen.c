@@ -432,8 +432,85 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_set_width(battery, 70);
     lv_obj_set_style_text_align(battery, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_pos(battery, 245, 152);
+    popup = lv_obj_create(screen);
+lv_obj_remove_style_all(popup);
+
+lv_obj_set_pos(popup, 20, 20);
+lv_obj_set_size(popup, 280, 125);
+
+lv_obj_set_style_bg_color(
+    popup,
+    lv_color_hex(0x000000),
+    0
+);
+
+lv_obj_set_style_bg_opa(
+    popup,
+    LV_OPA_COVER,
+    0
+);
+
+lv_obj_set_style_border_width(
+    popup,
+    1,
+    0
+);
+
+lv_obj_set_style_border_color(
+    popup,
+    lv_color_hex(0xD8F8FF),
+    0
+);
+
+popup_icon = make_label(
+    popup,
+    &lv_font_montserrat_20
+);
+
+lv_obj_set_style_text_color(
+    popup_icon,
+    lv_color_hex(0xD8F8FF),
+    0
+);
+
+lv_obj_align(
+    popup_icon,
+    LV_ALIGN_CENTER,
+    0,
+    -20
+);
+
+popup_text = make_label(
+    popup,
+    &lv_font_montserrat_20
+);
+
+lv_obj_set_style_text_color(
+    popup_text,
+    lv_color_hex(0xFFFFFF),
+    0
+);
+
+lv_obj_align(
+    popup_text,
+    LV_ALIGN_CENTER,
+    0,
+    20
+);
+
+lv_obj_add_flag(
+    popup,
+    LV_OBJ_FLAG_HIDDEN
+);
+
+lv_timer_create(
+    refresh_popup,
+    20,
+    NULL
+);
     lumi_page_init();
     k_work_schedule(&page_poll_work, K_MSEC(500));
     lv_timer_create(refresh_pressed, 20, NULL);
+    lv_timer_create(refresh_popup, 20, NULL);
     return screen;
 }
