@@ -263,6 +263,52 @@ static int position_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(lumi_keys, position_listener);
 ZMK_SUBSCRIPTION(lumi_keys, zmk_position_state_changed);
 
+static bool keycode_matches(
+    const struct zmk_keycode_state_changed *event,
+    uint32_t encoded
+) {
+    uint16_t page = ZMK_HID_USAGE_PAGE(encoded);
+
+    if (page == 0) {
+        page = HID_USAGE_KEY;
+    }
+
+    return event->usage_page == page &&
+           event->keycode == ZMK_HID_USAGE_ID(encoded);
+}
+
+static int popup_keycode_listener(const zmk_event_t *eh) {
+    const struct zmk_keycode_state_changed *event =
+        as_zmk_keycode_state_changed(eh);
+
+    if (!event || !event->state) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    if (keycode_matches(event, C_VOL_UP)) {
+        atomic_set(&popup_action, POPUP_VOL_UP);
+
+    } else if (keycode_matches(event, C_VOL_DN)) {
+        atomic_set(&popup_action, POPUP_VOL_DOWN);
+
+    } else if (keycode_matches(event, C_NEXT)) {
+        atomic_set(&popup_action, POPUP_NEXT);
+
+    } else if (keycode_matches(event, C_PREVIOUS)) {
+        atomic_set(&popup_action, POPUP_PREVIOUS);
+
+    } else if (keycode_matches(event, PG_UP)) {
+        atomic_set(&popup_action, POPUP_PAGE_UP);
+
+    } else if (keycode_matches(event, PG_DN)) {
+        atomic_set(&popup_action, POPUP_PAGE_DOWN);
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(lumi_popup, popup_keycode_listener);
+ZMK_SUBSCRIPTION(lumi_popup, zmk_keycode_state_changed);
 static void refresh_pressed(lv_timer_t *timer) {
     ARG_UNUSED(timer);
     uint32_t now = lv_tick_get();
