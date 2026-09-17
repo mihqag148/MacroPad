@@ -1,0 +1,67 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <dt-bindings/zmk/matrix_transform.h>
+#include "lumi_macropad-layouts.dtsi"
+
+/ {
+    kscan0: kscan0 {
+        compatible = "zmk,kscan-gpio-matrix";
+        diode-direction = "col2row";
+        wakeup-source;
+
+        // Physical wiring from the original Arduino firmware:
+        // ROW0 P0.09, ROW1 P0.10, ROW2 P1.11, ROW3 P1.13
+        row-gpios
+            = <&gpio0 9  (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&gpio0 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&gpio1 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            , <&gpio1 13 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            ;
+
+        // COL0 P1.15, COL1 P0.02, COL2 P0.29, COL3 P0.31
+        col-gpios
+            = <&gpio1 15 GPIO_ACTIVE_HIGH>
+            , <&gpio0 2  GPIO_ACTIVE_HIGH>
+            , <&gpio0 29 GPIO_ACTIVE_HIGH>
+            , <&gpio0 31 GPIO_ACTIVE_HIGH>
+            ;
+    };
+
+    default_transform: keymap_transform0 {
+        compatible = "zmk,matrix-transform";
+        rows = <4>;
+        columns = <4>;
+
+        // 12 main keys first, encoder push last (ROW0/COL3).
+        map = <
+            RC(0,0) RC(0,1) RC(0,2)
+            RC(1,0) RC(1,1) RC(1,2)
+            RC(2,0) RC(2,1) RC(2,2)
+            RC(3,0) RC(3,1) RC(3,2)
+            RC(0,3)
+        >;
+    };
+
+    encoder0: encoder0 {
+        compatible = "alps,ec11";
+        a-gpios = <&gpio1 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&gpio1 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        steps = <80>;
+        status = "okay";
+    };
+
+    sensors: sensors {
+        compatible = "zmk,keymap-sensors";
+        sensors = <&encoder0>;
+        triggers-per-rotation = <20>;
+    };
+
+    chosen {
+        zmk,kscan = &kscan0;
+        zmk,physical-layout = &lumi_macropad_layout;
+    };
+};
+
+&lumi_macropad_layout {
+    kscan = <&kscan0>;
+    transform = <&default_transform>;
+};

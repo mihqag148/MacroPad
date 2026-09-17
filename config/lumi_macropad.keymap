@@ -1,0 +1,56 @@
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+
+/ {
+    // Hold these two keys together to unlock ZMK Studio:
+    // physical key 1 (COPY/PLAY/UNDO) + physical key 12 (ESC).
+    combos {
+        compatible = "zmk,combos";
+
+        studio_unlock_combo {
+            timeout-ms = <80>;
+            key-positions = <0 11>;
+            bindings = <&studio_unlock>;
+        };
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        office { // Layer 0
+            display-name = "OFFICE";
+            bindings = <
+                &kp LC(C)      &kp LC(V)      &kp LC(X)
+                &kp LC(Z)      &kp LC(Y)      &kp LC(A)
+                &kp LC(S)      &kp LC(F)      &kp ENTER
+                &kp BACKSPACE  &kp TAB        &kp ESC
+                &to 1
+            >;
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
+
+        media { // Layer 1
+            display-name = "MEDIA";
+            bindings = <
+                &kp C_PLAY_PAUSE  &kp C_PREVIOUS   &kp C_NEXT
+                &kp C_MUTE        &kp C_VOL_DN     &kp C_VOL_UP
+                &kp C_AC_BACK     &kp C_AC_FORWARD &kp HOME
+                &kp END           &kp PG_UP        &kp PG_DN
+                &to 2
+            >;
+            sensor-bindings = <&inc_dec_kp C_NEXT C_PREVIOUS>;
+        };
+
+        fusion360 { // Layer 2
+            display-name = "FUSION 360";
+            bindings = <
+                &kp LC(Z)  &kp LC(Y)  &kp LC(S)
+                &kp LC(C)  &kp LC(V)  &kp DELETE
+                &kp F      &kp V      &kp M
+                &kp E      &kp L      &kp ESC
+                &to 0
+            >;
+            sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
+        };
+    };
+};

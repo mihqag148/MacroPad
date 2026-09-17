@@ -1,0 +1,6 @@
+if SHIELD_LUMI_MACROPAD
+
+config ZMK_KEYBOARD_NAME
+    default "Lumi MacroPad"
+
+endif
