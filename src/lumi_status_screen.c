@@ -152,17 +152,16 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
         0
     );
 
-    lv_obj_set_style_border_color(
-        tiles[i],
-        pressed ? lv_color_hex(0x7EEBFF) : lv_color_hex(0xD8F8FF),
-        0
-    );
-
+  lv_obj_set_style_border_color(
+    tiles[i],
+    lv_color_hex(0xFFFFFF),
+    0
+);
     lv_obj_set_style_text_color(
-        icons[i],
-        lv_color_hex(0xD8F8FF),
-        0
-    );
+    icons[i],
+    lv_color_hex(0xFFFFFF),
+    0
+);
 
     lv_obj_set_style_text_color(
         captions[i],
@@ -543,8 +542,8 @@ lv_obj_set_style_text_letter_space(
 
 lv_obj_set_pos(
     layer_label,
-    5,
-    5
+    10,
+    6
 );
 
 lv_obj_set_width(
@@ -569,7 +568,7 @@ lv_obj_set_style_text_letter_space(
 lv_obj_set_pos(
     output_label,
     135,
-    5
+    6
 );
 
 lv_obj_set_width(
@@ -600,10 +599,10 @@ lv_obj_set_style_text_font(
 
 lv_obj_set_style_text_letter_space(
     battery,
-    -1,
+    1,
     0
 );
-
+    
 lv_obj_set_style_text_color(
     battery,
     lv_color_white(),
@@ -612,8 +611,9 @@ lv_obj_set_style_text_color(
 
 lv_obj_set_width(
     battery,
-    70
+    82
 );
+
 
 lv_obj_set_style_text_align(
     battery,
@@ -623,8 +623,8 @@ lv_obj_set_style_text_align(
 
 lv_obj_set_pos(
     battery,
-    245,
-    5
+    226,
+    6
 );
     
 popup = lv_obj_create(screen);
