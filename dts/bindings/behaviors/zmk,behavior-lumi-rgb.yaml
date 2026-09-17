@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT
+
+description: Lumi RGB control action
+compatible: "zmk,behavior-lumi-rgb"
+include: one_param.yaml
