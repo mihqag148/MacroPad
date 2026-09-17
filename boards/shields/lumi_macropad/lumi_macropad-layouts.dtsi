@@ -5,9 +5,6 @@
         compatible = "zmk,physical-layout";
         display-name = "Lumi MacroPad";
 
-        // 12 macro keys = 4 columns x 3 rows
-        // Position 0-11 = K1-K12
-        // Position 12 = encoder push
         keys
             = <&key_physical_attrs 100 100   0   0 0 0 0>
             , <&key_physical_attrs 100 100 100   0 0 0 0>
@@ -24,7 +21,7 @@
             , <&key_physical_attrs 100 100 200 200 0 0 0>
             , <&key_physical_attrs 100 100 300 200 0 0 0>
 
-            // Encoder push
+            /* Encoder push */
             , <&key_physical_attrs 100 100 450 100 0 0 0>
             ;
     };
