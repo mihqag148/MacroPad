@@ -37,19 +37,44 @@ Chuyển từ `MacroPad_nice_nano_FULL_BLE_TFT_Keymap.ino` sang ZMK cho nice!nan
 - B P1.06
 - C GND
 
-### TFT cũ
+### TFT ST7789 1.47 inch
 
-Các chân P0.17 / P0.20 / P0.22 / P0.24 / P1.00 hiện KHÔNG được ZMK sử dụng.
-P0.13 / EXT_VCC cũng không bị firmware này điều khiển thủ công.
+- MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00; SPI 8 MHz.
+- Vùng hiển thị ngang 320×172; x-offset 0, y-offset 34.
+- MADCTL (`mdac`) = `0x28`: đổi trục MV và thứ tự BGR theo `Base code.py`.
+- RGB565, `colmod=0x05`, RAMCTRL `[00 F0]`, `CONFIG_LV_COLOR_16_SWAP=y`.
+  Đảo byte 16-bit cho SPI là việc khác với thứ tự kênh BGR; không đảo R/B lần nữa.
+- Zephyr 3.5 bật inversion trong driver. `src/lumi_panel.c` gửi INVOFF trước
+  frame đầu tiên để khớp `invert=False` của file tham chiếu.
+- BL nối thẳng 3V3: không có PWM, menu hay thao tác chỉnh sáng giả.
+- LVGL có heap 32 KB và buffer tĩnh 22,016 byte (20% màn hình), stack display 4 KB.
 
-Bản này ưu tiên keyboard/BLE/ZMK Studio chạy ổn. UI ST7789 của Arduino chưa được port sang ZMK.
+## Giao diện
+
+12 ô, **4 cột × 3 hàng**, icon và nhãn trên nền tối. Footer riêng hiển thị tên
+layer, output đang chọn (USB hoặc BLE kèm số profile/trạng thái), pin phần trăm
+và ký hiệu nguồn USB. Ký hiệu nguồn USB không phải phép đo dòng sạc.
+
+- Nhấn encoder vẫn đổi OFFICE → MEDIA → FUSION 360 như keymap gốc.
+- Nhãn đọc binding thực tế, cập nhật cả sau khi chỉnh trong ZMK Studio (tối đa
+  khoảng 0.5 giây). Các shortcut quen thuộc có tên/icon; F/V/M/E/L hiện đúng
+  chữ phím, keycode lạ hiện mã hex, behavior khác hiện tên rút gọn và tham số.
+- Khi nhấn, ô đổi màu và icon hạ 5 px; tap nhanh vẫn sáng ít nhất 100 ms.
+- Ô trên màn lần lượt là keymap position 0–11 (trái sang phải, trên xuống dưới).
+  Matrix vật lý vẫn 4 hàng × 3 phím + encoder, không đổi transform hay dây.
+  Position 12 là encoder, không tạo ô thứ 13.
+- Mọi cập nhật LVGL chạy trên display queue; sự kiện phím chỉ lưu bit nguyên tử.
+
+Sau khi nạp, kiểm tra đủ 12 ô tới mép dưới, chiều/chữ đúng, nền tối, cả ba layer,
+press/release từng phím, encoder, USB/BLE và Studio. Build xanh xác nhận mã biên
+dịch được; hướng/màu panel và chất lượng tín hiệu SPI cần xác nhận trên phần cứng.
 
 ## Build bằng GitHub Actions
 
 1. Copy toàn bộ nội dung thư mục này vào root repo ZMK của bạn.
 2. Commit + Push lên GitHub.
 3. Mở tab Actions -> `Build ZMK firmware`.
-4. Khi build xanh, tải artifact `lumi_macropad_nice_nano_v2`.
+4. Khi build xanh, tải artifact `firmware`; giải nén lấy `lumi_macropad_nice_nano_v2-zmk.uf2`.
 5. Double-reset nice!nano để hiện ổ USB bootloader.
 6. Copy file `.uf2` vào ổ đó.
 

@@ -1,232 +1,292 @@
+/* SPDX-License-Identifier: MIT
+ * Lumi MacroPad: four columns, three rows, live ZMK keymap captions.
+ */
 #include <stdio.h>
 #include <string.h>
-
 #include <zephyr/kernel.h>
-
+#include <zephyr/sys/atomic.h>
 #include <lvgl.h>
-
+#include <dt-bindings/zmk/keys.h>
+#include <zmk/behavior.h>
+#include <zmk/ble.h>
 #include <zmk/display.h>
 #include <zmk/display/status_screen.h>
 #include <zmk/display/widgets/battery_status.h>
-#include <zmk/display/widgets/output_status.h>
-
-#include <zmk/events/layer_state_changed.h>
+#include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
+#include <zmk/events/ble_active_profile_changed.h>
+#include <zmk/events/endpoint_changed.h>
+#include <zmk/events/layer_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
+#include "lumi_panel.h"
 
+#define KEY_COUNT 12
+#define COLS 4
+#define CELL_W 80
+#define CELL_H 48
+#define PRESS_MIN_MS 100
+
+static lv_obj_t *tiles[KEY_COUNT], *icons[KEY_COUNT], *captions[KEY_COUNT];
+static lv_obj_t *layer_label, *output_label;
 static struct zmk_widget_battery_status battery_widget;
-static struct zmk_widget_output_status output_widget;
+static atomic_t held_keys, tapped_keys;
+static uint32_t press_started[KEY_COUNT];
+static bool highlighted[KEY_COUNT];
+static lv_color_t accent;
 
-static lv_obj_t *layer_label;
-static lv_obj_t *footer_label;
-static lv_obj_t *splash_label;
-
-struct lumi_layer_state {
-    zmk_keymap_layer_index_t index;
-    const char *name;
+/* Slots are ZMK positions 0..11 in order. Position 12 is the encoder.
+ * The wired 4x4 matrix and its transform remain unchanged.
+ */
+struct key_caption {
+    char text[16];
+    const char *icon;
+};
+struct page_state {
+    zmk_keymap_layer_id_t id;
+    char name[32];
+    struct key_caption keys[KEY_COUNT];
 };
 
-static void update_layer(struct lumi_layer_state state) {
-    if (layer_label == NULL) {
+static void describe_key(uint32_t code, struct key_caption *out) {
+    const char *text = NULL;
+    out->icon = LV_SYMBOL_KEYBOARD;
+    switch (code) {
+    case LC(C): text = "COPY"; out->icon = LV_SYMBOL_COPY; break;
+    case LC(V): text = "PASTE"; out->icon = LV_SYMBOL_PASTE; break;
+    case LC(X): text = "CUT"; out->icon = LV_SYMBOL_CUT; break;
+    case LC(Z): text = "UNDO"; out->icon = LV_SYMBOL_LEFT; break;
+    case LC(Y): text = "REDO"; out->icon = LV_SYMBOL_RIGHT; break;
+    case LC(A): text = "SELECT ALL"; out->icon = LV_SYMBOL_LIST; break;
+    case LC(S): text = "SAVE"; out->icon = LV_SYMBOL_SAVE; break;
+    case LC(F): text = "FIND"; out->icon = LV_SYMBOL_EYE_OPEN; break;
+    case ENTER: text = "ENTER"; out->icon = LV_SYMBOL_OK; break;
+    case BACKSPACE: text = "BACKSPACE"; out->icon = LV_SYMBOL_BACKSPACE; break;
+    case TAB: text = "TAB"; out->icon = LV_SYMBOL_RIGHT; break;
+    case ESC: text = "ESC"; out->icon = LV_SYMBOL_CLOSE; break;
+    case DELETE: text = "DELETE"; out->icon = LV_SYMBOL_TRASH; break;
+    case C_PLAY_PAUSE: text = "PLAY/PAUSE"; out->icon = LV_SYMBOL_PLAY; break;
+    case C_PREVIOUS: text = "PREVIOUS"; out->icon = LV_SYMBOL_PREV; break;
+    case C_NEXT: text = "NEXT"; out->icon = LV_SYMBOL_NEXT; break;
+    case C_STOP: text = "STOP"; out->icon = LV_SYMBOL_STOP; break;
+    case C_MUTE: text = "MUTE"; out->icon = LV_SYMBOL_MUTE; break;
+    case C_VOL_DN: text = "VOL -"; out->icon = LV_SYMBOL_VOLUME_MID; break;
+    case C_VOL_UP: text = "VOL +"; out->icon = LV_SYMBOL_VOLUME_MAX; break;
+    case C_AC_BACK: text = "BACK"; out->icon = LV_SYMBOL_LEFT; break;
+    case C_AC_FORWARD: text = "FORWARD"; out->icon = LV_SYMBOL_RIGHT; break;
+    case HOME: text = "HOME"; out->icon = LV_SYMBOL_HOME; break;
+    case END: text = "END"; out->icon = LV_SYMBOL_DOWN; break;
+    case PG_UP: text = "PAGE UP"; out->icon = LV_SYMBOL_UP; break;
+    case PG_DN: text = "PAGE DOWN"; out->icon = LV_SYMBOL_DOWN; break;
+    default: break;
+    }
+    if (text) {
+        snprintf(out->text, sizeof(out->text), "%s", text);
+    } else if (STRIP_MODS(code) >= A && STRIP_MODS(code) <= Z) {
+        /* Keep Fusion F/V/M/E/L honest after Studio edits: show actual keys. */
+        snprintf(out->text, sizeof(out->text), "%s%s%s%s%c",
+                 SELECT_MODS(code) & (MOD_LCTL | MOD_RCTL) ? "C+" : "",
+                 SELECT_MODS(code) & (MOD_LALT | MOD_RALT) ? "A+" : "",
+                 SELECT_MODS(code) & (MOD_LSFT | MOD_RSFT) ? "S+" : "",
+                 SELECT_MODS(code) & (MOD_LGUI | MOD_RGUI) ? "W+" : "",
+                 (char)('A' + STRIP_MODS(code) - A));
+    } else {
+        snprintf(out->text, sizeof(out->text), "0x%08X", (unsigned int)code);
+    }
+}
+
+static struct page_state read_page(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    struct page_state state = {0};
+    zmk_keymap_layer_index_t index = zmk_keymap_highest_layer_active();
+    state.id = zmk_keymap_layer_index_to_id(index);
+    const char *name = zmk_keymap_layer_name(state.id);
+    if (name && name[0]) {
+        snprintf(state.name, sizeof(state.name), "%s", name);
+    } else {
+        snprintf(state.name, sizeof(state.name), "LAYER %u", index + 1);
+    }
+    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+        const struct zmk_behavior_binding *binding =
+            zmk_keymap_get_layer_binding_at_idx(state.id, i);
+        struct key_caption *key = &state.keys[i];
+        key->icon = LV_SYMBOL_KEYBOARD;
+        if (!binding || !binding->behavior_dev) {
+            snprintf(key->text, sizeof(key->text), "--");
+        } else if (strcmp(binding->behavior_dev, DEVICE_DT_NAME(DT_NODELABEL(kp))) == 0) {
+            describe_key(binding->param1, key);
+        } else {
+            /* Never keep a stale COPY/etc label for a remapped behavior. */
+            snprintf(key->text, sizeof(key->text), "%.8s %u",
+                     binding->behavior_dev, (unsigned int)binding->param1);
+        }
+    }
+    return state;
+}
+
+static void set_tile_pressed(uint8_t i, bool pressed) {
+    lv_obj_set_style_bg_color(tiles[i], pressed ? accent : lv_color_hex(0x111820), 0);
+    lv_obj_set_style_border_color(tiles[i], pressed ? accent : lv_color_hex(0x43505c), 0);
+    lv_obj_set_style_text_color(icons[i], pressed ? lv_color_hex(0x101820) : accent, 0);
+    lv_obj_set_style_text_color(captions[i],
+                                pressed ? lv_color_hex(0x101820) : lv_color_white(), 0);
+    lv_obj_align(icons[i], LV_ALIGN_TOP_MID, 0, pressed ? 8 : 3);
+}
+
+static void update_page(struct page_state state) {
+    static struct page_state previous;
+    static bool have_previous;
+    bool same = have_previous && previous.id == state.id &&
+                strcmp(previous.name, state.name) == 0;
+    for (uint8_t i = 0; same && i < KEY_COUNT; i++) {
+        same = previous.keys[i].icon == state.keys[i].icon &&
+               strcmp(previous.keys[i].text, state.keys[i].text) == 0;
+    }
+    if (!layer_label || same) {
         return;
     }
-
-    char text[32];
-
-    if (state.name != NULL && strlen(state.name) > 0) {
-        snprintf(text, sizeof(text), "%s", state.name);
-    } else {
-        snprintf(text, sizeof(text), "LAYER %d", state.index);
+    previous = state;
+    have_previous = true;
+    const uint32_t colors[] = {0x5de0c3, 0xffc765, 0x7ebcff};
+    accent = lv_color_hex(colors[state.id % ARRAY_SIZE(colors)]);
+    lv_label_set_text(layer_label, state.name);
+    lv_obj_set_style_text_color(layer_label, accent, 0);
+    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+        lv_label_set_text(captions[i], state.keys[i].text);
+        lv_label_set_text(icons[i], state.keys[i].icon);
+        set_tile_pressed(i, highlighted[i]);
     }
-
-    lv_label_set_text(layer_label, text);
 }
 
-static struct lumi_layer_state get_layer_state(const zmk_event_t *eh) {
-    zmk_keymap_layer_index_t index = zmk_keymap_highest_layer_active();
+ZMK_DISPLAY_WIDGET_LISTENER(lumi_page, struct page_state, update_page, read_page)
+ZMK_SUBSCRIPTION(lumi_page, zmk_layer_state_changed);
 
-    return (struct lumi_layer_state){
-        .index = index,
-        .name = zmk_keymap_layer_name(
-            zmk_keymap_layer_index_to_id(index)
-        ),
+/* Studio edits do not all emit layer_state_changed in v0.3. Poll on the
+ * system queue, copy state, and perform every LVGL call on the display queue.
+ */
+static void poll_page(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(page_poll_work, poll_page);
+
+static void poll_page(struct k_work *work) {
+    ARG_UNUSED(work);
+    lumi_page_refresh_state(NULL);
+    k_work_submit_to_queue(zmk_display_work_q(), &lumi_page_work);
+    k_work_schedule(&page_poll_work, K_MSEC(500));
+}
+
+struct output_state {
+    struct zmk_endpoint_instance endpoint;
+    bool connected;
+    bool open;
+};
+static struct output_state read_output(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    return (struct output_state){
+        .endpoint = zmk_endpoints_selected(),
+        .connected = zmk_ble_active_profile_is_connected(),
+        .open = zmk_ble_active_profile_is_open(),
     };
 }
-
-ZMK_DISPLAY_WIDGET_LISTENER(
-    lumi_layer,
-    struct lumi_layer_state,
-    update_layer,
-    get_layer_state
-)
-
-ZMK_SUBSCRIPTION(lumi_layer, zmk_layer_state_changed);
-
-static void splash_done(lv_timer_t *timer) {
-    if (splash_label != NULL) {
-        lv_obj_del(splash_label);
-        splash_label = NULL;
+static void update_output(struct output_state state) {
+    if (!output_label) {
+        return;
     }
+    if (state.endpoint.transport == ZMK_TRANSPORT_USB) {
+        lv_label_set_text(output_label, LV_SYMBOL_USB " USB");
+    } else {
+        char text[24];
+        snprintf(text, sizeof(text), "BLE%u %s", state.endpoint.ble.profile_index + 1,
+                 state.connected ? LV_SYMBOL_OK :
+                                   (state.open ? LV_SYMBOL_SETTINGS : LV_SYMBOL_CLOSE));
+        lv_label_set_text(output_label, text);
+    }
+}
+ZMK_DISPLAY_WIDGET_LISTENER(lumi_output, struct output_state, update_output, read_output)
+ZMK_SUBSCRIPTION(lumi_output, zmk_endpoint_changed);
+ZMK_SUBSCRIPTION(lumi_output, zmk_ble_active_profile_changed);
 
-    lv_obj_clear_flag(layer_label, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
+static int position_listener(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *event = as_zmk_position_state_changed(eh);
+    if (event && event->position < KEY_COUNT) {
+        if (event->state) {
+            atomic_set_bit(&held_keys, event->position);
+            atomic_set_bit(&tapped_keys, event->position);
+        } else {
+            atomic_clear_bit(&held_keys, event->position);
+        }
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+ZMK_LISTENER(lumi_keys, position_listener);
+ZMK_SUBSCRIPTION(lumi_keys, zmk_position_state_changed);
 
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_BATTERY_STATUS)
-    lv_obj_clear_flag(
-        zmk_widget_battery_status_obj(&battery_widget),
-        LV_OBJ_FLAG_HIDDEN
-    );
-#endif
-
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_OUTPUT_STATUS)
-    lv_obj_clear_flag(
-        zmk_widget_output_status_obj(&output_widget),
-        LV_OBJ_FLAG_HIDDEN
-    );
-#endif
-
-    lv_timer_del(timer);
+static void refresh_pressed(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+    uint32_t now = lv_tick_get();
+    /* Atomic exchange retains taps that finish between display ticks. */
+    atomic_val_t taps = atomic_set(&tapped_keys, 0);
+    atomic_val_t held = atomic_get(&held_keys);
+    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+        if (taps & BIT(i)) {
+            press_started[i] = now;
+        }
+        bool pressed = (held & BIT(i)) || (taps & BIT(i)) ||
+                       (highlighted[i] && (uint32_t)(now - press_started[i]) < PRESS_MIN_MS);
+        if (pressed != highlighted[i]) {
+            highlighted[i] = pressed;
+            set_tile_pressed(i, pressed);
+        }
+    }
 }
 
-lv_obj_t *zmk_display_status_screen() {
+static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font) {
+    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    return label;
+}
+
+lv_obj_t *zmk_display_status_screen(void) {
+    (void)lumi_panel_init();
     lv_obj_t *screen = lv_obj_create(NULL);
-
-    lv_obj_set_style_bg_color(
-        screen,
-        lv_color_white(),
-        LV_PART_MAIN
-    );
-
-    lv_obj_set_style_text_color(
-        screen,
-        lv_color_black(),
-        LV_PART_MAIN
-    );
-
-    /* -------- Main layer name -------- */
-
-    layer_label = lv_label_create(screen);
-
-    lv_obj_set_width(layer_label, 300);
-
-    lv_obj_set_style_text_font(
-        layer_label,
-        &lv_font_montserrat_32,
-        LV_PART_MAIN
-    );
-
-    lv_obj_set_style_text_align(
-        layer_label,
-        LV_TEXT_ALIGN_CENTER,
-        LV_PART_MAIN
-    );
-
-    lv_obj_align(
-        layer_label,
-        LV_ALIGN_CENTER,
-        0,
-        -5
-    );
-
-    lumi_layer_init();
-
-    /* -------- Battery -------- */
-
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_BATTERY_STATUS)
-    zmk_widget_battery_status_init(
-        &battery_widget,
-        screen
-    );
-
-    lv_obj_align(
-        zmk_widget_battery_status_obj(&battery_widget),
-        LV_ALIGN_TOP_RIGHT,
-        -8,
-        8
-    );
-#endif
-
-    /* -------- USB / BLE -------- */
-
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_OUTPUT_STATUS)
-    zmk_widget_output_status_init(
-        &output_widget,
-        screen
-    );
-
-    lv_obj_align(
-        zmk_widget_output_status_obj(&output_widget),
-        LV_ALIGN_TOP_LEFT,
-        8,
-        8
-    );
-#endif
-
-    /* -------- Footer -------- */
-
-    footer_label = lv_label_create(screen);
-
-    lv_label_set_text(
-        footer_label,
-        "LUMI MACROPAD"
-    );
-
-    lv_obj_set_style_text_font(
-        footer_label,
-        &lv_font_montserrat_16,
-        LV_PART_MAIN
-    );
-
-    lv_obj_align(
-        footer_label,
-        LV_ALIGN_BOTTOM_MID,
-        0,
-        -8
-    );
-
-    /* Hide main UI while splash is visible */
-
-    lv_obj_add_flag(layer_label, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(footer_label, LV_OBJ_FLAG_HIDDEN);
-
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_BATTERY_STATUS)
-    lv_obj_add_flag(
-        zmk_widget_battery_status_obj(&battery_widget),
-        LV_OBJ_FLAG_HIDDEN
-    );
-#endif
-
-#if IS_ENABLED(CONFIG_ZMK_WIDGET_OUTPUT_STATUS)
-    lv_obj_add_flag(
-        zmk_widget_output_status_obj(&output_widget),
-        LV_OBJ_FLAG_HIDDEN
-    );
-#endif
-
-    /* -------- Splash screen -------- */
-
-    splash_label = lv_label_create(screen);
-
-    lv_label_set_text(
-        splash_label,
-        "LUMI3D"
-    );
-
-    lv_obj_set_style_text_font(
-        splash_label,
-        &lv_font_montserrat_36,
-        LV_PART_MAIN
-    );
-
-    lv_obj_center(splash_label);
-
-    /* 1500 ms splash */
-
-    lv_timer_create(
-        splash_done,
-        1500,
-        NULL
-    );
-
+    lv_obj_remove_style_all(screen);
+    lv_obj_set_size(screen, 320, 172);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x090d12), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+        tiles[i] = lv_obj_create(screen);
+        lv_obj_remove_style_all(tiles[i]);
+        lv_obj_set_pos(tiles[i], (i % COLS) * CELL_W, (i / COLS) * CELL_H);
+        lv_obj_set_size(tiles[i], CELL_W, CELL_H);
+        lv_obj_set_style_bg_opa(tiles[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(tiles[i], 1, 0);
+        lv_obj_clear_flag(tiles[i], LV_OBJ_FLAG_SCROLLABLE);
+        icons[i] = make_label(tiles[i], &lv_font_montserrat_20);
+        captions[i] = make_label(tiles[i], &lv_font_montserrat_12);
+        lv_obj_set_width(captions[i], CELL_W - 4);
+        lv_label_set_long_mode(captions[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(captions[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(captions[i], LV_ALIGN_BOTTOM_MID, 0, -3);
+    }
+    /* Dedicated 28px footer, outside the 144px grid. */
+    layer_label = make_label(screen, &lv_font_montserrat_12);
+    lv_obj_set_pos(layer_label, 5, 152);
+    lv_obj_set_width(layer_label, 144);
+    lv_label_set_long_mode(layer_label, LV_LABEL_LONG_DOT);
+    output_label = make_label(screen, &lv_font_montserrat_12);
+    lv_obj_set_pos(output_label, 157, 152);
+    lv_obj_set_width(output_label, 83);
+    lumi_output_init();
+    zmk_widget_battery_status_init(&battery_widget, screen);
+    lv_obj_t *battery = zmk_widget_battery_status_obj(&battery_widget);
+    lv_obj_set_style_text_font(battery, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(battery, lv_color_white(), 0);
+    lv_obj_set_width(battery, 70);
+    lv_obj_set_style_text_align(battery, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(battery, 245, 152);
+    lumi_page_init();
+    k_work_schedule(&page_poll_work, K_MSEC(500));
+    lv_timer_create(refresh_pressed, 20, NULL);
     return screen;
 }
