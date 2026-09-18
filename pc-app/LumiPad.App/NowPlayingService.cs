@@ -8,6 +8,7 @@ using DrawingImaging = System.Drawing.Imaging;
 namespace LumiPad.App;
 
 public sealed record NowPlayingData(
+    string SourceName,
     string Title,
     string Artist,
     TimeSpan Position,
@@ -18,11 +19,14 @@ public sealed record NowPlayingData(
 public sealed class NowPlayingService : IDisposable
 {
     private const int ArtworkSize = 76;
+    private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(20);
 
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private CancellationTokenSource? _cts;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
     private bool _wasActive;
+    private DateTimeOffset? _inactiveSince;
+    private NowPlayingData? _lastData;
 
     private string _lastArtworkKey = "";
     private byte[]? _cachedArtwork;
@@ -37,6 +41,13 @@ public sealed class NowPlayingService : IDisposable
         _ = PollLoopAsync(_cts.Token);
     }
 
+    private static bool IsBrowser(string id) =>
+        id.Contains("chrome") ||
+        id.Contains("msedge") ||
+        id.Contains("firefox") ||
+        id.Contains("brave") ||
+        id.Contains("opera");
+
     private static bool IsAllowedSource(string sourceAppId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId))
@@ -44,24 +55,31 @@ public sealed class NowPlayingService : IDisposable
 
         string id = sourceAppId.ToLowerInvariant();
 
-        if (id.Contains("spotify") ||
-            id.Contains("applemusic") ||
-            id.Contains("apple music") ||
-            id.Contains("zunemusic") ||
-            id.Contains("music.ui") ||
-            id.Contains("youtube"))
-        {
-            return true;
-        }
+        return id.Contains("spotify") ||
+               id.Contains("applemusic") ||
+               id.Contains("apple music") ||
+               id.Contains("zunemusic") ||
+               id.Contains("music.ui") ||
+               id.Contains("youtube") ||
+               IsBrowser(id);
+    }
 
-        // YouTube / YouTube Music are surfaced by Windows as the browser
-        // session. GSMTC does not expose the current tab URL, so browser
-        // media sessions have to be allowed as a group.
-        return id.Contains("chrome") ||
-               id.Contains("msedge") ||
-               id.Contains("firefox") ||
-               id.Contains("brave") ||
-               id.Contains("opera");
+    private static string SourceLabel(string sourceAppId)
+    {
+        string id = (sourceAppId ?? "").ToLowerInvariant();
+
+        if (id.Contains("spotify"))
+            return "SPOTIFY";
+        if (id.Contains("applemusic") || id.Contains("apple music"))
+            return "APPLE MUSIC";
+        if (id.Contains("youtube"))
+            return "YOUTUBE";
+        if (IsBrowser(id))
+            return "YOUTUBE";
+        if (id.Contains("zunemusic") || id.Contains("music.ui"))
+            return "MUSIC";
+
+        return "MUSIC";
     }
 
     private void PublishCleared()
@@ -70,13 +88,33 @@ public sealed class NowPlayingService : IDisposable
             return;
 
         _wasActive = false;
+        _inactiveSince = null;
+        _lastData = null;
         Cleared?.Invoke();
+    }
+
+    private void PublishInactiveGrace(DateTimeOffset now)
+    {
+        if (!_wasActive || _lastData is null)
+            return;
+
+        _inactiveSince ??= now;
+
+        if (now - _inactiveSince.Value >= StopGrace)
+        {
+            PublishCleared();
+            return;
+        }
+
+        Updated?.Invoke(_lastData with { IsPlaying = false });
     }
 
     private async Task PollLoopAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+
             try
             {
                 var session = _manager?.GetCurrentSession();
@@ -84,7 +122,7 @@ public sealed class NowPlayingService : IDisposable
                 if (session is null || !IsAllowedSource(session.SourceAppUserModelId))
                 {
                     _currentSession = null;
-                    PublishCleared();
+                    PublishInactiveGrace(now);
                 }
                 else
                 {
@@ -97,53 +135,59 @@ public sealed class NowPlayingService : IDisposable
                     bool playing = playback.PlaybackStatus ==
                         GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
 
-                    if (!playing)
+                    var duration = timeline.EndTime - timeline.StartTime;
+                    if (duration < TimeSpan.Zero)
+                        duration = TimeSpan.Zero;
+
+                    var position = timeline.Position - timeline.StartTime;
+                    if (position < TimeSpan.Zero)
+                        position = TimeSpan.Zero;
+                    if (duration > TimeSpan.Zero && position > duration)
+                        position = duration;
+
+                    string artworkKey =
+                        $"{session.SourceAppUserModelId}\u001F{media.Title}\u001F" +
+                        $"{media.Artist}\u001F{media.AlbumTitle}";
+
+                    if (!string.Equals(
+                            artworkKey,
+                            _lastArtworkKey,
+                            StringComparison.Ordinal))
                     {
-                        PublishCleared();
+                        _lastArtworkKey = artworkKey;
+                        _cachedArtwork = await LoadArtworkAsync(media.Thumbnail);
                     }
-                    else
+
+                    var data = new NowPlayingData(
+                        SourceLabel(session.SourceAppUserModelId),
+                        string.IsNullOrWhiteSpace(media.Title)
+                            ? "Now Playing"
+                            : media.Title,
+                        string.IsNullOrWhiteSpace(media.Artist)
+                            ? media.AlbumArtist ?? ""
+                            : media.Artist,
+                        position,
+                        duration,
+                        playing,
+                        _cachedArtwork);
+
+                    _lastData = data;
+
+                    if (playing)
                     {
-                        var duration = timeline.EndTime - timeline.StartTime;
-                        if (duration < TimeSpan.Zero)
-                            duration = TimeSpan.Zero;
-
-                        var position = timeline.Position - timeline.StartTime;
-                        if (position < TimeSpan.Zero)
-                            position = TimeSpan.Zero;
-                        if (duration > TimeSpan.Zero && position > duration)
-                            position = duration;
-
-                        string artworkKey =
-                            $"{session.SourceAppUserModelId}\u001F{media.Title}\u001F" +
-                            $"{media.Artist}\u001F{media.AlbumTitle}";
-
-                        if (!string.Equals(
-                                artworkKey,
-                                _lastArtworkKey,
-                                StringComparison.Ordinal))
-                        {
-                            _lastArtworkKey = artworkKey;
-                            _cachedArtwork = await LoadArtworkAsync(media.Thumbnail);
-                        }
-
+                        _inactiveSince = null;
                         _wasActive = true;
-                        Updated?.Invoke(new NowPlayingData(
-                            string.IsNullOrWhiteSpace(media.Title)
-                                ? "Now Playing"
-                                : media.Title,
-                            string.IsNullOrWhiteSpace(media.Artist)
-                                ? media.AlbumArtist ?? ""
-                                : media.Artist,
-                            position,
-                            duration,
-                            true,
-                            _cachedArtwork));
+                        Updated?.Invoke(data);
+                    }
+                    else if (_wasActive)
+                    {
+                        PublishInactiveGrace(now);
                     }
                 }
             }
             catch
             {
-                PublishCleared();
+                PublishInactiveGrace(now);
             }
 
             try
