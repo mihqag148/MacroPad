@@ -89,21 +89,21 @@ public partial class MainWindow : Window
         DetectButton.IsEnabled = false;
         DeviceStatus.Text = "Detecting…";
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-        BottomStatus.Text = "Searching USB COM ports for LumiPad…";
+        BottomStatus.Text = "Searching Bluetooth first, then USB fallback…";
 
-        var port = await _serial.AutoDetectAsync();
+        var connection = await _serial.AutoDetectAsync();
 
-        if (port is null)
+        if (connection is null)
         {
             DeviceStatus.Text = "Not connected";
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
-            BottomStatus.Text = "LumiPad port not found. Flash the newest firmware and reconnect USB.";
+            BottomStatus.Text = "LumiPad not found. Make sure the keyboard is paired over Bluetooth, or connect USB as fallback.";
         }
         else
         {
-            DeviceStatus.Text = $"Connected · {port}";
+            DeviceStatus.Text = connection;
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
-            BottomStatus.Text = "Connected. Now Playing and RGB controls are live.";
+            BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal) ? "Connected wirelessly. Now Playing and RGB are live." : "Connected over USB fallback. Now Playing and RGB are live.";
             SendAllRgb();
         }
 
