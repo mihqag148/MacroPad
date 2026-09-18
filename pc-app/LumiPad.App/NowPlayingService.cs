@@ -14,6 +14,7 @@ public sealed class NowPlayingService : IDisposable
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private CancellationTokenSource? _cts;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
+    private bool _wasActive;
 
     public event Action<NowPlayingData>? Updated;
     public event Action? Cleared;
@@ -25,50 +26,103 @@ public sealed class NowPlayingService : IDisposable
         _ = PollLoopAsync(_cts.Token);
     }
 
+    private static bool IsAllowedSource(string sourceAppId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceAppId))
+            return false;
+
+        string id = sourceAppId.ToLowerInvariant();
+
+        // Dedicated music players.
+        if (id.Contains("spotify") ||
+            id.Contains("applemusic") ||
+            id.Contains("apple music") ||
+            id.Contains("zunemusic") ||
+            id.Contains("music.ui") ||
+            id.Contains("youtube"))
+        {
+            return true;
+        }
+
+        // YouTube / YouTube Music are normally surfaced through the browser's
+        // Windows media session. Windows does not expose the tab URL through
+        // GSMTC, so browser media sessions are allowed here.
+        return id.Contains("chrome") ||
+               id.Contains("msedge") ||
+               id.Contains("firefox") ||
+               id.Contains("brave") ||
+               id.Contains("opera");
+    }
+
+    private void PublishCleared()
+    {
+        if (!_wasActive)
+            return;
+
+        _wasActive = false;
+        Cleared?.Invoke();
+    }
+
     private async Task PollLoopAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
             try
             {
-                _currentSession = _manager?.GetCurrentSession();
+                var session = _manager?.GetCurrentSession();
 
-                if (_currentSession is null)
+                if (session is null || !IsAllowedSource(session.SourceAppUserModelId))
                 {
-                    Cleared?.Invoke();
+                    _currentSession = null;
+                    PublishCleared();
                 }
                 else
                 {
-                    var media = await _currentSession.TryGetMediaPropertiesAsync();
-                    var timeline = _currentSession.GetTimelineProperties();
-                    var playback = _currentSession.GetPlaybackInfo();
+                    _currentSession = session;
 
-                    var duration = timeline.EndTime - timeline.StartTime;
-                    if (duration < TimeSpan.Zero)
-                        duration = TimeSpan.Zero;
+                    var media = await session.TryGetMediaPropertiesAsync();
+                    var timeline = session.GetTimelineProperties();
+                    var playback = session.GetPlaybackInfo();
 
-                    var position = timeline.Position - timeline.StartTime;
-                    if (position < TimeSpan.Zero)
-                        position = TimeSpan.Zero;
-                    if (duration > TimeSpan.Zero && position > duration)
-                        position = duration;
+                    bool playing = playback.PlaybackStatus ==
+                        GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
 
-                    Updated?.Invoke(new NowPlayingData(
-                        string.IsNullOrWhiteSpace(media.Title) ? "Nothing Playing" : media.Title,
-                        string.IsNullOrWhiteSpace(media.Artist) ? media.AlbumArtist ?? "" : media.Artist,
-                        position,
-                        duration,
-                        playback.PlaybackStatus ==
-                            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing));
+                    if (!playing)
+                    {
+                        PublishCleared();
+                    }
+                    else
+                    {
+                        var duration = timeline.EndTime - timeline.StartTime;
+                        if (duration < TimeSpan.Zero)
+                            duration = TimeSpan.Zero;
+
+                        var position = timeline.Position - timeline.StartTime;
+                        if (position < TimeSpan.Zero)
+                            position = TimeSpan.Zero;
+                        if (duration > TimeSpan.Zero && position > duration)
+                            position = duration;
+
+                        _wasActive = true;
+                        Updated?.Invoke(new NowPlayingData(
+                            string.IsNullOrWhiteSpace(media.Title) ? "Now Playing" : media.Title,
+                            string.IsNullOrWhiteSpace(media.Artist)
+                                ? media.AlbumArtist ?? ""
+                                : media.Artist,
+                            position,
+                            duration,
+                            true));
+                    }
                 }
             }
             catch
             {
+                PublishCleared();
             }
 
             try
             {
-                await Task.Delay(900, token);
+                await Task.Delay(800, token);
             }
             catch (TaskCanceledException)
             {
