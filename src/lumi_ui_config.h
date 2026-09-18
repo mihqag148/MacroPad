@@ -11,10 +11,10 @@ enum lumi_screensaver_style {
     LUMI_SAVER_OFF = 2,
 };
 
-#define LUMI_SAVER_FRAME_W 160
-#define LUMI_SAVER_FRAME_H 86
+#define LUMI_SAVER_FRAME_W 80
+#define LUMI_SAVER_FRAME_H 43
 #define LUMI_SAVER_FRAME_BYTES (LUMI_SAVER_FRAME_W * LUMI_SAVER_FRAME_H)
-#define LUMI_SAVER_MAX_FRAMES 25
+#define LUMI_SAVER_MAX_FRAMES 8
 
 void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
                            uint8_t r2, uint8_t g2, uint8_t b2);
