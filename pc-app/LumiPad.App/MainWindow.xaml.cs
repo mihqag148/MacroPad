@@ -460,7 +460,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int ComboSeconds(ComboBox combo, int fallback)
+    private static int ComboSeconds(System.Windows.Controls.ComboBox combo, int fallback)
     {
         if (combo.SelectedItem is ComboBoxItem item &&
             int.TryParse(item.Tag?.ToString(), out int seconds))
@@ -740,7 +740,7 @@ public partial class MainWindow : Window
 
     private void RgbPreset_Click(object sender, RoutedEventArgs e)
     {
-        string tag = (sender as Button)?.Tag?.ToString() ?? "";
+        string tag = (sender as System.Windows.Controls.Button)?.Tag?.ToString() ?? "";
 
         if (tag == "AUTO")
         {
