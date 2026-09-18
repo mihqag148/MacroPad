@@ -58,6 +58,8 @@ static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
 static lv_obj_t *saver_media_canvas;
 static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
+static lv_color_t saver_rgb332_lut[256];
+static bool saver_rgb332_lut_ready;
 
 #define SAVER_FLASH_MAGIC 0x4C534156U /* "LSAV" */
 #define SAVER_FLASH_VERSION 1U
@@ -944,12 +946,19 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
         }
     }
 
+    if (!saver_rgb332_lut_ready) {
+        for (uint16_t v = 0U; v < 256U; v++) {
+            uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+            uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+            uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
+            saver_rgb332_lut[v] = lv_color_make(r, g, b);
+        }
+        saver_rgb332_lut_ready = true;
+    }
+
     for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        uint8_t v = saver_media_frame_buffer[i];
-        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
-        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
-        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
-        saver_media_canvas_buf[i] = lv_color_make(r, g, b);
+        saver_media_canvas_buf[i] =
+            saver_rgb332_lut[saver_media_frame_buffer[i]];
     }
 
     saver_prefetch_valid = false;
@@ -1622,7 +1631,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 50, NULL);
+lv_timer_create(refresh_screensaver, 40, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
