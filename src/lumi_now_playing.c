@@ -127,22 +127,12 @@ void lumi_now_playing_update(const char *title, const char *artist,
                              bool playing) {
     k_mutex_lock(&state_lock, K_FOREVER);
 
-    bool title_changed = strncmp(state.title, title ? title : "", sizeof(state.title)) != 0;
-    bool artist_changed = strncmp(state.artist, artist ? artist : "", sizeof(state.artist)) != 0;
-
     snprintf(state.title, sizeof(state.title), "%s", title ? title : "");
     snprintf(state.artist, sizeof(state.artist), "%s", artist ? artist : "");
     state.position_ms = position_ms;
     state.duration_ms = duration_ms;
     state.playing = playing;
     state.last_rx_ms = k_uptime_get_32();
-
-    if (title_changed) {
-        state.title_bitmap_valid = false;
-    }
-    if (artist_changed) {
-        state.artist_bitmap_valid = false;
-    }
 
     k_mutex_unlock(&state_lock);
 
