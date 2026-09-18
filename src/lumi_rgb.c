@@ -14,6 +14,7 @@
 #include <zmk/behavior.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
 
 #include "lumi_rgb.h"
@@ -58,6 +59,8 @@ static bool led_suspended = false;
 static bool auto_by_layer = true;
 static uint8_t manual_effect = LUMI_RGB_EFFECT_RAINBOW;
 static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
+static uint8_t user_speed_percent = 50;
+static uint8_t reactive_level;
 static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
@@ -138,6 +141,16 @@ static void render_solid(void) {
     fill(scale_rgb(manual_color, user_brightness));
 }
 
+static void render_reactive(void) {
+    if (reactive_level > 0U) {
+        fill(scale_rgb(manual_color,
+                       (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U)));
+        reactive_level = reactive_level > 22U ? reactive_level - 22U : 0U;
+    } else {
+        fill((struct led_rgb){0});
+    }
+}
+
 static uint8_t layer_effect(void) {
     switch ((int)zmk_keymap_highest_layer_active()) {
     case 1:
@@ -161,6 +174,9 @@ static void render_effect(uint8_t effect) {
     case LUMI_RGB_EFFECT_SOLID:
         render_solid();
         break;
+    case LUMI_RGB_EFFECT_REACTIVE:
+        render_reactive();
+        break;
     case LUMI_RGB_EFFECT_RAINBOW:
     default:
         render_office();
@@ -180,6 +196,16 @@ void lumi_rgb_set_brightness_percent(uint8_t percent) {
     }
 
     user_brightness = (uint8_t)(((uint16_t)percent * 255U) / 100U);
+}
+
+void lumi_rgb_set_speed_percent(uint8_t percent) {
+    if (percent < 10U) {
+        percent = 10U;
+    } else if (percent > 100U) {
+        percent = 100U;
+    }
+
+    user_speed_percent = percent;
 }
 
 void lumi_rgb_set_auto(bool enabled) {
@@ -237,8 +263,28 @@ static void lumi_rgb_work_handler(struct k_work *work) {
         LOG_ERR("WS2812B update failed: %d", err);
     }
 
-    k_work_reschedule(&lumi_rgb_work, K_MSEC(FRAME_MS));
+    uint32_t frame_ms = 140U - ((uint32_t)user_speed_percent * 100U / 100U);
+    if (frame_ms < 35U) {
+        frame_ms = 35U;
+    }
+    k_work_reschedule(&lumi_rgb_work, K_MSEC(frame_ms));
 }
+
+static int lumi_rgb_position_listener(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *event =
+        as_zmk_position_state_changed(eh);
+
+    if (event && event->state &&
+        !auto_by_layer &&
+        manual_effect == LUMI_RGB_EFFECT_REACTIVE) {
+        reactive_level = 255U;
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(lumi_rgb_position, lumi_rgb_position_listener);
+ZMK_SUBSCRIPTION(lumi_rgb_position, zmk_position_state_changed);
 
 static int lumi_rgb_activity_listener(const zmk_event_t *eh) {
     const struct zmk_activity_state_changed *event =
