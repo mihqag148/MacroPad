@@ -36,6 +36,7 @@ static size_t ble_len;
 
 static uint8_t bitmap_tmp[BITMAP_TMP_MAX];
 static uint8_t artwork_tmp[LUMI_ARTWORK_BYTES];
+static uint8_t saver_frame_tmp[LUMI_SAVER_FRAME_BYTES];
 K_MUTEX_DEFINE(bitmap_lock);
 
 static int hex_nibble(char c) {
@@ -195,6 +196,45 @@ static void handle_cfg(char *save) {
     }
 }
 
+static void handle_savbegin(char *save) {
+    char *count_s = strtok_r(NULL, "|", &save);
+    char *interval_s = strtok_r(NULL, "|", &save);
+
+    if (!count_s || !interval_s) {
+        return;
+    }
+
+    lumi_ui_saver_anim_begin(
+        (uint8_t)atoi(count_s),
+        (uint16_t)atoi(interval_s));
+}
+
+static void handle_savframe(char *save) {
+    char *index_s = strtok_r(NULL, "|", &save);
+    char *base64 = strtok_r(NULL, "|", &save);
+
+    if (!index_s || !base64) {
+        return;
+    }
+
+    size_t decoded_len = 0;
+    int rc = base64_decode(
+        saver_frame_tmp,
+        sizeof(saver_frame_tmp),
+        &decoded_len,
+        (const uint8_t *)base64,
+        strlen(base64));
+
+    if (rc != 0 || decoded_len != LUMI_SAVER_FRAME_BYTES) {
+        return;
+    }
+
+    lumi_ui_saver_anim_frame(
+        (uint8_t)atoi(index_s),
+        saver_frame_tmp,
+        decoded_len);
+}
+
 static void handle_txt(char *save) {
     char *kind = strtok_r(NULL, "|", &save);
     char *width_s = strtok_r(NULL, "|", &save);
@@ -260,6 +300,14 @@ static void handle_line(char *line, bool from_usb) {
         handle_txt(save);
     } else if (strcmp(root, "ART") == 0) {
         handle_art(save);
+    } else if (strcmp(root, "SAVBEGIN") == 0) {
+        handle_savbegin(save);
+    } else if (strcmp(root, "SAVFRAME") == 0) {
+        handle_savframe(save);
+    } else if (strcmp(root, "SAVEND") == 0) {
+        lumi_ui_saver_anim_end();
+    } else if (strcmp(root, "SAVCLEAR") == 0) {
+        lumi_ui_saver_anim_clear();
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     }
