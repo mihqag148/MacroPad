@@ -258,7 +258,7 @@ public sealed class SerialLink : IDisposable
         }
     }
 
-    public async Task SendScreensaverAnimationAsync(
+    public async Task<bool> SendScreensaverAnimationAsync(
         ScreensaverAnimation animation,
         IProgress<int>? progress = null)
     {
@@ -271,6 +271,14 @@ public sealed class SerialLink : IDisposable
             throw new InvalidOperationException("Invalid screensaver frame count.");
         }
 
+        const int rawChunkSize = 180;
+        int frameBytes =
+            ScreensaverMediaService.Width * ScreensaverMediaService.Height;
+        int chunksPerFrame =
+            (frameBytes + rawChunkSize - 1) / rawChunkSize;
+        int totalChunks = chunksPerFrame * animation.Frames.Count;
+        int sentChunks = 0;
+
         await SendLineAsync(
             $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}");
 
@@ -278,20 +286,50 @@ public sealed class SerialLink : IDisposable
         {
             byte[] frame = animation.Frames[i];
 
-            if (frame.Length !=
-                ScreensaverMediaService.Width * ScreensaverMediaService.Height)
-            {
+            if (frame.Length != frameBytes)
                 throw new InvalidOperationException("Invalid screensaver frame size.");
+
+            for (int offset = 0; offset < frame.Length; offset += rawChunkSize)
+            {
+                int len = Math.Min(rawChunkSize, frame.Length - offset);
+                string base64 =
+                    Convert.ToBase64String(frame, offset, len);
+
+                await SendLineAsync(
+                    $"SAVCHUNK|{i}|{offset}|{base64}");
+
+                sentChunks++;
+                progress?.Report(
+                    (int)Math.Round(sentChunks * 100.0 / totalChunks));
             }
-
-            string base64 = Convert.ToBase64String(frame);
-            await SendLineAsync($"SAVFRAME|{i}|{base64}");
-
-            progress?.Report(
-                (int)Math.Round((i + 1) * 100.0 / animation.Frames.Count));
         }
 
         await SendLineAsync("SAVEND");
+        await Task.Delay(120);
+
+        if (_bleCharacteristic is not null)
+        {
+            string status = await ReadBleStatusAsync();
+            return status.Contains("SAVER:READY", StringComparison.Ordinal);
+        }
+
+        // USB transport has already acknowledged every write at the serial layer,
+        // but the current protocol has no reverse status packet.
+        return true;
+    }
+
+    private async Task<string> ReadBleStatusAsync()
+    {
+        var characteristic = _bleCharacteristic;
+        if (characteristic is null)
+            return "";
+
+        var read = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
+        if (read.Status != GattCommunicationStatus.Success)
+            return "";
+
+        using var reader = DataReader.FromBuffer(read.Value);
+        return reader.ReadString(reader.UnconsumedBufferLength);
     }
 
     public void ClearScreensaverAnimation() =>
