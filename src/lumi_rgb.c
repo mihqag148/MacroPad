@@ -31,6 +31,7 @@ LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 #define MIN_BRIGHTNESS 13     /* ~5% */
 #define MAX_BRIGHTNESS 128    /* ~50% */
 #define BRIGHTNESS_STEP 13    /* ~5% */
+#define RGB_PROFILE_COUNT 5
 
 enum lumi_rgb_command {
     LUMI_RGB_TOGGLE = 0,
@@ -61,6 +62,20 @@ static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
 static uint8_t user_speed_percent = 50;
 static uint8_t reactive_level;
 static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
+static uint8_t profile_effect[RGB_PROFILE_COUNT] = {
+    LUMI_RGB_EFFECT_RAINBOW,
+    LUMI_RGB_EFFECT_PURPLE_PINGPONG,
+    LUMI_RGB_EFFECT_ORANGE_BLINK,
+    LUMI_RGB_EFFECT_SOLID,
+    LUMI_RGB_EFFECT_SOLID,
+};
+static struct led_rgb profile_color[RGB_PROFILE_COUNT] = {
+    {.r = 255, .g = 120, .b = 0},
+    {.r = 180, .g = 40, .b = 255},
+    {.r = 255, .g = 90, .b = 0},
+    {.r = 0, .g = 170, .b = 255},
+    {.r = 80, .g = 255, .b = 100},
+};
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
     color.r = ((uint16_t)color.r * scale) / 255;
@@ -150,16 +165,21 @@ static void render_reactive(void) {
     }
 }
 
-static uint8_t layer_effect(void) {
-    switch ((int)zmk_keymap_highest_layer_active()) {
-    case 1:
-        return LUMI_RGB_EFFECT_PURPLE_PINGPONG;
-    case 2:
-        return LUMI_RGB_EFFECT_ORANGE_BLINK;
-    case 0:
-    default:
-        return LUMI_RGB_EFFECT_RAINBOW;
+static uint8_t current_profile_index(void) {
+    int layer = (int)zmk_keymap_highest_layer_active();
+    if (layer < 0) {
+        return 0U;
     }
+
+    if (layer >= RGB_PROFILE_COUNT) {
+        return RGB_PROFILE_COUNT - 1U;
+    }
+
+    return (uint8_t)layer;
+}
+
+static uint8_t layer_effect(void) {
+    return profile_effect[current_profile_index()];
 }
 
 static void render_effect(uint8_t effect) {
@@ -183,6 +203,30 @@ static void render_effect(uint8_t effect) {
     }
 }
 
+static void render_auto_profile(void) {
+    uint8_t index = current_profile_index();
+    uint8_t effect = profile_effect[index];
+
+    if (effect == LUMI_RGB_EFFECT_SOLID) {
+        fill(scale_rgb(profile_color[index], user_brightness));
+        return;
+    }
+
+    if (effect == LUMI_RGB_EFFECT_REACTIVE) {
+        if (reactive_level > 0U) {
+            fill(scale_rgb(
+                profile_color[index],
+                (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U)));
+            reactive_level = reactive_level > 22U ? reactive_level - 22U : 0U;
+        } else {
+            fill((struct led_rgb){0});
+        }
+        return;
+    }
+
+    render_effect(effect);
+}
+
 static void lumi_rgb_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
 
@@ -197,7 +241,11 @@ static int lumi_rgb_push_now(void) {
     if (!led_enabled || led_suspended) {
         fill((struct led_rgb){0});
     } else {
-        render_effect(auto_by_layer ? layer_effect() : manual_effect);
+        if (auto_by_layer) {
+            render_auto_profile();
+        } else {
+            render_effect(manual_effect);
+        }
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
@@ -268,6 +316,20 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
     lumi_rgb_refresh_now();
 }
 
+void lumi_rgb_set_profile(uint8_t index, uint8_t effect,
+                          uint8_t r, uint8_t g, uint8_t b) {
+    if (index >= RGB_PROFILE_COUNT || effect >= LUMI_RGB_EFFECT_COUNT) {
+        return;
+    }
+
+    profile_effect[index] = effect;
+    profile_color[index] = (struct led_rgb){.r = r, .g = g, .b = b};
+
+    if (auto_by_layer && current_profile_index() == index) {
+        lumi_rgb_refresh_now();
+    }
+}
+
 void lumi_rgb_set_suspended(bool suspended) {
     led_suspended = suspended;
     lumi_rgb_refresh_now();
@@ -286,7 +348,11 @@ static void lumi_rgb_work_handler(struct k_work *work) {
     if (!led_enabled || led_suspended) {
         fill((struct led_rgb){0});
     } else {
-        render_effect(auto_by_layer ? layer_effect() : manual_effect);
+        if (auto_by_layer) {
+            render_auto_profile();
+        } else {
+            render_effect(manual_effect);
+        }
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
@@ -307,10 +373,14 @@ static int lumi_rgb_position_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *event =
         as_zmk_position_state_changed(eh);
 
-    if (event && event->state &&
-        !auto_by_layer &&
-        manual_effect == LUMI_RGB_EFFECT_REACTIVE) {
-        reactive_level = 255U;
+    if (event && event->state) {
+        bool reactive =
+            (!auto_by_layer && manual_effect == LUMI_RGB_EFFECT_REACTIVE) ||
+            (auto_by_layer && layer_effect() == LUMI_RGB_EFFECT_REACTIVE);
+
+        if (reactive) {
+            reactive_level = 255U;
+        }
     }
 
     return ZMK_EV_EVENT_BUBBLE;
