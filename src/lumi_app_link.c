@@ -81,17 +81,20 @@ static void handle_np(char *save) {
     char *pos_s = strtok_r(NULL, "|", &save);
     char *dur_s = strtok_r(NULL, "|", &save);
     char *playing_s = strtok_r(NULL, "|", &save);
+    char *source = strtok_r(NULL, "|", &save);
     char *title = strtok_r(NULL, "|", &save);
     char *artist = strtok_r(NULL, "|", &save);
 
-    if (!pos_s || !dur_s || !playing_s || !title || !artist) {
+    if (!pos_s || !dur_s || !playing_s || !source || !title || !artist) {
         return;
     }
 
+    url_decode(source);
     url_decode(title);
     url_decode(artist);
 
     lumi_now_playing_update(
+        source,
         title,
         artist,
         (uint32_t)strtoul(pos_s, NULL, 10),
