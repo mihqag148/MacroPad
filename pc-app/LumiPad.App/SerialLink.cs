@@ -26,6 +26,7 @@ public sealed class SerialLink : IDisposable
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
+    public event Action<string>? LinkError;
 
     public async Task<string?> AutoDetectAsync(CancellationToken cancellationToken = default)
     {
@@ -250,12 +251,11 @@ public sealed class SerialLink : IDisposable
             if (_bleCharacteristic is not null)
             {
                 var characteristic = _bleCharacteristic;
-                var props = characteristic.CharacteristicProperties;
-                var option = props.HasFlag(GattCharacteristicProperties.WriteWithoutResponse)
-                    ? GattWriteOption.WriteWithoutResponse
-                    : GattWriteOption.WriteWithResponse;
 
-                const int chunkSize = 160;
+                // Keep each packet inside the default BLE ATT payload and require
+                // an acknowledgement. This is slower than WriteWithoutResponse,
+                // but much more reliable on Windows with HID keyboards.
+                const int chunkSize = 20;
                 for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
                     int len = Math.Min(chunkSize, data.Length - offset);
@@ -263,7 +263,7 @@ public sealed class SerialLink : IDisposable
                     writer.WriteBytes(data.AsSpan(offset, len).ToArray());
 
                     var status = await characteristic.WriteValueAsync(
-                        writer.DetachBuffer(), option);
+                        writer.DetachBuffer(), GattWriteOption.WriteWithResponse);
 
                     if (status != GattCommunicationStatus.Success)
                         throw new IOException($"Bluetooth write failed: {status}");
@@ -277,8 +277,9 @@ public sealed class SerialLink : IDisposable
                 _port.Write(data, 0, data.Length);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            LinkError?.Invoke(ex.Message);
             Disconnect();
         }
         finally
