@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     private bool _allowExit;
     private bool _trayTipShown;
     private bool _zmkInitialized;
+    private bool _autoReconnectEnabled = true;
+    private readonly CancellationTokenSource _reconnectCts = new();
 
     private byte _r = 255;
     private byte _g = 120;
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
             }
 
             await DetectAsync();
+            _ = AutoReconnectLoopAsync(_reconnectCts.Token);
         };
 
         Closing += MainWindow_Closing;
@@ -153,6 +156,8 @@ public partial class MainWindow : Window
     {
         _allowExit = true;
 
+        _reconnectCts.Cancel();
+        _reconnectCts.Dispose();
         _nowPlaying.Dispose();
         _serial.Dispose();
 
@@ -347,8 +352,11 @@ public partial class MainWindow : Window
         return $"{(int)value.TotalMinutes}:{value.Seconds:00}";
     }
 
-    private async void DetectButton_Click(object sender, RoutedEventArgs e) =>
+    private async void DetectButton_Click(object sender, RoutedEventArgs e)
+    {
+        _autoReconnectEnabled = true;
         await DetectAsync();
+    }
 
     private async Task DetectAsync()
     {
@@ -382,10 +390,44 @@ public partial class MainWindow : Window
 
     private void DisconnectButton_Click(object sender, RoutedEventArgs e)
     {
+        _autoReconnectEnabled = false;
         _serial.Disconnect();
         DeviceStatus.Text = "Not connected";
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
         BottomStatus.Text = "Disconnected.";
+    }
+
+    private async Task AutoReconnectLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(3000, token);
+
+                if (!_autoReconnectEnabled || _serial.IsConnected)
+                    continue;
+
+                var connection = await _serial.AutoDetectAsync(token);
+                if (connection is null)
+                    continue;
+
+                DeviceStatus.Text = connection;
+                DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
+                BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
+                    ? "Reconnected wirelessly after wake."
+                    : "Reconnected over USB fallback.";
+
+                SendAllRgb();
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+            }
+        }
     }
 
     private async void PrevButton_Click(object sender, RoutedEventArgs e) =>
