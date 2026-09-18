@@ -289,10 +289,11 @@
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,0,0,6"/>
                                     <ComboBox x:Name="ScreensaverDelayCombo"
+                                              SelectedValuePath="Tag"
                                               SelectionChanged="ScreensaverDelayCombo_SelectionChanged">
                                         <ComboBoxItem Content="15 seconds" Tag="15"/>
                                         <ComboBoxItem Content="30 seconds" Tag="30"/>
-                                        <ComboBoxItem Content="1 minute" Tag="60" IsSelected="True"/>
+                                        <ComboBoxItem Content="1 minute" Tag="60"/>
                                         <ComboBoxItem Content="2 minutes" Tag="120"/>
                                         <ComboBoxItem Content="5 minutes" Tag="300"/>
                                         <ComboBoxItem Content="10 minutes" Tag="600"/>
@@ -305,9 +306,10 @@
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,0,0,6"/>
                                     <ComboBox x:Name="SleepDelayCombo"
+                                              SelectedValuePath="Tag"
                                               SelectionChanged="SleepDelayCombo_SelectionChanged">
                                         <ComboBoxItem Content="1 minute" Tag="60"/>
-                                        <ComboBoxItem Content="2 minutes" Tag="120" IsSelected="True"/>
+                                        <ComboBoxItem Content="2 minutes" Tag="120"/>
                                         <ComboBoxItem Content="5 minutes" Tag="300"/>
                                         <ComboBoxItem Content="10 minutes" Tag="600"/>
                                         <ComboBoxItem Content="15 minutes" Tag="900"/>
