@@ -253,87 +253,245 @@
 
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
-                    <Border Width="720" HorizontalAlignment="Left"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="28" Padding="30">
-                        <StackPanel>
-                            <TextBlock Text="RGB" FontSize="12"
-                                       Foreground="{DynamicResource Muted}"
-                                       FontWeight="SemiBold"/>
-                            <TextBlock Text="4 × WS2812B" FontSize="25"
-                                       FontWeight="SemiBold" Margin="0,8,0,24"/>
+                    <Border Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="28">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="260"/>
+                                <ColumnDefinition Width="28"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="28"/>
+                                <ColumnDefinition Width="330"/>
+                            </Grid.ColumnDefinitions>
 
-                            <CheckBox x:Name="LedEnabled"
-                                      Content="RGB Power — On / Off"
-                                      IsChecked="True"
-                                      Checked="LedEnabled_Changed"
-                                      Unchecked="LedEnabled_Changed"
-                                      Margin="0,0,0,22"/>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="COLOR"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"/>
 
-                            <TextBlock Text="Mode"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,0,0,7"/>
-                            <ComboBox x:Name="EffectCombo"
-                                      Width="430" HorizontalAlignment="Left"
-                                      SelectionChanged="EffectCombo_SelectionChanged">
-                                <ComboBoxItem Content="Auto by Layer" Tag="-1" IsSelected="True"/>
-                                <ComboBoxItem Content="Rainbow" Tag="0"/>
-                                <ComboBoxItem Content="Warm Purple Ping-Pong" Tag="1"/>
-                                <ComboBoxItem Content="Orange Blink" Tag="2"/>
-                                <ComboBoxItem Content="Solid Color" Tag="3"/>
-                            </ComboBox>
+                                <Border Width="220" Height="185"
+                                        Margin="0,10,0,12"
+                                        CornerRadius="8"
+                                        ClipToBounds="True"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1">
+                                    <Image x:Name="ColorWheelImage"
+                                           Width="220" Height="185"
+                                           Stretch="Fill"
+                                           MouseLeftButtonDown="ColorWheelImage_MouseLeftButtonDown"/>
+                                </Border>
 
-                            <Grid Margin="0,26,0,0" Width="430" HorizontalAlignment="Left">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Brightness"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock x:Name="BrightnessText"
-                                           Grid.Column="1" Text="25%"/>
-                            </Grid>
-
-                            <Slider x:Name="BrightnessSlider"
-                                    Minimum="5" Maximum="50" Value="25"
-                                    TickFrequency="5" IsSnapToTickEnabled="True"
-                                    ValueChanged="BrightnessSlider_ValueChanged"
-                                    Width="430" HorizontalAlignment="Left"
-                                    Margin="0,8,0,26"/>
-
-                            <TextBlock Text="Solid color"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,0,0,8"/>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <StackPanel VerticalAlignment="Center">
-                                    <Border x:Name="ColorPreview" Width="58" Height="38"
-                                            CornerRadius="10" Background="#FF7800"
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="HEX" Width="42" VerticalAlignment="Center"
+                                               FontWeight="SemiBold"/>
+                                    <Border Background="{DynamicResource ControlBg}"
                                             BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1" Margin="0,0,0,10"/>
-                                    <Button Content="Choose color"
-                                            Click="ChooseColor_Click" Margin="0"/>
+                                            BorderThickness="1"
+                                            CornerRadius="5"
+                                            Padding="9,6"
+                                            Width="160">
+                                        <TextBlock x:Name="RgbHexText" Text="#FF7800"
+                                                   HorizontalAlignment="Center"/>
+                                    </Border>
                                 </StackPanel>
 
-                                <Grid Width="148" Height="148" Margin="28,0,0,0"
-                                      ToolTip="Click the color wheel to choose RGB color">
-                                    <Image x:Name="ColorWheelImage"
-                                           Width="148" Height="148"
-                                           Stretch="None"
-                                           MouseLeftButtonDown="ColorWheelImage_MouseLeftButtonDown"/>
-                                    <Ellipse x:Name="ColorWheelCursor"
-                                             Width="12" Height="12"
-                                             Stroke="White" StrokeThickness="2"
-                                             Fill="#22000000"
-                                             IsHitTestVisible="False"/>
-                                </Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="RGB" Width="42" VerticalAlignment="Center"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock Text="R" Foreground="#FF453A" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="RgbRText" Text="255" Margin="5,0,10,0"/>
+                                    <TextBlock Text="G" Foreground="#30D158" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="RgbGText" Text="120" Margin="5,0,10,0"/>
+                                    <TextBlock Text="B" Foreground="#0A84FF" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="RgbBText" Text="0" Margin="5,0,0,0"/>
+                                </StackPanel>
+
+                                <WrapPanel Margin="0,18,0,0">
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#FF1A1A" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#FF1A1A" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#D75A5A" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#D75A5A" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#43D17C" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#43D17C" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#FFE24B" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#FFE24B" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#67E7DB" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#67E7DB" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#10B9B9" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#10B9B9" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#A7DF37" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#A7DF37" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#B33AC7" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#B33AC7" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#5DCB48" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#5DCB48" Width="24" Height="24"/>
+                                    </Button>
+                                    <Button Width="34" Height="34" Padding="0" Margin="0,0,10,10"
+                                            Tag="#FFB812" Click="RgbSwatch_Click">
+                                        <Ellipse Fill="#FFB812" Width="24" Height="24"/>
+                                    </Button>
+                                </WrapPanel>
                             </StackPanel>
 
-                            <TextBlock Text="All RGB changes are sent directly to the macropad over Bluetooth when available."
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource Muted}"
-                                       FontSize="12" Margin="0,28,0,0"/>
-                        </StackPanel>
+                            <Border Grid.Column="1" Width="1"
+                                    Background="{DynamicResource Line}"
+                                    HorizontalAlignment="Center"/>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Mode"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,20">
+                                    <Button Content="Static" Tag="Static"
+                                            Click="RgbMode_Click" Width="100"/>
+                                    <Button Content="Dynamic" Tag="Dynamic"
+                                            Click="RgbMode_Click" Width="100"/>
+                                    <Button Content="Reactive" Tag="Reactive"
+                                            Click="RgbMode_Click" Width="100"/>
+                                </StackPanel>
+
+                                <TextBlock Text="Presets"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,14"/>
+
+                                <WrapPanel x:Name="RgbStaticPresets">
+                                    <Button Content="Solid Color" Tag="3"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                    <Button Content="Auto by Layer" Tag="AUTO"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                </WrapPanel>
+
+                                <WrapPanel x:Name="RgbDynamicPresets"
+                                           Visibility="Collapsed">
+                                    <Button Content="Rainbow" Tag="0"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                    <Button Content="Purple Ping-Pong" Tag="1"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                    <Button Content="Orange Blink" Tag="2"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                    <Button Content="Auto by Layer" Tag="AUTO"
+                                            Click="RgbPreset_Click"
+                                            Width="120" Height="48"/>
+                                </WrapPanel>
+
+                                <WrapPanel x:Name="RgbReactivePresets"
+                                           Visibility="Collapsed">
+                                    <Button Content="Reactive Splash" Tag="4"
+                                            Click="RgbPreset_Click"
+                                            Width="130" Height="48"/>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <Border Grid.Column="3" Width="1"
+                                    Background="{DynamicResource Line}"
+                                    HorizontalAlignment="Center"/>
+
+                            <StackPanel Grid.Column="4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Switch"
+                                               FontSize="16"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                    <CheckBox x:Name="LedEnabled"
+                                              Grid.Column="1"
+                                              IsChecked="True"
+                                              Checked="LedEnabled_Changed"
+                                              Unchecked="LedEnabled_Changed"
+                                              VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Text="Brightness"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Margin="0,28,0,8"/>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="56"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="BrightnessSlider"
+                                            Minimum="5" Maximum="50" Value="25"
+                                            TickFrequency="5"
+                                            IsSnapToTickEnabled="True"
+                                            ValueChanged="BrightnessSlider_ValueChanged"/>
+                                    <TextBlock x:Name="BrightnessText"
+                                               Grid.Column="1"
+                                               Text="25%"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Text="Effect Speed"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Margin="0,30,0,8"/>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="56"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="RgbSpeedSlider"
+                                            Minimum="10" Maximum="100" Value="50"
+                                            TickFrequency="10"
+                                            IsSnapToTickEnabled="True"
+                                            ValueChanged="RgbSpeedSlider_ValueChanged"/>
+                                    <TextBlock x:Name="RgbSpeedText"
+                                               Grid.Column="1"
+                                               Text="50%"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,30,0,20"/>
+
+                                <TextBlock Text="Selected color"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <Border x:Name="ColorPreview"
+                                        Width="72" Height="42"
+                                        CornerRadius="10"
+                                        Background="#FF7800"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
             </TabItem>
