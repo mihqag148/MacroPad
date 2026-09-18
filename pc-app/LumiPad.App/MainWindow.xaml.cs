@@ -56,7 +56,7 @@ public partial class MainWindow : Window
             _serial.LinkError += message =>
                 Dispatcher.Invoke(() =>
                 {
-                    DeviceStatus.Text = "Bluetooth write error";
+                    DeviceStatus.Text = L("Bluetooth write error", "Lỗi ghi Bluetooth");
                     DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
                     BottomStatus.Text = message;
                 });
@@ -73,7 +73,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                BottomStatus.Text = $"Now Playing unavailable: {ex.Message}";
+                BottomStatus.Text = L($"Now Playing unavailable: {ex.Message}", $"Không dùng được Now Playing: {ex.Message}");
             }
 
             await DetectAsync();
@@ -600,26 +600,29 @@ public partial class MainWindow : Window
     private async Task DetectAsync()
     {
         DetectButton.IsEnabled = false;
-        DeviceStatus.Text = "Detecting…";
+        DeviceStatus.Text = L("Detecting…", "Đang tìm…");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-        BottomStatus.Text = "Searching Bluetooth first, then USB fallback…";
+        BottomStatus.Text = L("Searching Bluetooth first, then USB fallback…", "Đang tìm Bluetooth trước, sau đó thử USB…");
 
         var connection = await _serial.AutoDetectAsync();
 
         if (connection is null)
         {
-            DeviceStatus.Text = "Not connected";
+            DeviceStatus.Text = L("Not connected", "Chưa kết nối");
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
             BottomStatus.Text =
-                "LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.";
+                L("LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.",
+                  "Không tìm thấy LumiPad. Hãy ghép Bluetooth hoặc cắm USB dự phòng.");
         }
         else
         {
             DeviceStatus.Text = connection;
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
             BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
-                ? "Connected wirelessly. Now Playing and RGB are live."
-                : "Connected over USB fallback. Now Playing and RGB are live.";
+                ? L("Connected wirelessly. Now Playing and RGB are live.",
+                    "Đã kết nối không dây. Now Playing và RGB đang hoạt động.")
+                : L("Connected over USB fallback. Now Playing and RGB are live.",
+                    "Đã kết nối qua USB dự phòng. Now Playing và RGB đang hoạt động.");
 
             SendAllRgb();
             SendPowerTiming();
@@ -634,7 +637,7 @@ public partial class MainWindow : Window
         _serial.Disconnect();
         DeviceStatus.Text = "Not connected";
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
-        BottomStatus.Text = "Disconnected.";
+        BottomStatus.Text = L("Disconnected.", "Đã ngắt kết nối.");
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken token)
@@ -655,8 +658,8 @@ public partial class MainWindow : Window
                 DeviceStatus.Text = connection;
                 DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
                 BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
-                    ? "Reconnected wirelessly after wake."
-                    : "Reconnected over USB fallback.";
+                    ? L("Reconnected wirelessly after wake.", "Đã kết nối lại Bluetooth sau khi wake.")
+                    : L("Reconnected over USB fallback.", "Đã kết nối lại qua USB dự phòng.");
 
                 SendAllRgb();
                 SendPowerTiming();
@@ -714,11 +717,11 @@ public partial class MainWindow : Window
     {
         if (!_serial.IsConnected)
         {
-            BottomStatus.Text = "Connect LumiPad before restarting the keyboard.";
+            BottomStatus.Text = L("Connect LumiPad before restarting the keyboard.", "Hãy kết nối LumiPad trước khi khởi động lại bàn phím.");
             return;
         }
 
-        BottomStatus.Text = "Restarting keyboard…";
+        BottomStatus.Text = L("Restarting keyboard…", "Đang khởi động lại bàn phím…");
 
         try
         {
@@ -726,15 +729,16 @@ public partial class MainWindow : Window
             await Task.Delay(150);
             _serial.Disconnect();
 
-            DeviceStatus.Text = "Restarting…";
+            DeviceStatus.Text = L("Restarting…", "Đang khởi động lại…");
             DeviceDot.Fill =
                 new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
             BottomStatus.Text =
-                "Keyboard is restarting. LumiPad will reconnect automatically.";
+                L("Keyboard is restarting. LumiPad will reconnect automatically.",
+                  "Bàn phím đang khởi động lại. LumiPad sẽ tự kết nối lại.");
         }
         catch (Exception ex)
         {
-            BottomStatus.Text = $"Restart failed: {ex.Message}";
+            BottomStatus.Text = L($"Restart failed: {ex.Message}", $"Khởi động lại thất bại: {ex.Message}");
         }
     }
 
@@ -742,12 +746,12 @@ public partial class MainWindow : Window
     {
         if (!_serial.IsConnected)
         {
-            BottomStatus.Text = "Connect LumiPad before entering DFU.";
+            BottomStatus.Text = L("Connect LumiPad before entering DFU.", "Hãy kết nối LumiPad trước khi vào DFU.");
             return;
         }
 
         var result = System.Windows.MessageBox.Show(
-            "Put the keyboard into DFU/bootloader mode for firmware flashing?",
+            L("Put the keyboard into DFU/bootloader mode for firmware flashing?", "Đưa bàn phím vào chế độ DFU/bootloader để nạp firmware?"),
             "LumiPad DFU",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -756,7 +760,7 @@ public partial class MainWindow : Window
             return;
 
         _autoReconnectEnabled = false;
-        BottomStatus.Text = "Entering keyboard DFU…";
+        BottomStatus.Text = L("Entering keyboard DFU…", "Đang đưa bàn phím vào DFU…");
 
         try
         {
@@ -768,11 +772,12 @@ public partial class MainWindow : Window
             DeviceDot.Fill =
                 new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
             BottomStatus.Text =
-                "Keyboard is in DFU. Flash firmware, then press Connect when it boots normally.";
+                L("Keyboard is in DFU. Flash firmware, then press Connect when it boots normally.",
+                  "Bàn phím đang ở DFU. Nạp firmware xong rồi bấm Kết nối khi máy khởi động lại.");
         }
         catch (Exception ex)
         {
-            BottomStatus.Text = $"DFU failed: {ex.Message}";
+            BottomStatus.Text = L($"DFU failed: {ex.Message}", $"DFU thất bại: {ex.Message}");
         }
     }
 
@@ -1011,7 +1016,7 @@ public partial class MainWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Choose LumiPad screensaver",
+            Title = L("Choose LumiPad screensaver", "Chọn bảo vệ màn hình LumiPad"),
             Filter = "GIF / Video|*.gif;*.mp4;*.m4v;*.mov|GIF|*.gif|Video|*.mp4;*.m4v;*.mov",
             CheckFileExists = true,
             Multiselect = false
@@ -1055,7 +1060,7 @@ public partial class MainWindow : Window
 
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
-        ScreensaverSendStatus.Text = "Preparing local media…";
+        ScreensaverSendStatus.Text = L("Preparing local media…", "Đang xử lý media trên máy…");
 
         try
         {
@@ -1080,7 +1085,8 @@ public partial class MainWindow : Window
             ScreensaverPreviewImage.Visibility = Visibility.Visible;
             ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
             ScreensaverSendStatus.Text =
-                "Ready. Send once to store the lightweight loop in LumiPad RAM.";
+                L("Ready. Send once to store the lightweight loop in LumiPad RAM.",
+                  "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào RAM LumiPad.");
             SendScreensaverButton.IsEnabled = true;
         }
         catch (Exception ex)
@@ -1089,7 +1095,7 @@ public partial class MainWindow : Window
             ScreensaverPreviewImage.Source = null;
             ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
             ScreensaverPreviewHint.Visibility = Visibility.Visible;
-            ScreensaverSendStatus.Text = $"Cannot prepare file: {ex.Message}";
+            ScreensaverSendStatus.Text = L($"Cannot prepare file: {ex.Message}", $"Không thể xử lý tệp: {ex.Message}");
         }
     }
 
@@ -1103,19 +1109,21 @@ public partial class MainWindow : Window
         if (!_serial.IsConnected)
         {
             ScreensaverSendStatus.Text =
-                "Connect LumiPad first, then send the screensaver.";
+                L("Connect LumiPad first, then send the screensaver.",
+                  "Hãy kết nối LumiPad trước rồi mới gửi bảo vệ màn hình.");
             return;
         }
 
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
         ScreensaverSendStatus.Text =
-            "Sending frames… Bluetooth can take a little while.";
+            L("Sending frames… Bluetooth can take a little while.",
+              "Đang gửi frame… Bluetooth có thể mất một lúc.");
 
         var progress = new Progress<int>(value =>
         {
             ScreensaverSendProgress.Value = value;
-            ScreensaverSendStatus.Text = $"Sending… {value}%";
+            ScreensaverSendStatus.Text = L($"Sending… {value}%", $"Đang gửi… {value}%");
         });
 
         try
@@ -1126,11 +1134,12 @@ public partial class MainWindow : Window
 
             ScreensaverSendProgress.Value = 100;
             ScreensaverSendStatus.Text =
-                "Sent. The custom GIF/video loop will play when the screensaver starts.";
+                L("Sent. The custom GIF/video loop will play when the screensaver starts.",
+                  "Đã gửi. GIF/video tùy chỉnh sẽ chạy khi bảo vệ màn hình bắt đầu.");
         }
         catch (Exception ex)
         {
-            ScreensaverSendStatus.Text = $"Send failed: {ex.Message}";
+            ScreensaverSendStatus.Text = L($"Send failed: {ex.Message}", $"Gửi thất bại: {ex.Message}");
         }
         finally
         {
@@ -1150,12 +1159,14 @@ public partial class MainWindow : Window
         ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
         ScreensaverPreviewHint.Visibility = Visibility.Visible;
-        ScreensaverFileName.Text = "No file selected";
+        ScreensaverFileName.Text = L("No file selected", "Chưa chọn tệp");
         ScreensaverMediaInfo.Text =
-            "Converted to a lightweight loop for LumiPad.";
+            L("Converted to a lightweight loop for LumiPad.",
+              "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
         ScreensaverSendProgress.Value = 0;
         ScreensaverSendStatus.Text =
-            "Custom screensaver cleared; LumiPad falls back to its built-in saver.";
+            L("Custom screensaver cleared; LumiPad falls back to its built-in saver.",
+              "Đã xóa bảo vệ màn hình tùy chỉnh; LumiPad sẽ dùng bảo vệ màn hình mặc định.");
         SendScreensaverButton.IsEnabled = false;
     }
 
@@ -1176,7 +1187,7 @@ public partial class MainWindow : Window
 
         try
         {
-            ZmkStatus.Text = "Loading https://zmk.studio/ …";
+            ZmkStatus.Text = L("Loading https://zmk.studio/ …", "Đang tải https://zmk.studio/ …");
             await ZmkWebView.EnsureCoreWebView2Async();
             ZmkWebView.Source = new Uri("https://zmk.studio/");
             _zmkInitialized = true;
