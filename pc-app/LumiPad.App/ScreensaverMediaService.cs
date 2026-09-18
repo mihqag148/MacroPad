@@ -25,8 +25,8 @@ public sealed record ScreensaverAnimation(
 
 public static class ScreensaverMediaService
 {
-    public const int Width = 120;
-    public const int Height = 64;
+    public const int Width = 128;
+    public const int Height = 69;
     public const int MaxFrames = 8;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
@@ -50,33 +50,10 @@ public static class ScreensaverMediaService
         int total = image.GetFrameCount(dimension);
         int count = Math.Min(MaxFrames, Math.Max(1, total));
 
-        // Preserve the GIF's original loop duration even when we keep only
-        // a subset of frames for the nRF52840 RAM budget.
-        double totalDurationMs = 0.0;
-        try
-        {
-            var item = image.GetPropertyItem(0x5100);
-            if (item?.Value is { Length: >= 4 })
-            {
-                int available = Math.Min(total, item.Value.Length / 4);
-                for (int i = 0; i < available; i++)
-                {
-                    int delayCs = BitConverter.ToInt32(item.Value, i * 4);
-                    totalDurationMs += Math.Max(1, delayCs) * 10.0;
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        if (totalDurationMs <= 0.0)
-            totalDurationMs = total * 100.0;
-
-        int delayMs = Math.Clamp(
-            (int)Math.Round(totalDurationMs / count),
-            40,
-            2000);
+        // LumiPad custom saver targets a true 25 FPS playback cadence.
+        // We keep the best representative frames that fit the nRF52840 RAM
+        // budget, then display one every 40 ms.
+        const int delayMs = 40;
 
         var frames = new List<byte[]>(count);
 
@@ -149,10 +126,7 @@ public static class ScreensaverMediaService
             frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
-        int intervalMs = Math.Clamp(
-            (int)Math.Round(spanMs / count),
-            40,
-            700);
+        const int intervalMs = 40;
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
