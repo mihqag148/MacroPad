@@ -39,15 +39,18 @@ Chuyển từ `MacroPad_nice_nano_FULL_BLE_TFT_Keymap.ino` sang ZMK cho nice!nan
 
 ### TFT ST7789 1.47 inch
 
-- MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00; SPI 8 MHz.
-- Vùng hiển thị ngang 320×172; x-offset 0, y-offset 34.
-- MADCTL (`mdac`) = `0x28`: đổi trục MV và thứ tự BGR theo `Base code.py`.
+- MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00; SPIM3 32 MHz.
+- Panel vật lý/native 172×320; x-offset 34, y-offset 0. UI logic vẫn 320×172.
+- MADCTL (`mdac`) = `0x00`: không dùng MV. Custom async flush xoay 90° bằng
+  phần mềm và map CASET/RASET về thứ tự quét native để tránh cross-scanning.
 - RGB565, `colmod=0x05`, RAMCTRL `[00 F0]`, `CONFIG_LV_COLOR_16_SWAP=y`.
   Đảo byte 16-bit cho SPI là việc khác với thứ tự kênh BGR; không đảo R/B lần nữa.
-- Zephyr 3.5 bật inversion trong driver. `src/lumi_panel.c` gửi INVOFF trước
-  frame đầu tiên để khớp `invert=False` của file tham chiếu.
+- Giữ timing PORCTRL/FRCTRL2 baseline của panel/driver (khoảng 60 Hz), không ép
+  C6 = 0x1F hay porch 25 Hz. `src/lumi_panel.c` bật inversion cho đúng cực màu.
 - BL nối thẳng 3V3: không có PWM, menu hay thao tác chỉnh sáng giả.
-- LVGL có heap 32 KB và buffer tĩnh 22,016 byte (20% màn hình), stack display 4 KB.
+- LVGL có heap 32 KB, partial double buffer tĩnh 20% màn hình, stack display
+  4 KB và `CONFIG_SPI_ASYNC=y`; buffer chỉ được trả cho LVGL sau callback DMA.
+- WS2812 dùng SPIM1 riêng, không tranh SPIM3 của TFT.
 
 ## Giao diện
 
@@ -59,7 +62,7 @@ và ký hiệu nguồn USB. Ký hiệu nguồn USB không phải phép đo dòng
 - Nhãn đọc binding thực tế, cập nhật cả sau khi chỉnh trong ZMK Studio (tối đa
   khoảng 0.5 giây). Các shortcut quen thuộc có tên/icon; F/V/M/E/L hiện đúng
   chữ phím, keycode lạ hiện mã hex, behavior khác hiện tên rút gọn và tham số.
-- Khi nhấn, ô đổi màu và icon hạ 5 px; tap nhanh vẫn sáng ít nhất 100 ms.
+- Khi nhấn, ô đổi iàu và icon hạ 5 px; tap nhanh vẫn sáng ít nhất 100 ms.
 - Ô trên màn lần lượt là keymap position 0–11 (trái sang phải, trên xuống dưới).
   Matrix vật lý vẫn 4 hàng × 3 phím + encoder, không đổi transform hay dây.
   Position 12 là encoder, không tạo ô thứ 13.
