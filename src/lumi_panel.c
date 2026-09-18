@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/logging/log.h>
 #include "lumi_panel.h"
@@ -31,4 +32,74 @@ int lumi_panel_init(void) {
         LOG_ERR("Panel inversion setup failed: %d", err);
     }
     return err;
+}
+
+
+int lumi_panel_render_rgb332_scaled(const uint8_t *src,
+                                    uint16_t src_w,
+                                    uint16_t src_h) {
+    if (!src || src_w == 0U || src_h == 0U) {
+        return -EINVAL;
+    }
+
+    const struct device *display = DEVICE_DT_GET(PANEL);
+    if (!device_is_ready(display)) {
+        return -ENODEV;
+    }
+
+    /* Render in 8-row RGB565 stripes to avoid a 110 KB framebuffer.
+     * This bypasses LVGL for custom animation frames and sends the panel
+     * a continuous full-screen image at the highest practical SPI rate.
+     */
+    enum { OUT_W = 320, OUT_H = 172, STRIPE_H = 8 };
+    static uint8_t stripe[OUT_W * STRIPE_H * 2];
+
+    for (uint16_t y0 = 0; y0 < OUT_H; y0 += STRIPE_H) {
+        uint16_t rows = OUT_H - y0;
+        if (rows > STRIPE_H) {
+            rows = STRIPE_H;
+        }
+
+        size_t out = 0U;
+
+        for (uint16_t oy = 0; oy < rows; oy++) {
+            uint16_t y = y0 + oy;
+            uint16_t sy = (uint16_t)(((uint32_t)y * src_h) / OUT_H);
+            if (sy >= src_h) {
+                sy = src_h - 1U;
+            }
+
+            for (uint16_t x = 0; x < OUT_W; x++) {
+                uint16_t sx = (uint16_t)(((uint32_t)x * src_w) / OUT_W);
+                if (sx >= src_w) {
+                    sx = src_w - 1U;
+                }
+
+                uint8_t v = src[(size_t)sy * src_w + sx];
+                uint16_t r5 = (uint16_t)((v >> 5) & 0x07U) * 31U / 7U;
+                uint16_t g6 = (uint16_t)((v >> 2) & 0x07U) * 63U / 7U;
+                uint16_t b5 = (uint16_t)(v & 0x03U) * 31U / 3U;
+                uint16_t rgb565 =
+                    (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+
+                /* ST7789 expects MSB first on the wire. */
+                stripe[out++] = (uint8_t)(rgb565 >> 8);
+                stripe[out++] = (uint8_t)(rgb565 & 0xFFU);
+            }
+        }
+
+        struct display_buffer_descriptor desc = {
+            .buf_size = out,
+            .width = OUT_W,
+            .height = rows,
+            .pitch = OUT_W,
+        };
+
+        int err = display_write(display, 0, y0, &desc, stripe);
+        if (err) {
+            return err;
+        }
+    }
+
+    return 0;
 }
