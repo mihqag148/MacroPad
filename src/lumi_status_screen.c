@@ -7,6 +7,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/kernel.h>
+#include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/poweroff.h>
 #include <lvgl.h>
@@ -55,11 +56,33 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
-static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
+
+#define SAVER_FLASH_MAGIC 0x4C534156U /* "LSAV" */
+#define SAVER_FLASH_VERSION 1U
+#define SAVER_FLASH_DATA_OFFSET 0x1000U
+#define SAVER_FLASH_PAGE_SIZE 0x1000U
+#define SAVER_FLASH_MAX_PAGES 86U
+
+struct saver_flash_header {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t width;
+    uint16_t height;
+    uint16_t frame_bytes;
+    uint8_t frame_count;
+    uint8_t reserved;
+    uint16_t interval_ms;
+    uint32_t data_size;
+};
+
+static const struct flash_area *saver_flash;
+static bool saver_flash_checked;
+static uint32_t saver_flash_erased_pages[3];
+static uint8_t saver_media_frame_buffer[LUMI_SAVER_FRAME_BYTES];
 static uint8_t saver_media_frame_count;
-static uint8_t saver_media_received_mask;
+static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
-static uint16_t saver_media_interval_ms = 180;
+static uint16_t saver_media_interval_ms = 40;
 static uint8_t saver_media_index;
 static uint32_t saver_media_last_ms;
 static bool saver_media_valid;
@@ -657,14 +680,223 @@ static void init_screensaver(lv_obj_t *screen) {
 
 }
 
-static void draw_custom_saver_frame(uint8_t frame_index) {
+static int saver_flash_open_once(void) {
+    if (saver_flash) {
+        return 0;
+    }
+
+    int rc = flash_area_open(
+        FIXED_PARTITION_ID(lumi_saver_partition),
+        &saver_flash);
+
+    if (rc != 0 || !saver_flash) {
+        saver_flash = NULL;
+        return rc != 0 ? rc : -ENODEV;
+    }
+
+    size_t required =
+        SAVER_FLASH_DATA_OFFSET +
+        (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES;
+
+    if (saver_flash->fa_size < required) {
+        return -ENOSPC;
+    }
+
+    return 0;
+}
+
+static bool saver_flash_load_metadata(void) {
+    if (saver_flash_checked) {
+        return saver_media_valid;
+    }
+
+    saver_flash_checked = true;
+    saver_media_valid = false;
+
+    if (saver_flash_open_once() != 0) {
+        return false;
+    }
+
+    struct saver_flash_header header = {0};
+    if (flash_area_read(saver_flash, 0, &header, sizeof(header)) != 0) {
+        return false;
+    }
+
+    if (header.magic != SAVER_FLASH_MAGIC ||
+        header.version != SAVER_FLASH_VERSION ||
+        header.width != LUMI_SAVER_FRAME_W ||
+        header.height != LUMI_SAVER_FRAME_H ||
+        header.frame_bytes != LUMI_SAVER_FRAME_BYTES ||
+        header.frame_count < 1U ||
+        header.frame_count > LUMI_SAVER_MAX_FRAMES ||
+        header.interval_ms < 40U ||
+        header.data_size !=
+            (uint32_t)header.frame_count * LUMI_SAVER_FRAME_BYTES) {
+        return false;
+    }
+
+    saver_media_frame_count = header.frame_count;
+    saver_media_interval_ms = header.interval_ms;
+    saver_media_index = 0U;
+    saver_media_last_ms = 0U;
+    saver_media_valid = true;
+    return true;
+}
+
+static void saver_flash_reset_erase_tracking(void) {
+    memset(saver_flash_erased_pages, 0, sizeof(saver_flash_erased_pages));
+}
+
+static bool saver_flash_page_is_erased(uint32_t page) {
+    if (page >= SAVER_FLASH_MAX_PAGES) {
+        return false;
+    }
+
+    return (saver_flash_erased_pages[page / 32U] & BIT(page % 32U)) != 0U;
+}
+
+static void saver_flash_mark_page_erased(uint32_t page) {
+    if (page < SAVER_FLASH_MAX_PAGES) {
+        saver_flash_erased_pages[page / 32U] |= BIT(page % 32U);
+    }
+}
+
+static int saver_flash_erase_page(uint32_t page) {
+    if (!saver_flash || page >= SAVER_FLASH_MAX_PAGES) {
+        return -EINVAL;
+    }
+
+    if (saver_flash_page_is_erased(page)) {
+        return 0;
+    }
+
+    uint32_t offset = page * SAVER_FLASH_PAGE_SIZE;
+    if (offset + SAVER_FLASH_PAGE_SIZE > saver_flash->fa_size) {
+        return -ENOSPC;
+    }
+
+    int rc = flash_area_erase(
+        saver_flash,
+        offset,
+        SAVER_FLASH_PAGE_SIZE);
+
+    if (rc == 0) {
+        saver_flash_mark_page_erased(page);
+    }
+
+    return rc;
+}
+
+static int saver_flash_prepare_upload(void) {
+    int rc = saver_flash_open_once();
+    if (rc != 0) {
+        return rc;
+    }
+
+    saver_flash_reset_erase_tracking();
+
+    /* Erase the metadata page first. Until a new valid header is written at
+     * SAVEND, an interrupted upload is intentionally treated as invalid.
+     */
+    rc = saver_flash_erase_page(0U);
+    if (rc != 0) {
+        return rc;
+    }
+
+    saver_flash_checked = true;
+    saver_media_valid = false;
+    return 0;
+}
+
+static int saver_flash_write_chunk(uint8_t index,
+                                   uint16_t offset,
+                                   const uint8_t *data,
+                                   size_t len) {
+    if (!saver_flash || !data || len == 0U) {
+        return -EINVAL;
+    }
+
+    uint32_t absolute =
+        SAVER_FLASH_DATA_OFFSET +
+        (uint32_t)index * LUMI_SAVER_FRAME_BYTES +
+        offset;
+
+    if ((size_t)absolute + len > saver_flash->fa_size) {
+        return -ENOSPC;
+    }
+
+    uint32_t first_page = absolute / SAVER_FLASH_PAGE_SIZE;
+    uint32_t last_page =
+        (uint32_t)(absolute + len - 1U) / SAVER_FLASH_PAGE_SIZE;
+
+    for (uint32_t page = first_page; page <= last_page; page++) {
+        int rc = saver_flash_erase_page(page);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+
+    return flash_area_write(saver_flash, absolute, data, len);
+}
+
+static int saver_flash_read_frame(uint8_t index) {
     if (!saver_media_valid ||
-        frame_index >= saver_media_frame_count) {
+        index >= saver_media_frame_count ||
+        saver_flash_open_once() != 0) {
+        return -EINVAL;
+    }
+
+    uint32_t offset =
+        SAVER_FLASH_DATA_OFFSET +
+        (uint32_t)index * LUMI_SAVER_FRAME_BYTES;
+
+    return flash_area_read(
+        saver_flash,
+        offset,
+        saver_media_frame_buffer,
+        sizeof(saver_media_frame_buffer));
+}
+
+static int saver_flash_commit_header(void) {
+    if (!saver_flash) {
+        return -ENODEV;
+    }
+
+    struct saver_flash_header header = {
+        .magic = SAVER_FLASH_MAGIC,
+        .version = SAVER_FLASH_VERSION,
+        .width = LUMI_SAVER_FRAME_W,
+        .height = LUMI_SAVER_FRAME_H,
+        .frame_bytes = LUMI_SAVER_FRAME_BYTES,
+        .frame_count = saver_media_frame_count,
+        .reserved = 0U,
+        .interval_ms = saver_media_interval_ms,
+        .data_size =
+            (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
+    };
+
+    return flash_area_write(saver_flash, 0, &header, sizeof(header));
+}
+
+static void saver_flash_invalidate(void) {
+    if (saver_flash_open_once() == 0) {
+        saver_flash_reset_erase_tracking();
+        (void)saver_flash_erase_page(0U);
+    }
+
+    saver_flash_checked = true;
+    saver_media_valid = false;
+}
+
+static void draw_custom_saver_frame(uint8_t frame_index) {
+    if (!saver_flash_load_metadata() ||
+        frame_index >= saver_media_frame_count ||
+        saver_flash_read_frame(frame_index) != 0) {
         return;
     }
 
     (void)lumi_panel_render_rgb332_scaled(
-        saver_media_frames[frame_index],
+        saver_media_frame_buffer,
         LUMI_SAVER_FRAME_W,
         LUMI_SAVER_FRAME_H);
 }
@@ -848,6 +1080,10 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (saver_flash_prepare_upload() != 0) {
+        saver_media_frame_count = 0U;
+    }
 }
 
 void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
@@ -858,7 +1094,11 @@ void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
         return;
     }
 
-    memcpy(saver_media_frames[index], data, LUMI_SAVER_FRAME_BYTES);
+    if (saver_flash_write_chunk(index, 0U, data, len) != 0) {
+        return;
+    }
+
+    saver_media_received_bytes[index] = LUMI_SAVER_FRAME_BYTES;
     saver_media_received_mask |= BIT(index);
 }
 
@@ -873,7 +1113,9 @@ void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
         return;
     }
 
-    memcpy(&saver_media_frames[index][offset], data, len);
+    if (saver_flash_write_chunk(index, offset, data, len) != 0) {
+        return;
+    }
 
     uint16_t end = (uint16_t)(offset + len);
     if (end > saver_media_received_bytes[index]) {
@@ -886,24 +1128,30 @@ void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
 }
 
 void lumi_ui_saver_anim_end(void) {
-    uint8_t expected = (uint8_t)((1U << saver_media_frame_count) - 1U);
+    uint32_t expected =
+        saver_media_frame_count >= 32U
+            ? UINT32_MAX
+            : ((1U << saver_media_frame_count) - 1U);
 
     if (saver_media_frame_count > 0U &&
-        saver_media_received_mask == expected) {
+        saver_media_received_mask == expected &&
+        saver_flash_commit_header() == 0) {
         saver_media_valid = true;
         saver_media_index = 0U;
         saver_media_last_ms = 0U;
+    } else {
+        saver_media_valid = false;
     }
 
     lumi_ui_note_activity();
 }
 
 bool lumi_ui_saver_anim_is_valid(void) {
-    return saver_media_valid;
+    return saver_flash_load_metadata();
 }
 
 void lumi_ui_saver_anim_clear(void) {
-    saver_media_valid = false;
+    saver_flash_invalidate();
     saver_media_frame_count = 0U;
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
@@ -1015,6 +1263,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
+    (void)saver_flash_load_metadata();
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
     ui_last_activity_ms = k_uptime_get_32();
