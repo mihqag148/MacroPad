@@ -50,10 +50,15 @@ public static class ScreensaverMediaService
         int total = image.GetFrameCount(dimension);
         int count = Math.Min(MaxFrames, Math.Max(1, total));
 
-        // LumiPad custom saver targets a true 25 FPS playback cadence.
-        // We keep the best representative frames that fit the nRF52840 RAM
-        // budget, then display one every 40 ms.
-        const int delayMs = 40;
+        // Preserve the GIF's original loop speed. The firmware stores one
+        // interval for the reduced loop, so when the source has more than
+        // MaxFrames we keep representative frames and preserve the source's
+        // total loop duration instead of forcing 25 FPS.
+        int totalDurationMs = ReadGifTotalDurationMs(image, total);
+        int delayMs = Math.Clamp(
+            (int)Math.Round(totalDurationMs / (double)count),
+            20,
+            5000);
 
         var frames = new List<byte[]>(count);
 
@@ -83,6 +88,38 @@ public static class ScreensaverMediaService
             Path.GetFileName(path),
             delayMs,
             frames);
+    }
+
+    private static int ReadGifTotalDurationMs(Drawing.Image image, int frameCount)
+    {
+        const int PropertyTagFrameDelay = 0x5100; // 1/100 second per frame
+
+        try
+        {
+            var item = image.GetPropertyItem(PropertyTagFrameDelay);
+            if (item?.Value is { Length: >= 4 })
+            {
+                int entries = Math.Min(frameCount, item.Value.Length / 4);
+                long totalMs = 0;
+
+                for (int i = 0; i < entries; i++)
+                {
+                    int delayCs = BitConverter.ToInt32(item.Value, i * 4);
+                    // GIF decoders commonly treat 0/1 cs as a small minimum.
+                    delayCs = Math.Max(2, delayCs);
+                    totalMs += delayCs * 10L;
+                }
+
+                if (totalMs > 0)
+                    return (int)Math.Min(int.MaxValue, totalMs);
+            }
+        }
+        catch
+        {
+        }
+
+        // Sensible fallback when the GIF has no usable delay metadata.
+        return Math.Max(1, frameCount) * 100;
     }
 
     private static async Task<ScreensaverAnimation> LoadVideoAsync(string path, ScreensaverScaleMode scaleMode)
