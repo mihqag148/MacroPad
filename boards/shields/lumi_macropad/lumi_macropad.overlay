@@ -120,8 +120,9 @@ row-gpios
         gctrl = <0x35>;
         vrhs = <0x12>;
         vdvs = <0x20>;
-        // Base code.py: MV (landscape) + BGR, no MY mirror.
-        mdac = <0x68>;
+        // Match the original CircuitPython panel exactly:
+        // display_bus.send(0x36, bytes([0x28])) => MV + BGR.
+        mdac = <0x28>;
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
