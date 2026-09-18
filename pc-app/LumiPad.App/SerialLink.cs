@@ -23,6 +23,8 @@ public sealed class SerialLink : IDisposable
 
     private string _connectionName = "";
     private string _lastBitmapKey = "";
+    private string _lastArtworkKey = "";
+    private int _bleChunkSize = 20;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
@@ -101,6 +103,23 @@ public sealed class SerialLink : IDisposable
                     _bleDevice = candidate;
                     _bleService = service;
                     _bleCharacteristic = characteristic;
+
+                    try
+                    {
+                        var session = await GattSession.FromDeviceIdAsync(service.DeviceId);
+                        if (session is not null)
+                        {
+                            _bleChunkSize = Math.Clamp(
+                                (int)session.MaxPduSize - 3,
+                                20,
+                                160);
+                        }
+                    }
+                    catch
+                    {
+                        _bleChunkSize = 20;
+                    }
+
                     _connectionName = $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : "LumiPad")}";
                     return _connectionName;
                 }
@@ -182,6 +201,8 @@ public sealed class SerialLink : IDisposable
 
         _connectionName = "";
         _lastBitmapKey = "";
+        _lastArtworkKey = "";
+        _bleChunkSize = 20;
     }
 
     public void SendNowPlaying(NowPlayingData data)
@@ -211,6 +232,13 @@ public sealed class SerialLink : IDisposable
                 _lastBitmapKey = bitmapKey;
                 await SendUnicodeBitmapsAsync(data.Title ?? "", data.Artist ?? "");
             }
+
+            if (data.ArtworkRgb332 is { Length: 5776 } artwork &&
+                !string.Equals(bitmapKey, _lastArtworkKey, StringComparison.Ordinal))
+            {
+                _lastArtworkKey = bitmapKey;
+                await SendArtworkAsync(artwork);
+            }
         }
         finally
         {
@@ -235,9 +263,22 @@ public sealed class SerialLink : IDisposable
         }
     }
 
+    private async Task SendArtworkAsync(byte[] artwork)
+    {
+        try
+        {
+            string base64 = Convert.ToBase64String(artwork);
+            await SendLineAsync($"ART|{base64}");
+        }
+        catch
+        {
+        }
+    }
+
     public void ClearNowPlaying()
     {
         _lastBitmapKey = "";
+        _lastArtworkKey = "";
         _ = SendLineAsync("CLEAR");
     }
 
@@ -261,7 +302,7 @@ public sealed class SerialLink : IDisposable
                 // Keep each packet inside the default BLE ATT payload and require
                 // an acknowledgement. This is slower than WriteWithoutResponse,
                 // but much more reliable on Windows with HID keyboards.
-                const int chunkSize = 20;
+                int chunkSize = _bleChunkSize;
                 for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
                     int len = Math.Min(chunkSize, data.Length - offset);
