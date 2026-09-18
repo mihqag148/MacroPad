@@ -114,6 +114,9 @@ static void handle_rgb(char *save) {
     } else if (strcmp(cmd, "BRI") == 0) {
         char *v = strtok_r(NULL, "|", &save);
         if (v) lumi_rgb_set_brightness_percent((uint8_t)atoi(v));
+    } else if (strcmp(cmd, "SPD") == 0) {
+        char *v = strtok_r(NULL, "|", &save);
+        if (v) lumi_rgb_set_speed_percent((uint8_t)atoi(v));
     } else if (strcmp(cmd, "AUTO") == 0) {
         lumi_rgb_set_auto(true);
     } else if (strcmp(cmd, "FX") == 0) {
