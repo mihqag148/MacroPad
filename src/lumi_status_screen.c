@@ -81,8 +81,8 @@ static const struct flash_area *saver_flash;
 static bool saver_flash_checked;
 static uint32_t saver_flash_erased_pages[3];
 static uint8_t saver_media_frame_buffer[LUMI_SAVER_FRAME_BYTES];
-static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
-static bool saver_media_cache_loaded;
+static uint8_t saver_prefetched_index;
+static bool saver_prefetch_valid;
 static uint8_t saver_media_frame_count;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
@@ -872,31 +872,32 @@ static int saver_flash_read_frame(uint8_t index) {
         sizeof(saver_media_frame_buffer));
 }
 
-static int saver_flash_cache_all_frames(void) {
-    if (!saver_flash_load_metadata()) {
-        saver_media_cache_loaded = false;
+static int saver_flash_prefetch_frame(uint8_t index) {
+    if (!saver_flash_load_metadata() ||
+        index >= saver_media_frame_count ||
+        saver_flash_open_once() != 0) {
+        saver_prefetch_valid = false;
         return -EINVAL;
     }
 
-    for (uint8_t i = 0; i < saver_media_frame_count; i++) {
-        uint32_t offset =
-            SAVER_FLASH_DATA_OFFSET +
-            (uint32_t)i * LUMI_SAVER_FRAME_BYTES;
+    uint32_t offset =
+        SAVER_FLASH_DATA_OFFSET +
+        (uint32_t)index * LUMI_SAVER_FRAME_BYTES;
 
-        int rc = flash_area_read(
-            saver_flash,
-            offset,
-            saver_media_frames[i],
-            LUMI_SAVER_FRAME_BYTES);
+    int rc = flash_area_read(
+        saver_flash,
+        offset,
+        saver_media_frame_buffer,
+        sizeof(saver_media_frame_buffer));
 
-        if (rc != 0) {
-            saver_media_cache_loaded = false;
-            return rc;
-        }
+    if (rc == 0) {
+        saver_prefetched_index = index;
+        saver_prefetch_valid = true;
+    } else {
+        saver_prefetch_valid = false;
     }
 
-    saver_media_cache_loaded = true;
-    return 0;
+    return rc;
 }
 
 static int saver_flash_commit_header(void) {
@@ -928,30 +929,30 @@ static void saver_flash_invalidate(void) {
 
     saver_flash_checked = true;
     saver_media_valid = false;
-    saver_media_cache_loaded = false;
 }
 
 static void draw_custom_saver_frame(uint8_t frame_index) {
-    if (!saver_media_cache_loaded &&
-        saver_flash_cache_all_frames() != 0) {
+    if (!saver_media_canvas ||
+        frame_index >= saver_media_frame_count) {
         return;
     }
 
-    if (frame_index >= saver_media_frame_count ||
-        !saver_media_canvas) {
-        return;
+    if (!saver_prefetch_valid ||
+        saver_prefetched_index != frame_index) {
+        if (saver_flash_prefetch_frame(frame_index) != 0) {
+            return;
+        }
     }
-
-    const uint8_t *src = saver_media_frames[frame_index];
 
     for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        uint8_t v = src[i];
+        uint8_t v = saver_media_frame_buffer[i];
         uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
         uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
         uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
         saver_media_canvas_buf[i] = lv_color_make(r, g, b);
     }
 
+    saver_prefetch_valid = false;
     lv_obj_invalidate(saver_media_canvas);
 }
 
@@ -1041,6 +1042,8 @@ static void refresh_screensaver(lv_timer_t *timer) {
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
 
         saver_media_index = 0U;
+        saver_prefetch_valid = false;
+        (void)saver_flash_prefetch_frame(0U);
         draw_custom_saver_frame(0U);
         saver_media_last_ms = lv_tick_get();
     } else if (!should_show && screensaver_visible) {
@@ -1068,11 +1071,19 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     uint32_t lv_now = lv_tick_get();
 
+    uint8_t next_index =
+        (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
+
     if ((uint32_t)(lv_now - saver_media_last_ms) >= saver_media_interval_ms) {
         saver_media_last_ms = lv_now;
-        saver_media_index =
-            (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
+        saver_media_index = next_index;
         draw_custom_saver_frame(saver_media_index);
+    } else if (!saver_prefetch_valid ||
+               saver_prefetched_index != next_index) {
+        /* Read the next frame from flash before its display deadline.
+         * The actual frame switch then only converts RAM -> LVGL canvas.
+         */
+        (void)saver_flash_prefetch_frame(next_index);
     }
 
     lv_obj_move_foreground(screensaver);
@@ -1152,8 +1163,7 @@ void lumi_ui_saver_anim_end(void) {
         saver_media_valid = true;
         saver_media_index = 0U;
         saver_media_last_ms = 0U;
-        saver_media_cache_loaded = false;
-        (void)saver_flash_cache_all_frames();
+        saver_prefetch_valid = false;
     } else {
         saver_media_valid = false;
     }
@@ -1171,7 +1181,7 @@ void lumi_ui_saver_anim_clear(void) {
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
-    saver_media_cache_loaded = false;
+    saver_prefetch_valid = false;
     lumi_ui_note_activity();
 }
 
@@ -1314,7 +1324,6 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
     (void)saver_flash_load_metadata();
-    (void)saver_flash_cache_all_frames();
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
     ui_last_activity_ms = k_uptime_get_32();
