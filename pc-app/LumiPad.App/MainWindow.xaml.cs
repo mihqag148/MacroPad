@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
 
     private bool _uiReady;
     private bool _lightTheme;
+    private string _language = "en";
     private bool _allowExit;
     private bool _trayTipShown;
     private bool _zmkInitialized;
@@ -45,8 +47,10 @@ public partial class MainWindow : Window
 
         Loaded += async (_, _) =>
         {
-            _uiReady = true;
             LoadTheme();
+            LoadLanguage();
+            ApplyLanguage();
+            _uiReady = true;
             BuildColorWheel();
 
             _serial.LinkError += message =>
@@ -78,6 +82,210 @@ public partial class MainWindow : Window
 
         Closing += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
+    }
+
+    private static readonly Dictionary<string, string> Vi = new()
+    {
+        ["Wireless MacroPad Control"] = "Điều khiển MacroPad không dây",
+        ["Home"] = "Trang chủ",
+        ["NOW PLAYING"] = "ĐANG PHÁT",
+        ["Nothing Playing"] = "Không có nhạc đang phát",
+        ["SCREENSAVER MEDIA"] = "MEDIA BẢO VỆ MÀN HÌNH",
+        ["GIF / MP4 local"] = "GIF / MP4 trên máy",
+        ["Choose a GIF or MP4"] = "Chọn GIF hoặc MP4",
+        ["No file selected"] = "Chưa chọn tệp",
+        ["Converted to a lightweight loop for LumiPad."] = "Tự chuyển thành vòng lặp nhẹ cho LumiPad.",
+        ["Scale"] = "Co giãn",
+        ["Fill"] = "Lấp đầy",
+        ["Fit"] = "Vừa khung",
+        ["Stretch"] = "Kéo giãn",
+        ["Tile"] = "Lặp ô",
+        ["Center"] = "Căn giữa",
+        ["Span"] = "Phủ rộng",
+        ["Choose GIF / MP4"] = "Chọn GIF / MP4",
+        ["Send to LumiPad"] = "Gửi tới LumiPad",
+        ["Clear"] = "Xóa",
+        ["The file stays local. Only reduced animation frames are sent."] = "Tệp vẫn nằm trên máy. Chỉ các frame đã giảm được gửi đi.",
+        ["Screensaver after"] = "Bảo vệ màn hình sau",
+        ["Sleep after"] = "Ngủ sau",
+        ["15 seconds"] = "15 giây",
+        ["30 seconds"] = "30 giây",
+        ["1 minute"] = "1 phút",
+        ["2 minutes"] = "2 phút",
+        ["5 minutes"] = "5 phút",
+        ["10 minutes"] = "10 phút",
+        ["15 minutes"] = "15 phút",
+        ["30 minutes"] = "30 phút",
+        ["Never"] = "Không bao giờ",
+        ["Not connected"] = "Chưa kết nối",
+        ["Bluetooth preferred; USB fallback."] = "Ưu tiên Bluetooth; USB dự phòng.",
+        ["Connect"] = "Kết nối",
+        ["Disconnect"] = "Ngắt kết nối",
+        ["Restart keyboard"] = "Khởi động lại bàn phím",
+        ["Keyboard DFU"] = "Bàn phím DFU",
+        ["RGB"] = "RGB",
+        ["COLOR"] = "MÀU",
+        ["Mode"] = "Chế độ",
+        ["Static"] = "Tĩnh",
+        ["Dynamic"] = "Động",
+        ["Reactive"] = "Phản hồi",
+        ["Presets"] = "Mẫu có sẵn",
+        ["Solid Color"] = "Màu đơn",
+        ["Auto by Layer"] = "Tự động theo Layer",
+        ["Rainbow"] = "Cầu vồng",
+        ["Purple Ping-Pong"] = "Tím qua lại",
+        ["Orange Blink"] = "Cam nhấp nháy",
+        ["Reactive Splash"] = "Phản hồi khi bấm",
+        ["Switch"] = "Bật / Tắt",
+        ["Brightness"] = "Độ sáng",
+        ["Effect Speed"] = "Tốc độ hiệu ứng",
+        ["Selected color"] = "Màu đã chọn",
+        ["ZMK Studio"] = "ZMK Studio",
+        ["Embedded zmk.studio"] = "ZMK Studio tích hợp",
+        ["Reload"] = "Tải lại",
+        ["Open in Edge"] = "Mở bằng Edge",
+        ["Light mode"] = "Chế độ sáng",
+        ["Dark mode"] = "Chế độ tối",
+        ["Detecting…"] = "Đang tìm…",
+        ["Disconnected."] = "Đã ngắt kết nối.",
+        ["Restarting…"] = "Đang khởi động lại…",
+        ["DFU / Bootloader"] = "DFU / Bootloader",
+    };
+
+    private string L(string en, string vi) => _language == "vi" ? vi : en;
+
+    private string TranslateUiText(string current)
+    {
+        if (_language == "vi")
+        {
+            return Vi.TryGetValue(current, out var vi) ? vi : current;
+        }
+
+        foreach (var pair in Vi)
+        {
+            if (pair.Value == current)
+                return pair.Key;
+        }
+
+        return current;
+    }
+
+    private string LanguageFilePath =>
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "LumiPad",
+            "language.txt");
+
+    private void LoadLanguage()
+    {
+        try
+        {
+            if (System.IO.File.Exists(LanguageFilePath))
+            {
+                string value = System.IO.File.ReadAllText(LanguageFilePath).Trim().ToLowerInvariant();
+                _language = value == "vi" ? "vi" : "en";
+            }
+        }
+        catch
+        {
+            _language = "en";
+        }
+
+        if (LanguageCombo is not null)
+        {
+            foreach (ComboBoxItem item in LanguageCombo.Items)
+            {
+                if (string.Equals(item.Tag?.ToString(), _language, StringComparison.OrdinalIgnoreCase))
+                {
+                    item.IsSelected = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    private void SaveLanguage()
+    {
+        try
+        {
+            string? folder = System.IO.Path.GetDirectoryName(LanguageFilePath);
+            if (!string.IsNullOrWhiteSpace(folder))
+                System.IO.Directory.CreateDirectory(folder);
+
+            System.IO.File.WriteAllText(LanguageFilePath, _language);
+        }
+        catch
+        {
+        }
+    }
+
+    private void ApplyLanguage()
+    {
+        TranslateElement(this);
+
+        if (_trayIcon?.ContextMenuStrip is not null)
+        {
+            if (_trayIcon.ContextMenuStrip.Items.Count > 0)
+                _trayIcon.ContextMenuStrip.Items[0].Text =
+                    L("Open LumiPad", "Mở LumiPad");
+            if (_trayIcon.ContextMenuStrip.Items.Count > 1)
+                _trayIcon.ContextMenuStrip.Items[1].Text =
+                    L("Exit", "Thoát");
+        }
+    }
+
+    private void TranslateElement(DependencyObject parent)
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
+
+        for (int i = 0; i < count; i++)
+        {
+            DependencyObject child =
+                System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+
+            if (child is TextBlock textBlock &&
+                !string.IsNullOrWhiteSpace(textBlock.Text))
+            {
+                textBlock.Text = TranslateUiText(textBlock.Text);
+            }
+
+            if (child is ContentControl contentControl &&
+                contentControl.Content is string content &&
+                !string.IsNullOrWhiteSpace(content))
+            {
+                contentControl.Content = TranslateUiText(content);
+            }
+
+            if (child is HeaderedContentControl headered &&
+                headered.Header is string header &&
+                !string.IsNullOrWhiteSpace(header))
+            {
+                headered.Header = TranslateUiText(header);
+            }
+
+            TranslateElement(child);
+        }
+    }
+
+    private void LanguageCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (LanguageCombo?.SelectedItem is not ComboBoxItem item)
+            return;
+
+        string next = item.Tag?.ToString() == "vi" ? "vi" : "en";
+
+        if (_language == next && _uiReady)
+            return;
+
+        _language = next;
+
+        if (_uiReady)
+        {
+            SaveLanguage();
+            ApplyLanguage();
+        }
     }
 
     private void InitializeTrayIcon()
@@ -149,9 +357,11 @@ public partial class MainWindow : Window
         if (!_trayTipShown && _trayIcon is not null)
         {
             _trayTipShown = true;
-            _trayIcon.BalloonTipTitle = "LumiPad is still running";
+            _trayIcon.BalloonTipTitle =
+                L("LumiPad is still running", "LumiPad vẫn đang chạy");
             _trayIcon.BalloonTipText =
-                "Now Playing and Bluetooth control continue in the system tray.";
+                L("Now Playing and Bluetooth control continue in the system tray.",
+                  "Now Playing và điều khiển Bluetooth vẫn tiếp tục chạy ở khay hệ thống.");
             _trayIcon.ShowBalloonTip(1800);
         }
     }
@@ -278,6 +488,7 @@ public partial class MainWindow : Window
     {
         _lightTheme = !_lightTheme;
         ApplyTheme();
+        ApplyLanguage();
         SaveTheme();
     }
 
