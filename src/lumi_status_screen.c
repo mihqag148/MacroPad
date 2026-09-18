@@ -105,6 +105,7 @@ static bool saver_style_dirty = true;
 static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
+static bool lvgl_refresh_paused = false;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -903,6 +904,31 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
 }
 
 
+static void set_lvgl_refresh_paused(bool paused) {
+    if (lvgl_refresh_paused == paused) {
+        return;
+    }
+
+    lv_disp_t *disp = lv_disp_get_default();
+    if (!disp) {
+        return;
+    }
+
+    lv_timer_t *refr = _lv_disp_get_refr_timer(disp);
+    if (!refr) {
+        return;
+    }
+
+    if (paused) {
+        lv_timer_pause(refr);
+    } else {
+        lv_timer_resume(refr);
+        lv_obj_invalidate(lv_scr_act());
+    }
+
+    lvgl_refresh_paused = paused;
+}
+
 static void refresh_screensaver(lv_timer_t *timer) {
     ARG_UNUSED(timer);
 
@@ -978,6 +1004,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
+        set_lvgl_refresh_paused(true);
 
         /* Only uploaded GIF/video frames are used as a screensaver.
          * Built-in Tahoe/Minimal fallback is intentionally disabled.
@@ -988,6 +1015,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
         draw_custom_saver_frame(0U);
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
+        set_lvgl_refresh_paused(false);
         lv_anim_del(screensaver, popup_anim_opa_cb);
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
         lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
