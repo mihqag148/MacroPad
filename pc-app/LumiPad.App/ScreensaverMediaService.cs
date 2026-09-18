@@ -25,9 +25,9 @@ public sealed record ScreensaverAnimation(
 
 public static class ScreensaverMediaService
 {
-    public const int Width = 128;
-    public const int Height = 69;
-    public const int MaxFrames = 8;
+    public const int Width = 160;
+    public const int Height = 86;
+    public const int MaxFrames = 25;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
