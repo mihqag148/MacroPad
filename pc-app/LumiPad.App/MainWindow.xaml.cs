@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private ScreensaverAnimation? _screensaverAnimation;
     private string? _screensaverMediaPath;
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
+    private readonly DispatcherTimer _memoryUsageTimer = new();
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
@@ -71,6 +72,11 @@ public partial class MainWindow : Window
                 ScreensaverMediaService.Width,
                 ScreensaverMediaService.Height);
         };
+
+        _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
+        _memoryUsageTimer.Tick += async (_, _) =>
+            await UpdateMemoryUsageAsync();
+        _memoryUsageTimer.Start();
 
         Loaded += async (_, _) =>
         {
@@ -845,6 +851,28 @@ public partial class MainWindow : Window
             KeyboardDfuButton.IsEnabled = connected;
     }
 
+    private async Task UpdateMemoryUsageAsync()
+    {
+        if (!_serial.IsConnected)
+        {
+            FlashUsageText.Text = "FLASH --";
+            RamUsageText.Text = "RAM --";
+            return;
+        }
+
+        var usage = await _serial.ReadMemoryUsageAsync();
+        if (usage is null)
+            return;
+
+        double flashPct =
+            usage.Value.FlashUsed * 100.0 / usage.Value.FlashTotal;
+        double ramPct =
+            usage.Value.RamUsed * 100.0 / usage.Value.RamTotal;
+
+        FlashUsageText.Text = $"FLASH {flashPct:0.0}%";
+        RamUsageText.Text = $"RAM {ramPct:0.0}%";
+    }
+
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
     {
         _connectionPreference = "auto";
@@ -907,6 +935,7 @@ public partial class MainWindow : Window
             SetDeviceControlsEnabled(true);
             SendAllRgb();
             SendPowerTiming();
+            await UpdateMemoryUsageAsync();
         }
 
         DetectButton.IsEnabled = true;
@@ -951,6 +980,7 @@ public partial class MainWindow : Window
                 SetDeviceControlsEnabled(true);
                 SendAllRgb();
                 SendPowerTiming();
+                await UpdateMemoryUsageAsync();
                 await RestoreScreensaverAfterReconnectAsync();
             }
             catch (OperationCanceledException)
