@@ -54,6 +54,7 @@ static uint8_t media_tick;
 static uint8_t fusion_tick;
 
 static bool led_enabled = true;
+static bool led_suspended = false;
 static bool auto_by_layer = true;
 static uint8_t manual_effect = LUMI_RGB_EFFECT_RAINBOW;
 static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
@@ -205,9 +206,10 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
     led_enabled = true;
 }
 
-void lumi_rgb_prepare_sleep(void) {
-    led_enabled = false;
-    if (device_is_ready(strip)) {
+void lumi_rgb_set_suspended(bool suspended) {
+    led_suspended = suspended;
+
+    if (suspended && device_is_ready(strip)) {
         fill((struct led_rgb){0});
         led_strip_update_rgb(strip, pixels, LED_COUNT);
     }
@@ -224,7 +226,7 @@ static void lumi_rgb_work_handler(struct k_work *work) {
         return;
     }
 
-    if (!led_enabled) {
+    if (!led_enabled || led_suspended) {
         fill((struct led_rgb){0});
     } else {
         render_effect(auto_by_layer ? layer_effect() : manual_effect);
