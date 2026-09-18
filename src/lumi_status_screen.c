@@ -56,6 +56,8 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
+static lv_obj_t *saver_media_canvas;
+static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
 
 #define SAVER_FLASH_MAGIC 0x4C534156U /* "LSAV" */
 #define SAVER_FLASH_VERSION 1U
@@ -105,7 +107,6 @@ static bool saver_style_dirty = true;
 static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
-static bool lvgl_refresh_paused = false;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -680,6 +681,16 @@ static void init_screensaver(lv_obj_t *screen) {
     lv_obj_set_style_text_color(saver_title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(saver_title);
 
+    saver_media_canvas = lv_canvas_create(screensaver);
+    lv_canvas_set_buffer(
+        saver_media_canvas,
+        saver_media_canvas_buf,
+        LUMI_SAVER_FRAME_W,
+        LUMI_SAVER_FRAME_H,
+        LV_IMG_CF_TRUE_COLOR);
+    lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_zoom(saver_media_canvas, 512); /* 160x86 -> 320x172 */
+    lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
 static int saver_flash_open_once(void) {
@@ -893,41 +904,22 @@ static void saver_flash_invalidate(void) {
 static void draw_custom_saver_frame(uint8_t frame_index) {
     if (!saver_flash_load_metadata() ||
         frame_index >= saver_media_frame_count ||
+        !saver_media_canvas ||
         saver_flash_read_frame(frame_index) != 0) {
         return;
     }
 
-    (void)lumi_panel_render_rgb332_scaled(
-        saver_media_frame_buffer,
-        LUMI_SAVER_FRAME_W,
-        LUMI_SAVER_FRAME_H);
+    for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
+        uint8_t v = saver_media_frame_buffer[i];
+        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
+        saver_media_canvas_buf[i] = lv_color_make(r, g, b);
+    }
+
+    lv_obj_invalidate(saver_media_canvas);
 }
 
-
-static void set_lvgl_refresh_paused(bool paused) {
-    if (lvgl_refresh_paused == paused) {
-        return;
-    }
-
-    lv_disp_t *disp = lv_disp_get_default();
-    if (!disp) {
-        return;
-    }
-
-    lv_timer_t *refr = _lv_disp_get_refr_timer(disp);
-    if (!refr) {
-        return;
-    }
-
-    if (paused) {
-        lv_timer_pause(refr);
-    } else {
-        lv_timer_resume(refr);
-        lv_obj_invalidate(lv_scr_act());
-    }
-
-    lvgl_refresh_paused = paused;
-}
 
 static void refresh_screensaver(lv_timer_t *timer) {
     ARG_UNUSED(timer);
@@ -1004,25 +996,23 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
-        set_lvgl_refresh_paused(true);
 
-        /* Only uploaded GIF/video frames are used as a screensaver.
-         * Built-in Tahoe/Minimal fallback is intentionally disabled.
-         */
-        lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(screensaver);
+        lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
+
         saver_media_index = 0U;
         saver_media_last_ms = lv_tick_get();
         draw_custom_saver_frame(0U);
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
-        set_lvgl_refresh_paused(false);
-        lv_anim_del(screensaver, popup_anim_opa_cb);
-        lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
+        lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
 
-        /* Direct-render frames bypass LVGL, so force the normal UI to repaint
-         * when the saver exits.
-         */
         if (root_screen) {
             lv_obj_invalidate(root_screen);
         }
@@ -1050,6 +1040,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
         draw_custom_saver_frame(saver_media_index);
     }
 
+    lv_obj_move_foreground(screensaver);
 }
 
 void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
