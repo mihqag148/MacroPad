@@ -125,6 +125,34 @@ static void handle_rgb(char *save) {
     } else if (strcmp(cmd, "FX") == 0) {
         char *v = strtok_r(NULL, "|", &save);
         if (v) lumi_rgb_set_effect((uint8_t)atoi(v));
+    } else if (strcmp(cmd, "STATE") == 0) {
+        char *enabled = strtok_r(NULL, "|", &save);
+        char *brightness = strtok_r(NULL, "|", &save);
+        char *speed = strtok_r(NULL, "|", &save);
+        char *auto_s = strtok_r(NULL, "|", &save);
+        char *effect = strtok_r(NULL, "|", &save);
+        char *r = strtok_r(NULL, "|", &save);
+        char *g = strtok_r(NULL, "|", &save);
+        char *b = strtok_r(NULL, "|", &save);
+
+        if (enabled && brightness && speed && auto_s && effect && r && g && b) {
+            lumi_rgb_set_brightness_percent((uint8_t)atoi(brightness));
+            lumi_rgb_set_speed_percent((uint8_t)atoi(speed));
+
+            if (atoi(auto_s) != 0) {
+                lumi_rgb_set_auto(true);
+            } else if ((uint8_t)atoi(effect) == LUMI_RGB_EFFECT_SOLID) {
+                lumi_rgb_set_solid(
+                    (uint8_t)atoi(r),
+                    (uint8_t)atoi(g),
+                    (uint8_t)atoi(b));
+            } else {
+                lumi_rgb_set_effect((uint8_t)atoi(effect));
+            }
+
+            lumi_rgb_set_enabled(atoi(enabled) != 0);
+            snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|RGB:READY");
+        }
     } else if (strcmp(cmd, "SOLID") == 0) {
         char *r = strtok_r(NULL, "|", &save);
         char *g = strtok_r(NULL, "|", &save);
