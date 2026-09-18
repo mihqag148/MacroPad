@@ -13,6 +13,10 @@
 #define LUMI_TITLE_BITMAP_MAX_W 480
 #define LUMI_ARTIST_BITMAP_MAX_W 360
 
+#define LUMI_ARTWORK_W 76
+#define LUMI_ARTWORK_H 76
+#define LUMI_ARTWORK_BYTES (LUMI_ARTWORK_W * LUMI_ARTWORK_H)
+
 #define LUMI_TITLE_BITMAP_MAX_BYTES     ((LUMI_TITLE_BITMAP_MAX_W * LUMI_TITLE_H + 7) / 8)
 #define LUMI_ARTIST_BITMAP_MAX_BYTES     ((LUMI_ARTIST_BITMAP_MAX_W * LUMI_ARTIST_H + 7) / 8)
 
@@ -22,5 +26,6 @@ void lumi_now_playing_update(const char *title, const char *artist,
                              bool playing);
 void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
                                  const uint8_t *data, size_t len);
+void lumi_now_playing_set_artwork(const uint8_t *data, size_t len);
 void lumi_now_playing_user_activity(void);
 void lumi_now_playing_clear(void);
