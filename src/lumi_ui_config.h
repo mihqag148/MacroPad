@@ -32,4 +32,5 @@ void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len);
 void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len);
 void lumi_ui_saver_anim_end(void);
+bool lumi_ui_saver_anim_is_valid(void);
 void lumi_ui_saver_anim_clear(void);
