@@ -207,7 +207,10 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
 
 void lumi_rgb_prepare_sleep(void) {
     led_enabled = false;
-    lumi_rgb_prepare_sleep();
+    if (device_is_ready(strip)) {
+        fill((struct led_rgb){0});
+        led_strip_update_rgb(strip, pixels, LED_COUNT);
+    }
 }
 
 static void lumi_rgb_work_handler(struct k_work *work);
