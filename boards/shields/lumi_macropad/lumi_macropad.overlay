@@ -81,13 +81,13 @@ row-gpios
 
     lumi_rgb_spi_default: lumi_rgb_spi_default {
         group1 {
-            psels = <NRF_PSEL(SPIM_MOSI, 0, 6)>;
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 11)>;
         };
     };
 
     lumi_rgb_spi_sleep: lumi_rgb_spi_sleep {
         group1 {
-            psels = <NRF_PSEL(SPIM_MOSI, 0, 6)>;
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 11)>;
             low-power-enable;
         };
     };
@@ -136,7 +136,7 @@ row-gpios
     };
 };
 
-// Four WS2812B LEDs on P0.06. The SPI peripheral only generates the
+// Four WS2812B LEDs on D7 / P0.11. The SPI peripheral only generates the
 // WS2812 data waveform; there is no separate SCK wire to the LEDs.
 &spi1 {
     compatible = "nordic,nrf-spim";
