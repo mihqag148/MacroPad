@@ -225,6 +225,47 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
     );
 }
 
+static void profile_anim_y_cb(void *obj, int32_t value) {
+    lv_obj_set_y((lv_obj_t *)obj, value);
+}
+
+static void animate_profile_from_below(void) {
+    lv_anim_t a;
+
+    if (layer_label) {
+        lv_anim_del(layer_label, profile_anim_y_cb);
+        lv_obj_set_y(layer_label, 22);
+
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, layer_label);
+        lv_anim_set_exec_cb(&a, profile_anim_y_cb);
+        lv_anim_set_values(&a, 22, 6);
+        lv_anim_set_time(&a, 230);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    }
+
+    for (uint8_t i = 0; i < KEY_COUNT; i++) {
+        if (!tiles[i]) {
+            continue;
+        }
+
+        uint8_t row = i / COLS;
+        int32_t target_y = STATUS_H + row * CELL_H;
+
+        lv_anim_del(tiles[i], profile_anim_y_cb);
+        lv_obj_set_y(tiles[i], target_y + 18);
+
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, tiles[i]);
+        lv_anim_set_exec_cb(&a, profile_anim_y_cb);
+        lv_anim_set_values(&a, target_y + 18, target_y);
+        lv_anim_set_time(&a, 230);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    }
+}
+
 static void update_page(struct page_state state) {
     static struct page_state previous;
     static bool have_previous;
@@ -238,9 +279,10 @@ static void update_page(struct page_state state) {
     if (!layer_label || same) {
         return;
     }
+    bool animate_change = have_previous && previous.id != state.id;
     previous = state;
     have_previous = true;
-    const uint32_t colors[] = {0x5de0c3, 0xffc765, 0x7ebcff};
+    const uint32_t colors[] = {0x5de0c3, 0xffc765, 0x7ebcff, 0xBF5AF2, 0xFF9F0A};
     accent = lv_color_hex(colors[state.id % ARRAY_SIZE(colors)]);
     lv_label_set_text(layer_label, state.name);
     lv_obj_set_style_text_color(layer_label, accent, 0);
@@ -249,6 +291,10 @@ static void update_page(struct page_state state) {
         lv_label_set_text(icons[i], state.keys[i].icon);
         icon_colors[i] = state.keys[i].color;
         set_tile_pressed(i, highlighted[i]);
+    }
+
+    if (animate_change) {
+        animate_profile_from_below();
     }
 }
 
