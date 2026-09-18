@@ -1491,8 +1491,8 @@ public partial class MainWindow : Window
                 _screensaverPreviewTimer.Start();
 
             ScreensaverSendStatus.Text =
-                L("Ready. Send once to store the lightweight loop in LumiPad RAM.",
-                  "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào RAM LumiPad.");
+                L("Ready. Send once to store the lightweight loop in LumiPad flash.",
+                  "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
             SetScreensaverUploadState(
                 L("Ready to upload", "Sẵn sàng tải lên"),
                 MediaColor.FromRgb(255, 159, 10));
@@ -1606,8 +1606,8 @@ public partial class MainWindow : Window
             L("Not uploaded", "Chưa tải lên"),
             MediaColor.FromRgb(99, 99, 102));
         ScreensaverSendStatus.Text =
-            L("Custom screensaver cleared; LumiPad falls back to its built-in saver.",
-              "Đã xóa bảo vệ màn hình tùy chỉnh; LumiPad sẽ dùng bảo vệ màn hình mặc định.");
+            L("Custom screensaver cleared. No screensaver will be shown until another GIF is uploaded.",
+              "Đã xóa bảo vệ màn hình. Sẽ không hiện screensaver cho tới khi tải GIF mới.");
         SendScreensaverButton.IsEnabled = false;
     }
 
