@@ -358,8 +358,14 @@
                                         Orientation="Horizontal"
                                         VerticalAlignment="Center">
                                 <Button x:Name="DetectButton"
-                                        Content="Connect"
+                                        Content="Auto"
                                         Click="DetectButton_Click"/>
+                                <Button x:Name="ConnectUsbButton"
+                                        Content="USB"
+                                        Click="ConnectUsbButton_Click"/>
+                                <Button x:Name="ConnectBluetoothButton"
+                                        Content="Bluetooth"
+                                        Click="ConnectBluetoothButton_Click"/>
                                 <Button x:Name="DisconnectButton"
                                         Content="Disconnect"
                                         Click="DisconnectButton_Click"
