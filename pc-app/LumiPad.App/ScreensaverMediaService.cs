@@ -25,8 +25,8 @@ public sealed record ScreensaverAnimation(
 
 public static class ScreensaverMediaService
 {
-    public const int Width = 80;
-    public const int Height = 43;
+    public const int Width = 160;
+    public const int Height = 86;
     public const int MaxFrames = 25;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
@@ -86,7 +86,7 @@ public static class ScreensaverMediaService
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
-            delayMs,
+            40,
             frames);
     }
 
@@ -167,7 +167,7 @@ public static class ScreensaverMediaService
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
-            intervalMs,
+            40,
             frames);
     }
 
