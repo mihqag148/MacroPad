@@ -57,6 +57,7 @@ static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
 static bool screensaver_visible;
 static lv_obj_t *root_screen;
+static lv_obj_t *sleep_overlay;
 
 K_MUTEX_DEFINE(lumi_ui_config_lock);
 static uint32_t ui_last_activity_ms;
@@ -70,6 +71,8 @@ static uint32_t saver_color_a = 0x4A7DFF;
 static uint32_t saver_color_b = 0xA955FF;
 static bool wallpaper_dirty = true;
 static bool saver_style_dirty = true;
+static bool media_active = false;
+static bool soft_sleep = false;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -301,7 +304,14 @@ static int position_listener(const zmk_event_t *eh) {
 
     if (event && event->state) {
         lumi_ui_note_activity();
-        lumi_now_playing_user_activity();
+
+        /* Encoder push / non-keycode layer behavior has no keycode event.
+         * Regular keys are classified below so media controls can stay on
+         * the Now Playing screen.
+         */
+        if (event->position >= KEY_COUNT) {
+            lumi_now_playing_user_activity();
+        }
     }
 
     if (event && event->position < KEY_COUNT) {
@@ -352,9 +362,15 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
 
     } else if (keycode_matches(event, C_NEXT)) {
         atomic_set(&popup_action, POPUP_NEXT);
+        keep_music_visible = true;
 
     } else if (keycode_matches(event, C_PREVIOUS)) {
         atomic_set(&popup_action, POPUP_PREVIOUS);
+        keep_music_visible = true;
+
+    } else if (keycode_matches(event, C_PLAY_PAUSE) ||
+               keycode_matches(event, C_MUTE)) {
+        keep_music_visible = true;
 
     } else if (keycode_matches(event, PG_UP)) {
         atomic_set(&popup_action, POPUP_PAGE_UP);
@@ -638,7 +654,17 @@ static void refresh_screensaver(lv_timer_t *timer) {
         }
     }
 
+    bool current_media_active;
+    bool current_soft_sleep;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    current_media_active = media_active;
+    current_soft_sleep = soft_sleep;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
     bool should_show = enabled &&
+                       !current_media_active &&
+                       !current_soft_sleep &&
                        style != LUMI_SAVER_OFF &&
                        delay > 0U &&
                        (uint32_t)(now_uptime - ui_last_activity_ms) >= delay;
@@ -662,6 +688,15 @@ static void refresh_screensaver(lv_timer_t *timer) {
         lv_anim_del(screensaver, popup_anim_opa_cb);
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
         lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (sleep_overlay) {
+        if (current_soft_sleep) {
+            lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(sleep_overlay);
+        } else {
+            lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     if (!screensaver_visible) {
@@ -695,7 +730,28 @@ static void refresh_screensaver(lv_timer_t *timer) {
 }
 
 void lumi_ui_note_activity(void) {
+    bool was_sleeping;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     ui_last_activity_ms = k_uptime_get_32();
+    was_sleeping = soft_sleep;
+    soft_sleep = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (was_sleeping) {
+        lumi_rgb_set_suspended(false);
+    }
+}
+
+void lumi_ui_set_media_active(bool active) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    media_active = active;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    /* Starting music wakes immediately. Clearing media also resets the
+     * inactivity clock so the main menu is shown before the saver returns.
+     */
+    lumi_ui_note_activity();
 }
 
 void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
@@ -741,26 +797,27 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     uint32_t timeout;
+    bool active_media;
+    bool already_sleeping;
+
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     timeout = sleep_delay_ms;
+    active_media = media_active;
+    already_sleeping = soft_sleep;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     uint32_t now = k_uptime_get_32();
-    bool usb_powered = zmk_usb_is_powered();
 
     if (timeout > 0U &&
-        !usb_powered &&
+        !active_media &&
+        !already_sleeping &&
         (uint32_t)(now - ui_last_activity_ms) >= timeout) {
-        lumi_rgb_prepare_sleep();
 
-        const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-        if (device_is_ready(display)) {
-            display_blanking_on(display);
-        }
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        soft_sleep = true;
+        k_mutex_unlock(&lumi_ui_config_lock);
 
-        if (zmk_pm_suspend_devices() >= 0) {
-            sys_poweroff();
-        }
+        lumi_rgb_set_suspended(true);
     }
 
     k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
@@ -1034,6 +1091,16 @@ lv_obj_add_flag(
    lumi_page_init();
     lumi_now_playing_init(screen);
     init_screensaver(screen);
+
+    sleep_overlay = lv_obj_create(screen);
+    lv_obj_remove_style_all(sleep_overlay);
+    lv_obj_set_pos(sleep_overlay, 0, 0);
+    lv_obj_set_size(sleep_overlay, 320, 172);
+    lv_obj_set_style_bg_color(sleep_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(sleep_overlay, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+
 k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
