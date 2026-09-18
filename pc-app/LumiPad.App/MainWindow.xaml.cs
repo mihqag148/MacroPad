@@ -533,7 +533,7 @@ public partial class MainWindow : Window
 
         ElapsedText.Text = FormatTime(data.Position);
         DurationText.Text = FormatTime(data.Duration);
-        PlayButton.Content = "❚❚";
+        PlayButton.Content = data.IsPlaying ? "❚❚" : "▶";
 
         if (data.ArtworkRgb332 is { Length: 5776 } artwork)
         {
@@ -1267,10 +1267,14 @@ public partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (!_uiReady || !ZmkTab.IsSelected)
+        if (!_uiReady)
             return;
 
-        await EnsureZmkStudioAsync();
+        ApplyLanguage();
+        SetDeviceControlsEnabled(_serial.IsConnected);
+
+        if (ZmkTab.IsSelected)
+            await EnsureZmkStudioAsync();
     }
 
     private async Task EnsureZmkStudioAsync()
