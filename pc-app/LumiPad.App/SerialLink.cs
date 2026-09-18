@@ -45,6 +45,18 @@ public sealed class SerialLink : IDisposable
         return await TryBluetoothAsync(cancellationToken);
     }
 
+    public async Task<string?> ConnectUsbAsync(CancellationToken cancellationToken = default)
+    {
+        Disconnect();
+        return await TryUsbAsync(cancellationToken);
+    }
+
+    public async Task<string?> ConnectBluetoothAsync(CancellationToken cancellationToken = default)
+    {
+        Disconnect();
+        return await TryBluetoothAsync(cancellationToken);
+    }
+
     private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
     {
         try
