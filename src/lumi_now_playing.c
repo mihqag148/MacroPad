@@ -32,6 +32,9 @@ struct music_state {
     bool title_bitmap_valid;
     bool artist_bitmap_valid;
 
+    uint8_t artwork[LUMI_ARTWORK_BYTES];
+    bool artwork_valid;
+
     uint16_t title_scroll;
     uint16_t artist_scroll;
     int8_t title_scroll_dir;
@@ -50,6 +53,7 @@ K_MUTEX_DEFINE(state_lock);
 static lv_obj_t *page;
 static lv_obj_t *album_card;
 static lv_obj_t *album_icon;
+static lv_obj_t *album_canvas;
 static lv_obj_t *title_label;
 static lv_obj_t *artist_label;
 static lv_obj_t *title_canvas;
@@ -61,6 +65,7 @@ static lv_obj_t *play_label;
 
 static lv_color_t title_canvas_buf[LUMI_TEXT_W * LUMI_TITLE_H];
 static lv_color_t artist_canvas_buf[LUMI_TEXT_W * LUMI_ARTIST_H];
+static lv_color_t album_canvas_buf[LUMI_ARTWORK_BYTES];
 
 static bool ui_ready;
 
@@ -97,6 +102,26 @@ static void draw_1bit_window(lv_obj_t *canvas, lv_color_t *dst,
     }
 
     lv_obj_invalidate(canvas);
+}
+
+static void draw_artwork_locked(void) {
+    if (!state.artwork_valid) {
+        lv_obj_clear_flag(album_card, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(album_canvas, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    for (size_t i = 0; i < LUMI_ARTWORK_BYTES; i++) {
+        uint8_t v = state.artwork[i];
+        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
+        album_canvas_buf[i] = lv_color_make(r, g, b);
+    }
+
+    lv_obj_add_flag(album_card, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(album_canvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(album_canvas);
 }
 
 static bool should_show_locked(uint32_t now) {
@@ -167,6 +192,7 @@ static void apply_music_state(struct k_work *work) {
     }
 
     draw_text_bitmaps_locked();
+    draw_artwork_locked();
 
     uint32_t max = state.duration_ms ? state.duration_ms : 1U;
     uint32_t pos = state.position_ms > max ? max : state.position_ms;
@@ -257,6 +283,26 @@ void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
     }
 }
 
+void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
+    if (!data || len != LUMI_ARTWORK_BYTES) {
+        return;
+    }
+
+    k_mutex_lock(&state_lock, K_FOREVER);
+    memcpy(state.artwork, data, LUMI_ARTWORK_BYTES);
+    state.artwork_valid = true;
+
+    if (state.playing) {
+        state.last_rx_ms = k_uptime_get_32();
+    }
+
+    k_mutex_unlock(&state_lock);
+
+    if (ui_ready) {
+        k_work_submit_to_queue(zmk_display_work_q(), &music_work);
+    }
+}
+
 void lumi_now_playing_user_activity(void) {
     k_mutex_lock(&state_lock, K_FOREVER);
     state.suppress_until_ms = k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
@@ -273,6 +319,7 @@ void lumi_now_playing_clear(void) {
     state.last_rx_ms = 0U;
     state.title_bitmap_valid = false;
     state.artist_bitmap_valid = false;
+    state.artwork_valid = false;
     state.title_scroll = 0;
     state.artist_scroll = 0;
     k_mutex_unlock(&state_lock);
@@ -400,6 +447,13 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     album_icon = make_text(album_card, &lv_font_montserrat_20, 0xFF9F0A);
     lv_label_set_text(album_icon, LV_SYMBOL_PLAY);
     lv_obj_center(album_icon);
+
+    album_canvas = lv_canvas_create(page);
+    lv_canvas_set_buffer(album_canvas, album_canvas_buf,
+                         LUMI_ARTWORK_W, LUMI_ARTWORK_H,
+                         LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_pos(album_canvas, 12, 32);
+    lv_obj_add_flag(album_canvas, LV_OBJ_FLAG_HIDDEN);
 
     title_label = make_text(page, &lv_font_montserrat_16, 0xFFFFFF);
     lv_obj_set_pos(title_label, 102, 34);
