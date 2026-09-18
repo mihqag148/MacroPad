@@ -168,7 +168,7 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
 
     lv_obj_set_style_text_color(
         icons[i],
-        lv_color_hex(icon_colors[i] ? icon_colors[i] : 0xFFFFFF),
+        lv_color_hex(0xFFFFFF),
         0
     );
 
