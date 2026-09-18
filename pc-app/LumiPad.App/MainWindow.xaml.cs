@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -39,6 +40,10 @@ public partial class MainWindow : Window
     private bool _rgbAuto;
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
+    private int _rgbBrightness = 25;
+    private int _rgbSpeed = 50;
+    private bool _rgbEnabled = true;
+    private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
@@ -68,10 +73,18 @@ public partial class MainWindow : Window
         {
             LoadTheme();
             LoadLanguage();
+            LoadAppSettings();
             ApplyLanguage();
+            ApplyStoredControlValues();
             _uiReady = true;
             BuildColorWheel();
             SetDeviceControlsEnabled(false);
+
+            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+                System.IO.File.Exists(_screensaverMediaPath))
+            {
+                await PrepareScreensaverMediaAsync();
+            }
 
             _serial.LinkError += message =>
                 Dispatcher.Invoke(() =>
@@ -339,6 +352,122 @@ public partial class MainWindow : Window
             SaveLanguage();
             ApplyLanguage();
             Dispatcher.BeginInvoke(new Action(ApplyLanguage));
+        }
+    }
+
+    private string AppSettingsFilePath =>
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "LumiPad",
+            "settings.json");
+
+    private sealed class AppSettings
+    {
+        public bool RgbEnabled { get; set; } = true;
+        public int RgbBrightness { get; set; } = 25;
+        public int RgbSpeed { get; set; } = 50;
+        public bool RgbAuto { get; set; }
+        public int RgbEffect { get; set; } = 3;
+        public byte R { get; set; } = 255;
+        public byte G { get; set; } = 120;
+        public byte B { get; set; }
+        public int ScreensaverDelaySeconds { get; set; } = 60;
+        public int SleepDelaySeconds { get; set; } = 120;
+        public string? ScreensaverMediaPath { get; set; }
+        public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
+    }
+
+    private void LoadAppSettings()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(AppSettingsFilePath))
+                return;
+
+            var settings = JsonSerializer.Deserialize<AppSettings>(
+                System.IO.File.ReadAllText(AppSettingsFilePath));
+
+            if (settings is null)
+                return;
+
+            _rgbEnabled = settings.RgbEnabled;
+            _rgbBrightness = Math.Clamp(settings.RgbBrightness, 5, 50);
+            _rgbSpeed = Math.Clamp(settings.RgbSpeed, 10, 100);
+            _rgbAuto = settings.RgbAuto;
+            _rgbEffect = Math.Clamp(settings.RgbEffect, 0, 4);
+            _r = settings.R;
+            _g = settings.G;
+            _b = settings.B;
+            _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
+            _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
+            _screensaverMediaPath = settings.ScreensaverMediaPath;
+            _screensaverScaleMode = settings.ScreensaverScaleMode;
+        }
+        catch
+        {
+        }
+    }
+
+    private void SaveAppSettings()
+    {
+        try
+        {
+            string? folder = System.IO.Path.GetDirectoryName(AppSettingsFilePath);
+            if (!string.IsNullOrWhiteSpace(folder))
+                System.IO.Directory.CreateDirectory(folder);
+
+            var settings = new AppSettings
+            {
+                RgbEnabled = LedEnabled?.IsChecked ?? _rgbEnabled,
+                RgbBrightness = BrightnessSlider is null ? _rgbBrightness : (int)Math.Round(BrightnessSlider.Value),
+                RgbSpeed = RgbSpeedSlider is null ? _rgbSpeed : (int)Math.Round(RgbSpeedSlider.Value),
+                RgbAuto = _rgbAuto,
+                RgbEffect = _rgbEffect,
+                R = _r,
+                G = _g,
+                B = _b,
+                ScreensaverDelaySeconds = _screensaverDelaySeconds,
+                SleepDelaySeconds = _sleepDelaySeconds,
+                ScreensaverMediaPath = _screensaverMediaPath,
+                ScreensaverScaleMode = SelectedScreensaverScaleMode()
+            };
+
+            System.IO.File.WriteAllText(
+                AppSettingsFilePath,
+                JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+        }
+    }
+
+    private void ApplyStoredControlValues()
+    {
+        if (LedEnabled is not null)
+            LedEnabled.IsChecked = _rgbEnabled;
+
+        if (BrightnessSlider is not null)
+            BrightnessSlider.Value = _rgbBrightness;
+
+        if (RgbSpeedSlider is not null)
+            RgbSpeedSlider.Value = _rgbSpeed;
+
+        SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
+        SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
+        SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
+        UpdateRgbReadout();
+    }
+
+    private static void SelectComboTag(ComboBox combo, string tag)
+    {
+        foreach (var entry in combo.Items)
+        {
+            if (entry is ComboBoxItem item &&
+                string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedItem = item;
+                return;
+            }
         }
     }
 
@@ -747,6 +876,7 @@ public partial class MainWindow : Window
                 SetDeviceControlsEnabled(true);
                 SendAllRgb();
                 SendPowerTiming();
+                await RestoreScreensaverAfterReconnectAsync();
             }
             catch (OperationCanceledException)
             {
@@ -782,6 +912,11 @@ public partial class MainWindow : Window
         _screensaverDelaySeconds =
             ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
 
+        if (_uiReady)
+        {
+            SaveAppSettings();
+        }
+
         if (_uiReady && _serial.IsConnected)
         {
             _serial.SetScreensaverDelay(_screensaverDelaySeconds);
@@ -797,6 +932,11 @@ public partial class MainWindow : Window
     {
         _sleepDelaySeconds =
             ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
+
+        if (_uiReady)
+        {
+            SaveAppSettings();
+        }
 
         if (_uiReady && _serial.IsConnected)
         {
@@ -889,7 +1029,9 @@ public partial class MainWindow : Window
         if (!_uiReady)
             return;
 
-        _serial.SetEnabled(LedEnabled.IsChecked == true);
+        _rgbEnabled = LedEnabled.IsChecked == true;
+        SaveAppSettings();
+        _serial.SetEnabled(_rgbEnabled);
     }
 
     private void BrightnessSlider_ValueChanged(
@@ -903,7 +1045,11 @@ public partial class MainWindow : Window
         BrightnessText.Text = $"{value}%";
 
         if (_uiReady)
+        {
+            _rgbBrightness = value;
+            SaveAppSettings();
             _serial.SetBrightness(value);
+        }
     }
 
     private void BuildColorWheel()
@@ -1002,6 +1148,7 @@ public partial class MainWindow : Window
         {
             _rgbAuto = false;
             _rgbEffect = 3;
+            SaveAppSettings();
             _serial.SetSolid(_r, _g, _b);
         }
     }
@@ -1046,6 +1193,8 @@ public partial class MainWindow : Window
             _rgbEffect = 4;
             _serial.SetEffect(4);
         }
+
+        SaveAppSettings();
     }
 
     private void RgbPreset_Click(object sender, RoutedEventArgs e)
@@ -1055,6 +1204,7 @@ public partial class MainWindow : Window
         if (tag == "AUTO")
         {
             _rgbAuto = true;
+            SaveAppSettings();
             _serial.SetAutoLayer();
             return;
         }
@@ -1064,6 +1214,8 @@ public partial class MainWindow : Window
 
         _rgbAuto = false;
         _rgbEffect = effect;
+
+        SaveAppSettings();
 
         if (effect == 3)
             _serial.SetSolid(_r, _g, _b);
@@ -1081,7 +1233,11 @@ public partial class MainWindow : Window
             RgbSpeedText.Text = $"{value}%";
 
         if (_uiReady)
+        {
+            _rgbSpeed = value;
+            SaveAppSettings();
             _serial.SetSpeed(value);
+        }
     }
 
     private void SendAllRgb()
@@ -1128,6 +1284,7 @@ public partial class MainWindow : Window
             return;
 
         _screensaverMediaPath = dialog.FileName;
+        SaveAppSettings();
         await PrepareScreensaverMediaAsync();
     }
 
@@ -1149,7 +1306,13 @@ public partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (!_uiReady || string.IsNullOrWhiteSpace(_screensaverMediaPath))
+        if (!_uiReady)
+            return;
+
+        _screensaverScaleMode = SelectedScreensaverScaleMode();
+        SaveAppSettings();
+
+        if (string.IsNullOrWhiteSpace(_screensaverMediaPath))
             return;
 
         await PrepareScreensaverMediaAsync();
@@ -1264,6 +1427,7 @@ public partial class MainWindow : Window
                 ScreensaverSendStatus.Text =
                     L("LumiPad confirmed the custom screensaver is ready.",
                       "LumiPad đã xác nhận bảo vệ màn hình tùy chỉnh sẵn sàng.");
+                SaveAppSettings();
             }
             else
             {
@@ -1295,6 +1459,7 @@ public partial class MainWindow : Window
     {
         _screensaverAnimation = null;
         _screensaverMediaPath = null;
+        SaveAppSettings();
         _screensaverPreviewTimer.Stop();
         _serial.ClearScreensaverAnimation();
 
@@ -1313,6 +1478,44 @@ public partial class MainWindow : Window
             L("Custom screensaver cleared; LumiPad falls back to its built-in saver.",
               "Đã xóa bảo vệ màn hình tùy chỉnh; LumiPad sẽ dùng bảo vệ màn hình mặc định.");
         SendScreensaverButton.IsEnabled = false;
+    }
+
+    private async Task RestoreScreensaverAfterReconnectAsync()
+    {
+        if (_screensaverAnimation is null || !_serial.IsConnected)
+            return;
+
+        try
+        {
+            if (await _serial.IsScreensaverReadyAsync())
+                return;
+
+            var progress = new Progress<int>(value =>
+            {
+                ScreensaverSendProgress.Value = value;
+                ScreensaverSendStatus.Text =
+                    L($"Restoring screensaver… {value}%", $"Đang khôi phục bảo vệ màn hình… {value}%");
+            });
+
+            bool verified = await _serial.SendScreensaverAnimationAsync(
+                _screensaverAnimation,
+                progress);
+
+            if (verified)
+            {
+                ScreensaverSendProgress.Value = 100;
+                SetScreensaverUploadState(
+                    L("Uploaded & verified", "Đã tải lên và xác nhận"),
+                    MediaColor.FromRgb(48, 209, 88));
+                ScreensaverSendStatus.Text =
+                    L("Custom screensaver restored after reconnect.",
+                      "Đã khôi phục bảo vệ màn hình tùy chỉnh sau khi kết nối lại.");
+            }
+        }
+        catch
+        {
+            // Keep the keyboard connection alive even if automatic restore fails.
+        }
     }
 
     private async void MainTabs_SelectionChanged(
