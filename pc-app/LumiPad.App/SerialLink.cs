@@ -1,18 +1,121 @@
 using System.IO.Ports;
+using System.Text;
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using Windows.Devices.Enumeration;
+using Windows.Storage.Streams;
 
 namespace LumiPad.App;
 
 public sealed class SerialLink : IDisposable
 {
-    private SerialPort? _port;
+    private static readonly Guid ServiceUuid = Guid.Parse("D8A90001-6B5A-4C3B-9F2A-7C4E4C554D49");
+    private static readonly Guid CharacteristicUuid = Guid.Parse("D8A90002-6B5A-4C3B-9F2A-7C4E4C554D49");
 
-    public bool IsConnected => _port?.IsOpen == true;
-    public string PortName => _port?.PortName ?? "";
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
+
+    private SerialPort? _port;
+    private BluetoothLEDevice? _bleDevice;
+    private GattDeviceService? _bleService;
+    private GattCharacteristic? _bleCharacteristic;
+
+    private string _connectionName = "";
+    private string _lastBitmapKey = "";
+
+    public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
+    public string ConnectionName => _connectionName;
 
     public async Task<string?> AutoDetectAsync(CancellationToken cancellationToken = default)
     {
         Disconnect();
 
+        var ble = await TryBluetoothAsync(cancellationToken);
+        if (ble is not null)
+            return ble;
+
+        return await TryUsbAsync(cancellationToken);
+    }
+
+    private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            string selector = BluetoothLEDevice.GetDeviceSelectorFromPairingState(true);
+            DeviceInformationCollection devices = await DeviceInformation.FindAllAsync(selector);
+
+            foreach (var info in devices)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                BluetoothLEDevice? candidate = null;
+                try
+                {
+                    candidate = await BluetoothLEDevice.FromIdAsync(info.Id);
+                    if (candidate is null)
+                        continue;
+
+                    var services = await candidate.GetGattServicesForUuidAsync(
+                        ServiceUuid, BluetoothCacheMode.Uncached);
+
+                    if (services.Status != GattCommunicationStatus.Success ||
+                        services.Services.Count == 0)
+                    {
+                        candidate.Dispose();
+                        continue;
+                    }
+
+                    var service = services.Services[0];
+                    var chars = await service.GetCharacteristicsForUuidAsync(
+                        CharacteristicUuid, BluetoothCacheMode.Uncached);
+
+                    if (chars.Status != GattCommunicationStatus.Success ||
+                        chars.Characteristics.Count == 0)
+                    {
+                        service.Dispose();
+                        candidate.Dispose();
+                        continue;
+                    }
+
+                    var characteristic = chars.Characteristics[0];
+
+                    var read = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
+                    if (read.Status != GattCommunicationStatus.Success)
+                    {
+                        service.Dispose();
+                        candidate.Dispose();
+                        continue;
+                    }
+
+                    using var reader = DataReader.FromBuffer(read.Value);
+                    string hello = reader.ReadString(reader.UnconsumedBufferLength);
+                    if (!hello.StartsWith("LUMIPAD|", StringComparison.Ordinal))
+                    {
+                        service.Dispose();
+                        candidate.Dispose();
+                        continue;
+                    }
+
+                    _bleDevice = candidate;
+                    _bleService = service;
+                    _bleCharacteristic = characteristic;
+                    _connectionName = $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : "LumiPad")}";
+                    return _connectionName;
+                }
+                catch
+                {
+                    candidate?.Dispose();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private async Task<string?> TryUsbAsync(CancellationToken cancellationToken)
+    {
         foreach (var name in SerialPort.GetPortNames().OrderBy(x => x))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -43,7 +146,8 @@ public sealed class SerialLink : IDisposable
                 if (response.StartsWith("LUMIPAD|", StringComparison.Ordinal))
                 {
                     _port = candidate;
-                    return name;
+                    _connectionName = $"USB · {name}";
+                    return _connectionName;
                 }
             }
             catch
@@ -58,12 +162,23 @@ public sealed class SerialLink : IDisposable
 
     public void Disconnect()
     {
-        if (_port is null)
-            return;
+        if (_port is not null)
+        {
+            try { _port.Close(); } catch { }
+            _port.Dispose();
+            _port = null;
+        }
 
-        try { _port.Close(); } catch { }
-        _port.Dispose();
-        _port = null;
+        _bleCharacteristic = null;
+
+        _bleService?.Dispose();
+        _bleService = null;
+
+        _bleDevice?.Dispose();
+        _bleDevice = null;
+
+        _connectionName = "";
+        _lastBitmapKey = "";
     }
 
     public void SendNowPlaying(NowPlayingData data)
@@ -74,32 +189,92 @@ public sealed class SerialLink : IDisposable
         var title = Uri.EscapeDataString(data.Title ?? "");
         var artist = Uri.EscapeDataString(data.Artist ?? "");
 
-        SendLine($"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
-                 $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
-                 $"{(data.IsPlaying ? 1 : 0)}|{title}|{artist}");
+        _ = SendLineAsync(
+            $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
+            $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
+            $"{(data.IsPlaying ? 1 : 0)}|{title}|{artist}");
+
+        string bitmapKey = $"{data.Title}\u001F{data.Artist}";
+        if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
+        {
+            _lastBitmapKey = bitmapKey;
+            _ = SendUnicodeBitmapsAsync(data.Title ?? "", data.Artist ?? "");
+        }
     }
 
-    public void SetEnabled(bool enabled) => SendLine($"RGB|EN|{(enabled ? 1 : 0)}");
-    public void SetBrightness(int percent) => SendLine($"RGB|BRI|{Math.Clamp(percent, 5, 50)}");
-    public void SetAutoLayer() => SendLine("RGB|AUTO");
-    public void SetEffect(int effect) => SendLine($"RGB|FX|{effect}");
-    public void SetSolid(byte r, byte g, byte b) => SendLine($"RGB|SOLID|{r}|{g}|{b}");
-
-    private void SendLine(string line)
+    private async Task SendUnicodeBitmapsAsync(string title, string artist)
     {
-        if (_port?.IsOpen != true)
-            return;
-
         try
         {
-            _port.Write(line);
-            _port.Write("\n");
+            string titleHex = TextBitmapRenderer.RenderHex(
+                title, 206, 24, 16, true);
+            string artistHex = TextBitmapRenderer.RenderHex(
+                artist, 206, 20, 13, false);
+
+            await SendLineAsync($"TXT|T|206|24|{titleHex}");
+            await SendLineAsync($"TXT|A|206|20|{artistHex}");
+        }
+        catch
+        {
+        }
+    }
+
+    public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
+    public void SetBrightness(int percent) => _ = SendLineAsync($"RGB|BRI|{Math.Clamp(percent, 5, 50)}");
+    public void SetAutoLayer() => _ = SendLineAsync("RGB|AUTO");
+    public void SetEffect(int effect) => _ = SendLineAsync($"RGB|FX|{effect}");
+    public void SetSolid(byte r, byte g, byte b) => _ = SendLineAsync($"RGB|SOLID|{r}|{g}|{b}");
+
+    private async Task SendLineAsync(string line)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+
+            if (_bleCharacteristic is not null)
+            {
+                var characteristic = _bleCharacteristic;
+                var props = characteristic.CharacteristicProperties;
+                var option = props.HasFlag(GattCharacteristicProperties.WriteWithoutResponse)
+                    ? GattWriteOption.WriteWithoutResponse
+                    : GattWriteOption.WriteWithResponse;
+
+                const int chunkSize = 160;
+                for (int offset = 0; offset < data.Length; offset += chunkSize)
+                {
+                    int len = Math.Min(chunkSize, data.Length - offset);
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data.AsSpan(offset, len).ToArray());
+
+                    var status = await characteristic.WriteValueAsync(
+                        writer.DetachBuffer(), option);
+
+                    if (status != GattCommunicationStatus.Success)
+                        throw new IOException($"Bluetooth write failed: {status}");
+                }
+
+                return;
+            }
+
+            if (_port?.IsOpen == true)
+            {
+                _port.Write(data, 0, data.Length);
+            }
         }
         catch
         {
             Disconnect();
         }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
-    public void Dispose() => Disconnect();
+    public void Dispose()
+    {
+        Disconnect();
+        _writeGate.Dispose();
+    }
 }
