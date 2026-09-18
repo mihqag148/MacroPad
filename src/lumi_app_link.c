@@ -107,6 +107,7 @@ static void handle_np(char *save) {
 }
 
 static void handle_rgb(char *save) {
+    lumi_ui_note_activity();
     char *cmd = strtok_r(NULL, "|", &save);
     if (!cmd) return;
 
@@ -156,6 +157,7 @@ static void handle_art(char *save) {
 }
 
 static void handle_cfg(char *save) {
+    lumi_ui_note_activity();
     char *cmd = strtok_r(NULL, "|", &save);
     if (!cmd) {
         return;
