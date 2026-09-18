@@ -69,8 +69,8 @@
         <Style TargetType="ComboBox">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="MaxDropDownHeight" Value="240"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
-            <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
+            <Setter Property="Foreground" Value="#111111"/>
+            <Setter Property="Background" Value="#F2F2F2"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
             <Setter Property="Padding" Value="8,6"/>
         </Style>
@@ -87,7 +87,7 @@
                 </Trigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{DynamicResource Accent}"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Foreground" Value="#111111"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
