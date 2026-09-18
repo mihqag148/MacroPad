@@ -460,15 +460,7 @@ public partial class MainWindow : Window
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
-        foreach (var entry in combo.Items)
-        {
-            if (entry is ComboBoxItem item &&
-                string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
-            {
-                combo.SelectedItem = item;
-                return;
-            }
-        }
+        combo.SelectedValue = tag;
     }
 
     private void InitializeTrayIcon()
@@ -888,9 +880,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int ComboSeconds(System.Windows.Controls.ComboBox combo, int fallback)
+    private static int ComboSeconds(SelectionChangedEventArgs e, int fallback)
     {
-        if (combo.SelectedItem is ComboBoxItem item &&
+        if (e.AddedItems.Count > 0 &&
+            e.AddedItems[0] is ComboBoxItem item &&
             int.TryParse(item.Tag?.ToString(), out int seconds))
         {
             return Math.Max(0, seconds);
@@ -910,13 +903,11 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _screensaverDelaySeconds =
-            ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
+            ComboSeconds(e, _screensaverDelaySeconds);
 
         if (_uiReady)
         {
             SaveAppSettings();
-            Dispatcher.BeginInvoke(new Action(() =>
-                SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString())));
         }
 
         if (_uiReady && _serial.IsConnected)
@@ -933,13 +924,11 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _sleepDelaySeconds =
-            ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
+            ComboSeconds(e, _sleepDelaySeconds);
 
         if (_uiReady)
         {
             SaveAppSettings();
-            Dispatcher.BeginInvoke(new Action(() =>
-                SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString())));
         }
 
         if (_uiReady && _serial.IsConnected)
@@ -1520,7 +1509,7 @@ public partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (!_uiReady)
+        if (!ReferenceEquals(e.OriginalSource, MainTabs) || !_uiReady)
             return;
 
         ApplyLanguage();
