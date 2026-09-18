@@ -221,7 +221,24 @@
                                        FontSize="11"
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource Muted}"
-                                       Margin="0,4,0,12"/>
+                                       Margin="0,4,0,10"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Scale"
+                                           Width="52"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <ComboBox x:Name="ScreensaverScaleCombo"
+                                          Width="150"
+                                          SelectionChanged="ScreensaverScaleCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                    <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                    <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                    <ComboBoxItem Content="Tile" Tag="Tile"/>
+                                    <ComboBoxItem Content="Center" Tag="Center"/>
+                                    <ComboBoxItem Content="Span" Tag="Span"/>
+                                </ComboBox>
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="Choose GIF / MP4"
