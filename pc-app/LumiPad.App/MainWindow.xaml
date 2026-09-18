@@ -113,7 +113,7 @@
                     <TextBlock Text="4 × WS2812B" FontSize="24" FontWeight="SemiBold"
                                Margin="0,8,0,24"/>
 
-                    <CheckBox x:Name="LedEnabled" Content="LED enabled"
+                    <CheckBox x:Name="LedEnabled" Content="RGB Power — On / Off"
                               Foreground="White" IsChecked="True"
                               Checked="LedEnabled_Changed"
                               Unchecked="LedEnabled_Changed"
@@ -165,7 +165,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="BottomStatus"
-                           Text="Connect the macropad by USB, then press Detect LumiPad."
+                           Text="Bluetooth is preferred automatically; USB remains as a fallback."
                            Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
