@@ -10,6 +10,7 @@
 #include <zmk/keymap.h>
 
 #include "lumi_now_playing.h"
+#include "lumi_ui_config.h"
 
 #define MUSIC_TIMEOUT_MS 3500
 #define USER_ACTIVITY_HIDE_MS 10000
@@ -17,11 +18,13 @@
 #define SCROLL_HOLD_MS 650
 
 struct music_state {
+    char source[20];
     char title[64];
     char artist[48];
     uint32_t position_ms;
     uint32_t duration_ms;
     bool playing;
+    bool active;
     uint32_t last_rx_ms;
     uint32_t suppress_until_ms;
 
@@ -53,7 +56,7 @@ static struct music_state state = {
 K_MUTEX_DEFINE(state_lock);
 
 static lv_obj_t *page;
-static lv_obj_t *profile_label;
+static lv_obj_t *source_label;
 static lv_obj_t *battery_label;
 static lv_obj_t *album_card;
 static lv_obj_t *album_icon;
@@ -183,31 +186,26 @@ static void show_music_page_animated(void) {
 }
 
 static void update_header_status(void) {
-    if (!profile_label || !battery_label) {
+    if (!source_label || !battery_label) {
         return;
     }
 
-    zmk_keymap_layer_index_t index = zmk_keymap_highest_layer_active();
-    zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(index);
-    const char *name = zmk_keymap_layer_name(id);
-
-    char profile[28];
-    if (name && name[0]) {
-        snprintf(profile, sizeof(profile), "%s", name);
-    } else {
-        snprintf(profile, sizeof(profile), "LAYER %u", (unsigned int)index + 1U);
-    }
+    char source[20];
+    k_mutex_lock(&state_lock, K_FOREVER);
+    snprintf(source, sizeof(source), "%s",
+             state.source[0] ? state.source : "MUSIC");
+    k_mutex_unlock(&state_lock);
 
     char battery[12];
     snprintf(battery, sizeof(battery), "%u%%",
              (unsigned int)zmk_battery_state_of_charge());
 
-    lv_label_set_text(profile_label, profile);
+    lv_label_set_text(source_label, source);
     lv_label_set_text(battery_label, battery);
 }
 
 static bool should_show_locked(uint32_t now) {
-    if (!state.playing || state.last_rx_ms == 0U) {
+    if (!state.active || state.last_rx_ms == 0U) {
         return false;
     }
 
@@ -289,29 +287,52 @@ static void apply_music_state(struct k_work *work) {
     fmt_time(b, sizeof(b), max);
     lv_label_set_text(elapsed_label, a);
     lv_label_set_text(remain_label, b);
-    lv_label_set_text(play_label, "PLAYING");
+    bool playing_now;
+    k_mutex_lock(&state_lock, K_FOREVER);
+    playing_now = state.playing;
+    k_mutex_unlock(&state_lock);
+    lv_label_set_text(play_label, playing_now ? "PLAYING" : "PAUSED");
 
     update_header_status();
     show_music_page_animated();
 }
 
-void lumi_now_playing_update(const char *title, const char *artist,
+void lumi_now_playing_update(const char *source,
+                             const char *title, const char *artist,
                              uint32_t position_ms, uint32_t duration_ms,
                              bool playing) {
     k_mutex_lock(&state_lock, K_FOREVER);
 
+    snprintf(state.source, sizeof(state.source), "%s",
+             source && source[0] ? source : "MUSIC");
     snprintf(state.title, sizeof(state.title), "%s", title ? title : "");
     snprintf(state.artist, sizeof(state.artist), "%s", artist ? artist : "");
     state.position_ms = position_ms;
     state.duration_ms = duration_ms;
     state.playing = playing;
-    state.last_rx_ms = playing ? k_uptime_get_32() : 0U;
+    state.active = true;
+    state.last_rx_ms = k_uptime_get_32();
 
     k_mutex_unlock(&state_lock);
+
+    lumi_ui_set_media_active(true);
 
     if (ui_ready) {
         k_work_submit_to_queue(zmk_display_work_q(), &music_work);
     }
+}
+
+bool lumi_now_playing_is_active(void) {
+    bool active;
+    uint32_t now = k_uptime_get_32();
+
+    k_mutex_lock(&state_lock, K_FOREVER);
+    active = state.active &&
+             state.last_rx_ms != 0U &&
+             (uint32_t)(now - state.last_rx_ms) <= MUSIC_TIMEOUT_MS;
+    k_mutex_unlock(&state_lock);
+
+    return active;
 }
 
 void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
@@ -354,7 +375,7 @@ void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
         state.artist_hold_until = k_uptime_get_32() + SCROLL_HOLD_MS;
     }
 
-    if (state.playing) {
+    if (state.active) {
         state.last_rx_ms = k_uptime_get_32();
     }
 
@@ -398,6 +419,7 @@ void lumi_now_playing_user_activity(void) {
 void lumi_now_playing_clear(void) {
     k_mutex_lock(&state_lock, K_FOREVER);
     state.playing = false;
+    state.active = false;
     state.last_rx_ms = 0U;
     state.title_bitmap_valid = false;
     state.artist_bitmap_valid = false;
@@ -405,6 +427,8 @@ void lumi_now_playing_clear(void) {
     state.title_scroll = 0;
     state.artist_scroll = 0;
     k_mutex_unlock(&state_lock);
+
+    lumi_ui_set_media_active(false);
 
     if (ui_ready) {
         k_work_submit_to_queue(zmk_display_work_q(), &music_work);
@@ -521,12 +545,12 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     lv_obj_set_pos(header, 12, 8);
     lv_obj_set_width(header, 92);
 
-    profile_label = make_text(page, &lv_font_montserrat_12, 0xFFFFFF);
-    lv_obj_set_pos(profile_label, 104, 8);
-    lv_obj_set_width(profile_label, 112);
-    lv_obj_set_style_text_align(profile_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(profile_label, LV_LABEL_LONG_DOT);
-    lv_label_set_text(profile_label, "OFFICE");
+    source_label = make_text(page, &lv_font_montserrat_12, 0xFFFFFF);
+    lv_obj_set_pos(source_label, 104, 8);
+    lv_obj_set_width(source_label, 112);
+    lv_obj_set_style_text_align(source_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(source_label, LV_LABEL_LONG_DOT);
+    lv_label_set_text(source_label, "MUSIC");
 
     battery_label = make_text(page, &lv_font_montserrat_12, 0xA8A8AD);
     lv_obj_set_pos(battery_label, 238, 8);
