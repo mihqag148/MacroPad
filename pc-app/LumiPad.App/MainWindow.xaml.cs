@@ -52,6 +52,7 @@ public partial class MainWindow : Window
             ApplyLanguage();
             _uiReady = true;
             BuildColorWheel();
+            SetDeviceControlsEnabled(false);
 
             _serial.LinkError += message =>
                 Dispatcher.Invoke(() =>
@@ -59,6 +60,7 @@ public partial class MainWindow : Window
                     DeviceStatus.Text = L("Bluetooth write error", "Lỗi ghi Bluetooth");
                     DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
                     BottomStatus.Text = message;
+                    SetDeviceControlsEnabled(false);
                 });
 
             _nowPlaying.Updated += data =>
@@ -221,7 +223,8 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
-        TranslateElement(this);
+        var visited = new HashSet<DependencyObject>();
+        TranslateElement(this, visited);
 
         if (_trayIcon?.ContextMenuStrip is not null)
         {
@@ -234,36 +237,59 @@ public partial class MainWindow : Window
         }
     }
 
-    private void TranslateElement(DependencyObject parent)
+    private void TranslateElement(
+        DependencyObject node,
+        HashSet<DependencyObject> visited)
     {
-        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
+        if (!visited.Add(node))
+            return;
 
-        for (int i = 0; i < count; i++)
+        if (node is TextBlock textBlock &&
+            !string.IsNullOrWhiteSpace(textBlock.Text))
+        {
+            textBlock.Text = TranslateUiText(textBlock.Text);
+        }
+
+        if (node is ContentControl contentControl &&
+            contentControl.Content is string content &&
+            !string.IsNullOrWhiteSpace(content))
+        {
+            contentControl.Content = TranslateUiText(content);
+        }
+
+        if (node is HeaderedContentControl headered &&
+            headered.Header is string header &&
+            !string.IsNullOrWhiteSpace(header))
+        {
+            headered.Header = TranslateUiText(header);
+        }
+
+        // Logical tree contains content of tabs that have never been selected,
+        // which the visual tree alone does not expose.
+        foreach (object child in LogicalTreeHelper.GetChildren(node))
+        {
+            if (child is DependencyObject dependencyChild)
+                TranslateElement(dependencyChild, visited);
+        }
+
+        // Visual tree catches generated controls/templates that are not present
+        // as direct logical children.
+        int visualCount = 0;
+        try
+        {
+            visualCount =
+                System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+        }
+        catch
+        {
+            visualCount = 0;
+        }
+
+        for (int i = 0; i < visualCount; i++)
         {
             DependencyObject child =
-                System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-
-            if (child is TextBlock textBlock &&
-                !string.IsNullOrWhiteSpace(textBlock.Text))
-            {
-                textBlock.Text = TranslateUiText(textBlock.Text);
-            }
-
-            if (child is ContentControl contentControl &&
-                contentControl.Content is string content &&
-                !string.IsNullOrWhiteSpace(content))
-            {
-                contentControl.Content = TranslateUiText(content);
-            }
-
-            if (child is HeaderedContentControl headered &&
-                headered.Header is string header &&
-                !string.IsNullOrWhiteSpace(header))
-            {
-                headered.Header = TranslateUiText(header);
-            }
-
-            TranslateElement(child);
+                System.Windows.Media.VisualTreeHelper.GetChild(node, i);
+            TranslateElement(child, visited);
         }
     }
 
@@ -591,6 +617,30 @@ public partial class MainWindow : Window
         return $"{(int)value.TotalMinutes}:{value.Seconds:00}";
     }
 
+    private void SetDeviceControlsEnabled(bool enabled)
+    {
+        if (RgbDevicePanel is not null)
+            RgbDevicePanel.IsEnabled = enabled;
+
+        if (DeviceTimingPanel is not null)
+            DeviceTimingPanel.IsEnabled = enabled;
+
+        if (SendScreensaverButton is not null)
+        {
+            SendScreensaverButton.IsEnabled =
+                enabled && _screensaverAnimation is not null;
+        }
+
+        if (DisconnectButton is not null)
+            DisconnectButton.IsEnabled = enabled;
+
+        if (RestartKeyboardButton is not null)
+            RestartKeyboardButton.IsEnabled = enabled;
+
+        if (KeyboardDfuButton is not null)
+            KeyboardDfuButton.IsEnabled = enabled;
+    }
+
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
     {
         _autoReconnectEnabled = true;
@@ -613,6 +663,7 @@ public partial class MainWindow : Window
             BottomStatus.Text =
                 L("LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.",
                   "Không tìm thấy LumiPad. Hãy ghép Bluetooth hoặc cắm USB dự phòng.");
+            SetDeviceControlsEnabled(false);
         }
         else
         {
@@ -624,6 +675,7 @@ public partial class MainWindow : Window
                 : L("Connected over USB fallback. Now Playing and RGB are live.",
                     "Đã kết nối qua USB dự phòng. Now Playing và RGB đang hoạt động.");
 
+            SetDeviceControlsEnabled(true);
             SendAllRgb();
             SendPowerTiming();
         }
@@ -635,9 +687,10 @@ public partial class MainWindow : Window
     {
         _autoReconnectEnabled = false;
         _serial.Disconnect();
-        DeviceStatus.Text = "Not connected";
+        DeviceStatus.Text = L("Not connected", "Chưa kết nối");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
         BottomStatus.Text = L("Disconnected.", "Đã ngắt kết nối.");
+        SetDeviceControlsEnabled(false);
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken token)
@@ -661,6 +714,7 @@ public partial class MainWindow : Window
                     ? L("Reconnected wirelessly after wake.", "Đã kết nối lại Bluetooth sau khi wake.")
                     : L("Reconnected over USB fallback.", "Đã kết nối lại qua USB dự phòng.");
 
+                SetDeviceControlsEnabled(true);
                 SendAllRgb();
                 SendPowerTiming();
             }
@@ -1098,7 +1152,7 @@ public partial class MainWindow : Window
             SetScreensaverUploadState(
                 L("Ready to upload", "Sẵn sàng tải lên"),
                 MediaColor.FromRgb(255, 159, 10));
-            SendScreensaverButton.IsEnabled = true;
+            SendScreensaverButton.IsEnabled = _serial.IsConnected;
         }
         catch (Exception ex)
         {
@@ -1180,7 +1234,7 @@ public partial class MainWindow : Window
         finally
         {
             SendScreensaverButton.IsEnabled =
-                _screensaverAnimation is not null;
+                _serial.IsConnected && _screensaverAnimation is not null;
         }
     }
 
