@@ -306,6 +306,7 @@ public sealed class SerialLink : IDisposable
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
     public void SetBrightness(int percent) => _ = SendLineAsync($"RGB|BRI|{Math.Clamp(percent, 5, 50)}");
+    public void SetSpeed(int percent) => _ = SendLineAsync($"RGB|SPD|{Math.Clamp(percent, 10, 100)}");
     public void SetAutoLayer() => _ = SendLineAsync("RGB|AUTO");
     public void SetEffect(int effect) => _ = SendLineAsync($"RGB|FX|{effect}");
     public void SetSolid(byte r, byte g, byte b) => _ = SendLineAsync($"RGB|SOLID|{r}|{g}|{b}");
