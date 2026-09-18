@@ -52,20 +52,33 @@
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="ThemeButton" Content="Light mode"
-                        Click="ThemeButton_Click" Padding="12,7"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="ThemeButton" Content="Light mode"
+                            Click="ThemeButton_Click" Padding="12,7"/>
+                    <Button x:Name="DetectButton" Content="Detect LumiPad"
+                            Click="DetectButton_Click" Padding="12,7"/>
+                    <Button Content="Disconnect"
+                            Click="DisconnectButton_Click" Padding="12,7" Margin="0"/>
 
-                <Border Background="{DynamicResource Card2}"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                        CornerRadius="18" Padding="14,8" Margin="4,0,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="DeviceDot" Width="9" Height="9"
-                                 Fill="#66666A" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="DeviceStatus" Text="Not connected"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                    <Border Background="{DynamicResource Card2}"
+                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                            CornerRadius="18" Padding="14,8" Margin="8,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="DeviceDot" Width="9" Height="9"
+                                     Fill="#66666A" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="DeviceStatus" Text="Not connected"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <TextBlock x:Name="BottomStatus"
+                           Text="Bluetooth preferred; USB fallback."
+                           Foreground="{DynamicResource Muted}"
+                           FontSize="11"
+                           HorizontalAlignment="Right"
+                           Margin="0,5,0,0"/>
             </StackPanel>
         </Grid>
 
@@ -195,7 +208,7 @@
 
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
-                    <Border Width="620" HorizontalAlignment="Left"
+                    <Border Width="720" HorizontalAlignment="Left"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
                             CornerRadius="28" Padding="30">
@@ -247,13 +260,28 @@
                             <TextBlock Text="Solid color"
                                        Foreground="{DynamicResource Muted}"
                                        Margin="0,0,0,8"/>
-                            <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ColorPreview" Width="58" Height="38"
-                                        CornerRadius="10" Background="#FF7800"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1" Margin="0,0,12,0"/>
-                                <Button Content="Choose color"
-                                        Click="ChooseColor_Click"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <StackPanel VerticalAlignment="Center">
+                                    <Border x:Name="ColorPreview" Width="58" Height="38"
+                                            CornerRadius="10" Background="#FF7800"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1" Margin="0,0,0,10"/>
+                                    <Button Content="Choose color"
+                                            Click="ChooseColor_Click" Margin="0"/>
+                                </StackPanel>
+
+                                <Grid Width="148" Height="148" Margin="28,0,0,0"
+                                      ToolTip="Click the color wheel to choose RGB color">
+                                    <Image x:Name="ColorWheelImage"
+                                           Width="148" Height="148"
+                                           Stretch="None"
+                                           MouseLeftButtonDown="ColorWheelImage_MouseLeftButtonDown"/>
+                                    <Ellipse x:Name="ColorWheelCursor"
+                                             Width="12" Height="12"
+                                             Stroke="White" StrokeThickness="2"
+                                             Fill="#22000000"
+                                             IsHitTestVisible="False"/>
+                                </Grid>
                             </StackPanel>
 
                             <TextBlock Text="All RGB changes are sent directly to the macropad over Bluetooth when available."
@@ -263,202 +291,6 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-            </TabItem>
-
-            <TabItem Header="Customize">
-                <ScrollViewer Margin="0,14,0,0"
-                              VerticalScrollBarVisibility="Auto">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.05*"/>
-                            <ColumnDefinition Width="18"/>
-                            <ColumnDefinition Width="0.95*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="28" Padding="28">
-                            <StackPanel>
-                                <TextBlock Text="DISPLAY CUSTOMIZE" FontSize="12"
-                                           Foreground="{DynamicResource Muted}"
-                                           FontWeight="SemiBold"/>
-                                <TextBlock Text="Wallpaper &amp; Screensaver"
-                                           FontSize="25" FontWeight="SemiBold"
-                                           Margin="0,8,0,24"/>
-
-                                <TextBlock Text="Main menu wallpaper"
-                                           FontWeight="SemiBold"/>
-                                <TextBlock Text="Choose a preset or make a two-color gradient."
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="12" Margin="0,4,0,8"/>
-                                <ComboBox x:Name="WallpaperPresetCombo"
-                                          Width="430" HorizontalAlignment="Left"
-                                          SelectionChanged="WallpaperPresetCombo_SelectionChanged">
-                                    <ComboBoxItem Content="Midnight" Tag="midnight" IsSelected="True"/>
-                                    <ComboBoxItem Content="Ocean" Tag="ocean"/>
-                                    <ComboBoxItem Content="Purple" Tag="purple"/>
-                                    <ComboBoxItem Content="Sunset" Tag="sunset"/>
-                                    <ComboBoxItem Content="Custom colors" Tag="custom"/>
-                                </ComboBox>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,14,0,26">
-                                    <Border x:Name="WallpaperColorAPreview"
-                                            Width="58" Height="38" CornerRadius="10"
-                                            Background="#000000"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1" Margin="0,0,8,0"/>
-                                    <Button Content="Color A"
-                                            Click="WallpaperColorA_Click"/>
-                                    <Border x:Name="WallpaperColorBPreview"
-                                            Width="58" Height="38" CornerRadius="10"
-                                            Background="#10151F"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1" Margin="8,0,8,0"/>
-                                    <Button Content="Color B"
-                                            Click="WallpaperColorB_Click"/>
-                                </StackPanel>
-
-                                <Border Height="1" Background="{DynamicResource Line}"
-                                        Margin="0,0,0,24"/>
-
-                                <TextBlock Text="Screensaver" FontWeight="SemiBold"/>
-                                <TextBlock Text="Tahoe Motion uses moving glass and two customizable glow colors."
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Margin="0,4,0,8"/>
-                                <ComboBox x:Name="ScreensaverStyleCombo"
-                                          Width="430" HorizontalAlignment="Left">
-                                    <ComboBoxItem Content="Tahoe Motion" Tag="0" IsSelected="True"/>
-                                    <ComboBoxItem Content="Minimal" Tag="1"/>
-                                    <ComboBoxItem Content="Off" Tag="2"/>
-                                </ComboBox>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,14,0,20">
-                                    <Border x:Name="SaverColorAPreview"
-                                            Width="58" Height="38" CornerRadius="10"
-                                            Background="#4A7DFF"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1" Margin="0,0,8,0"/>
-                                    <Button Content="Glow A"
-                                            Click="SaverColorA_Click"/>
-                                    <Border x:Name="SaverColorBPreview"
-                                            Width="58" Height="38" CornerRadius="10"
-                                            Background="#A955FF"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1" Margin="8,0,8,0"/>
-                                    <Button Content="Glow B"
-                                            Click="SaverColorB_Click"/>
-                                </StackPanel>
-
-                                <Grid Width="430" HorizontalAlignment="Left">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1*"/>
-                                        <ColumnDefinition Width="16"/>
-                                        <ColumnDefinition Width="1*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="Screensaver after"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,6"/>
-                                        <ComboBox x:Name="ScreensaverDelayCombo">
-                                            <ComboBoxItem Content="15 seconds" Tag="15"/>
-                                            <ComboBoxItem Content="30 seconds" Tag="30"/>
-                                            <ComboBoxItem Content="1 minute" Tag="60" IsSelected="True"/>
-                                            <ComboBoxItem Content="2 minutes" Tag="120"/>
-                                            <ComboBoxItem Content="5 minutes" Tag="300"/>
-                                            <ComboBoxItem Content="10 minutes" Tag="600"/>
-                                        </ComboBox>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Sleep after"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,6"/>
-                                        <ComboBox x:Name="SleepDelayCombo">
-                                            <ComboBoxItem Content="1 minute" Tag="60"/>
-                                            <ComboBoxItem Content="2 minutes" Tag="120" IsSelected="True"/>
-                                            <ComboBoxItem Content="5 minutes" Tag="300"/>
-                                            <ComboBoxItem Content="10 minutes" Tag="600"/>
-                                            <ComboBoxItem Content="15 minutes" Tag="900"/>
-                                            <ComboBoxItem Content="30 minutes" Tag="1800"/>
-                                            <ComboBoxItem Content="Never" Tag="0"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                </Grid>
-
-                                <Button Content="Apply to LumiPad"
-                                        Width="170" HorizontalAlignment="Left"
-                                        Margin="0,26,0,0"
-                                        Click="ApplyCustomization_Click"/>
-
-                                <TextBlock Text="Connected sleep turns the screen black and pauses RGB but keeps Bluetooth alive, so music or any key can wake LumiPad instantly."
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="12" TextWrapping="Wrap"
-                                           Margin="0,12,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="2"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="28" Padding="28">
-                            <StackPanel>
-                                <TextBlock Text="PREVIEW" FontSize="12"
-                                           Foreground="{DynamicResource Muted}"
-                                           FontWeight="SemiBold"/>
-                                <TextBlock Text="Macropad display"
-                                           FontSize="22" FontWeight="SemiBold"
-                                           Margin="0,8,0,20"/>
-
-                                <Border Width="480" Height="258"
-                                        HorizontalAlignment="Center"
-                                        Background="#05070B"
-                                        CornerRadius="30"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1"
-                                        Padding="18">
-                                    <Border x:Name="DisplayPreview"
-                                            CornerRadius="18"
-                                            BorderBrush="#55FFFFFF"
-                                            BorderThickness="1">
-                                        <Border.Background>
-                                            <LinearGradientBrush x:Name="DisplayPreviewBrush"
-                                                                 StartPoint="0,0"
-                                                                 EndPoint="0,1">
-                                                <GradientStop x:Name="PreviewStopA"
-                                                              Color="#000000" Offset="0"/>
-                                                <GradientStop x:Name="PreviewStopB"
-                                                              Color="#10151F" Offset="1"/>
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                        <Grid>
-                                            <TextBlock Text="LumiPad"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="White"
-                                                       FontSize="28"
-                                                       FontWeight="SemiBold"/>
-                                            <TextBlock Text="Wallpaper preview"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="#B8FFFFFF"
-                                                       FontSize="12"
-                                                       Margin="0,54,0,0"/>
-                                        </Grid>
-                                    </Border>
-                                </Border>
-
-                                <TextBlock Text="Settings are stored by the Windows app and sent again automatically after LumiPad wakes or reconnects."
-                                           Foreground="{DynamicResource Muted}"
-                                           TextWrapping="Wrap" FontSize="12"
-                                           Margin="0,20,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </ScrollViewer>
             </TabItem>
 
             <TabItem x:Name="ZmkTab" Header="ZMK Studio">
@@ -504,28 +336,6 @@
             </TabItem>
         </TabControl>
 
-        <Border Grid.Row="4"
-                Background="{DynamicResource Card2}"
-                BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                CornerRadius="18" Padding="14,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="BottomStatus"
-                           Text="Bluetooth is preferred automatically; USB remains as a fallback."
-                           Foreground="{DynamicResource Muted}"
-                           VerticalAlignment="Center"/>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="DetectButton" Content="Detect LumiPad"
-                            Click="DetectButton_Click"/>
-                    <Button Content="Disconnect"
-                            Click="DisconnectButton_Click" Margin="0"/>
-                </StackPanel>
-            </Grid>
-        </Border>
     </Grid>
 </Window>
