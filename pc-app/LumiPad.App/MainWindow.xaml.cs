@@ -163,6 +163,7 @@ public partial class MainWindow : Window
         ["RGB"] = "RGB",
         ["RGB Profile"] = "Profile RGB",
         ["Save to profile"] = "Lưu vào profile",
+        ["Show now"] = "Bật ngay",
         ["Auto"] = "Tự động",
         ["COLOR"] = "MÀU",
         ["Mode"] = "Chế độ",
@@ -830,6 +831,9 @@ public partial class MainWindow : Window
             SendScreensaverButton.IsEnabled =
                 connected && _screensaverAnimation is not null;
         }
+
+        if (ShowScreensaverNowButton is not null)
+            ShowScreensaverNowButton.IsEnabled = connected;
 
         if (DisconnectButton is not null)
             DisconnectButton.IsEnabled = connected;
@@ -1582,6 +1586,23 @@ public partial class MainWindow : Window
             SendScreensaverButton.IsEnabled =
                 _serial.IsConnected && _screensaverAnimation is not null;
         }
+    }
+
+    private void ShowScreensaverNow_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!_serial.IsConnected)
+        {
+            ScreensaverSendStatus.Text =
+                L("Connect LumiPad first.", "Hãy kết nối LumiPad trước.");
+            return;
+        }
+
+        _serial.ShowScreensaverNow();
+        ScreensaverSendStatus.Text =
+            L("Showing the custom screensaver now.",
+              "Đang bật bảo vệ màn hình tùy chỉnh ngay.");
     }
 
     private void ClearScreensaverMedia_Click(
