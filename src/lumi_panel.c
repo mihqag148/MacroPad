@@ -30,35 +30,6 @@ int lumi_panel_init(void) {
     }
     if (err) {
         LOG_ERR("Panel inversion setup failed: %d", err);
-        return err;
-    }
-
-    /* FRCTRL2 (C6h): RTNA=0x1F. Combined with the 0x6C/0x6C
-     * porch values this targets approximately 25 Hz panel refresh.
-     */
-    command = 0xC6;
-    err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
-    }
-    if (err != 0) {
-        LOG_ERR("Panel FRCTRL2 command failed: %d", err);
-        return err;
-    }
-
-    const uint8_t frctrl2 = 0x1F;
-    struct spi_buf data_buffer = {.buf = (void *)&frctrl2, .len = 1U};
-    const struct spi_buf_set data_buffers = {
-        .buffers = &data_buffer,
-        .count = 1U,
-    };
-
-    err = gpio_pin_set_dt(&dc, 0);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &data_buffers);
-    }
-    if (err) {
-        LOG_ERR("Panel FRCTRL2 data failed: %d", err);
     }
     return err;
 }
