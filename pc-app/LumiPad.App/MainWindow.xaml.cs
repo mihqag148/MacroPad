@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -30,24 +29,6 @@ public partial class MainWindow : Window
     private byte _g = 120;
     private byte _b = 0;
 
-    private byte _wallR1 = 0;
-    private byte _wallG1 = 0;
-    private byte _wallB1 = 0;
-    private byte _wallR2 = 16;
-    private byte _wallG2 = 21;
-    private byte _wallB2 = 31;
-
-    private byte _saverR1 = 74;
-    private byte _saverG1 = 125;
-    private byte _saverB1 = 255;
-    private byte _saverR2 = 169;
-    private byte _saverG2 = 85;
-    private byte _saverB2 = 255;
-
-    private int _screensaverStyle = 0;
-    private int _screensaverDelaySeconds = 60;
-    private int _sleepDelaySeconds = 120;
-
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
 
@@ -60,7 +41,7 @@ public partial class MainWindow : Window
         {
             _uiReady = true;
             LoadTheme();
-            LoadCustomization();
+            BuildColorWheel();
 
             _serial.LinkError += message =>
                 Dispatcher.Invoke(() =>
@@ -416,7 +397,6 @@ public partial class MainWindow : Window
                 : "Connected over USB fallback. Now Playing and RGB are live.";
 
             SendAllRgb();
-            SendCustomization();
         }
 
         DetectButton.IsEnabled = true;
@@ -453,7 +433,6 @@ public partial class MainWindow : Window
                     : "Reconnected over USB fallback.";
 
                 SendAllRgb();
-                SendCustomization();
             }
             catch (OperationCanceledException)
             {
@@ -521,6 +500,122 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BuildColorWheel()
+    {
+        const int size = 148;
+        int stride = size * 4;
+        byte[] pixels = new byte[stride * size];
+        double center = (size - 1) / 2.0;
+        double radius = center - 2.0;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                double dx = x - center;
+                double dy = y - center;
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                int p = y * stride + x * 4;
+
+                if (dist > radius)
+                {
+                    pixels[p + 3] = 0;
+                    continue;
+                }
+
+                double saturation = Math.Clamp(dist / radius, 0.0, 1.0);
+                double hue = Math.Atan2(dy, dx) * 180.0 / Math.PI;
+                if (hue < 0) hue += 360.0;
+
+                (byte r, byte g, byte b) = HsvToRgb(hue, saturation, 1.0);
+
+                pixels[p] = b;
+                pixels[p + 1] = g;
+                pixels[p + 2] = r;
+                pixels[p + 3] = 255;
+            }
+        }
+
+        var bitmap = BitmapSource.Create(
+            size, size, 96, 96,
+            PixelFormats.Bgra32,
+            null, pixels, stride);
+
+        bitmap.Freeze();
+        ColorWheelImage.Source = bitmap;
+        UpdateColorWheelCursor();
+    }
+
+    private void ColorWheelImage_MouseLeftButtonDown(
+        object sender,
+        System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var pos = e.GetPosition(ColorWheelImage);
+        double center = ColorWheelImage.ActualWidth / 2.0;
+        double dx = pos.X - center;
+        double dy = pos.Y - center;
+        double radius = center - 2.0;
+        double dist = Math.Sqrt(dx * dx + dy * dy);
+
+        if (dist > radius)
+            return;
+
+        double saturation = Math.Clamp(dist / radius, 0.0, 1.0);
+        double hue = Math.Atan2(dy, dx) * 180.0 / Math.PI;
+        if (hue < 0) hue += 360.0;
+
+        (_r, _g, _b) = HsvToRgb(hue, saturation, 1.0);
+
+        ColorPreview.Background =
+            new SolidColorBrush(MediaColor.FromRgb(_r, _g, _b));
+
+        EffectCombo.SelectedIndex = 4;
+        _serial.SetSolid(_r, _g, _b);
+        UpdateColorWheelCursor(pos.X, pos.Y);
+    }
+
+    private static (byte r, byte g, byte b) HsvToRgb(
+        double hue,
+        double saturation,
+        double value)
+    {
+        double c = value * saturation;
+        double x = c * (1.0 - Math.Abs((hue / 60.0) % 2.0 - 1.0));
+        double m = value - c;
+
+        double r1, g1, b1;
+
+        if (hue < 60)      (r1, g1, b1) = (c, x, 0);
+        else if (hue < 120)(r1, g1, b1) = (x, c, 0);
+        else if (hue < 180)(r1, g1, b1) = (0, c, x);
+        else if (hue < 240)(r1, g1, b1) = (0, x, c);
+        else if (hue < 300)(r1, g1, b1) = (x, 0, c);
+        else               (r1, g1, b1) = (c, 0, x);
+
+        return (
+            (byte)Math.Round((r1 + m) * 255.0),
+            (byte)Math.Round((g1 + m) * 255.0),
+            (byte)Math.Round((b1 + m) * 255.0));
+    }
+
+    private void UpdateColorWheelCursor(double? x = null, double? y = null)
+    {
+        if (ColorWheelCursor is null)
+            return;
+
+        double px = x ?? ColorWheelImage.Width / 2.0;
+        double py = y ?? ColorWheelImage.Height / 2.0;
+
+        ColorWheelCursor.Margin = new Thickness(
+            px - ColorWheelCursor.Width / 2.0,
+            py - ColorWheelCursor.Height / 2.0,
+            0,
+            0);
+        ColorWheelCursor.HorizontalAlignment = HorizontalAlignment.Left;
+        ColorWheelCursor.VerticalAlignment = VerticalAlignment.Top;
+    }
+
     private void ChooseColor_Click(object sender, RoutedEventArgs e)
     {
         using var dialog = new Forms.ColorDialog
@@ -558,264 +653,6 @@ public partial class MainWindow : Window
             else
                 _serial.SetEffect(effect);
         }
-    }
-
-    private string CustomizationFilePath =>
-        System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "LumiPad",
-            "customization.json");
-
-    private sealed class CustomizationSettings
-    {
-        public byte WallR1 { get; set; }
-        public byte WallG1 { get; set; }
-        public byte WallB1 { get; set; }
-        public byte WallR2 { get; set; }
-        public byte WallG2 { get; set; }
-        public byte WallB2 { get; set; }
-        public byte SaverR1 { get; set; }
-        public byte SaverG1 { get; set; }
-        public byte SaverB1 { get; set; }
-        public byte SaverR2 { get; set; }
-        public byte SaverG2 { get; set; }
-        public byte SaverB2 { get; set; }
-        public int SaverStyle { get; set; } = 0;
-        public int SaverDelaySeconds { get; set; } = 60;
-        public int SleepDelaySeconds { get; set; } = 120;
-    }
-
-    private void LoadCustomization()
-    {
-        try
-        {
-            if (System.IO.File.Exists(CustomizationFilePath))
-            {
-                var settings = JsonSerializer.Deserialize<CustomizationSettings>(
-                    System.IO.File.ReadAllText(CustomizationFilePath));
-
-                if (settings is not null)
-                {
-                    _wallR1 = settings.WallR1;
-                    _wallG1 = settings.WallG1;
-                    _wallB1 = settings.WallB1;
-                    _wallR2 = settings.WallR2;
-                    _wallG2 = settings.WallG2;
-                    _wallB2 = settings.WallB2;
-
-                    _saverR1 = settings.SaverR1;
-                    _saverG1 = settings.SaverG1;
-                    _saverB1 = settings.SaverB1;
-                    _saverR2 = settings.SaverR2;
-                    _saverG2 = settings.SaverG2;
-                    _saverB2 = settings.SaverB2;
-
-                    _screensaverStyle = settings.SaverStyle;
-                    _screensaverDelaySeconds = settings.SaverDelaySeconds;
-                    _sleepDelaySeconds = settings.SleepDelaySeconds;
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        SelectComboTag(ScreensaverStyleCombo, _screensaverStyle.ToString());
-        SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
-        SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
-
-        // Stored/custom colors should not be overwritten by a preset on startup.
-        SelectComboTag(WallpaperPresetCombo, "custom");
-        UpdateCustomizationPreview();
-    }
-
-    private void SaveCustomization()
-    {
-        try
-        {
-            string? folder = System.IO.Path.GetDirectoryName(CustomizationFilePath);
-            if (!string.IsNullOrWhiteSpace(folder))
-                System.IO.Directory.CreateDirectory(folder);
-
-            var settings = new CustomizationSettings
-            {
-                WallR1 = _wallR1,
-                WallG1 = _wallG1,
-                WallB1 = _wallB1,
-                WallR2 = _wallR2,
-                WallG2 = _wallG2,
-                WallB2 = _wallB2,
-                SaverR1 = _saverR1,
-                SaverG1 = _saverG1,
-                SaverB1 = _saverB1,
-                SaverR2 = _saverR2,
-                SaverG2 = _saverG2,
-                SaverB2 = _saverB2,
-                SaverStyle = _screensaverStyle,
-                SaverDelaySeconds = _screensaverDelaySeconds,
-                SleepDelaySeconds = _sleepDelaySeconds
-            };
-
-            System.IO.File.WriteAllText(
-                CustomizationFilePath,
-                JsonSerializer.Serialize(settings, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                }));
-        }
-        catch
-        {
-        }
-    }
-
-    private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
-    {
-        foreach (var entry in combo.Items)
-        {
-            if (entry is ComboBoxItem item &&
-                string.Equals(item.Tag?.ToString(), tag, StringComparison.Ordinal))
-            {
-                combo.SelectedItem = item;
-                return;
-            }
-        }
-    }
-
-    private static int SelectedIntTag(System.Windows.Controls.ComboBox combo, int fallback)
-    {
-        if (combo.SelectedItem is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out int value))
-            return value;
-
-        return fallback;
-    }
-
-    private static SolidColorBrush Brush(byte r, byte g, byte b) =>
-        new(MediaColor.FromRgb(r, g, b));
-
-    private void UpdateCustomizationPreview()
-    {
-        WallpaperColorAPreview.Background = Brush(_wallR1, _wallG1, _wallB1);
-        WallpaperColorBPreview.Background = Brush(_wallR2, _wallG2, _wallB2);
-        SaverColorAPreview.Background = Brush(_saverR1, _saverG1, _saverB1);
-        SaverColorBPreview.Background = Brush(_saverR2, _saverG2, _saverB2);
-
-        PreviewStopA.Color = MediaColor.FromRgb(_wallR1, _wallG1, _wallB1);
-        PreviewStopB.Color = MediaColor.FromRgb(_wallR2, _wallG2, _wallB2);
-    }
-
-    private void WallpaperPresetCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (WallpaperPresetCombo.SelectedItem is not ComboBoxItem item)
-            return;
-
-        switch (item.Tag?.ToString())
-        {
-            case "midnight":
-                (_wallR1, _wallG1, _wallB1) = (0, 0, 0);
-                (_wallR2, _wallG2, _wallB2) = (16, 21, 31);
-                break;
-            case "ocean":
-                (_wallR1, _wallG1, _wallB1) = (0, 18, 42);
-                (_wallR2, _wallG2, _wallB2) = (0, 94, 130);
-                break;
-            case "purple":
-                (_wallR1, _wallG1, _wallB1) = (22, 8, 40);
-                (_wallR2, _wallG2, _wallB2) = (92, 42, 150);
-                break;
-            case "sunset":
-                (_wallR1, _wallG1, _wallB1) = (68, 18, 42);
-                (_wallR2, _wallG2, _wallB2) = (180, 72, 28);
-                break;
-            case "custom":
-            default:
-                break;
-        }
-
-        if (_uiReady)
-            UpdateCustomizationPreview();
-    }
-
-    private bool ChooseDisplayColor(ref byte r, ref byte g, ref byte b)
-    {
-        using var dialog = new Forms.ColorDialog
-        {
-            FullOpen = true,
-            Color = Drawing.Color.FromArgb(r, g, b)
-        };
-
-        if (dialog.ShowDialog() != Forms.DialogResult.OK)
-            return false;
-
-        r = dialog.Color.R;
-        g = dialog.Color.G;
-        b = dialog.Color.B;
-        return true;
-    }
-
-    private void WallpaperColorA_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChooseDisplayColor(ref _wallR1, ref _wallG1, ref _wallB1))
-        {
-            SelectComboTag(WallpaperPresetCombo, "custom");
-            UpdateCustomizationPreview();
-        }
-    }
-
-    private void WallpaperColorB_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChooseDisplayColor(ref _wallR2, ref _wallG2, ref _wallB2))
-        {
-            SelectComboTag(WallpaperPresetCombo, "custom");
-            UpdateCustomizationPreview();
-        }
-    }
-
-    private void SaverColorA_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChooseDisplayColor(ref _saverR1, ref _saverG1, ref _saverB1))
-            UpdateCustomizationPreview();
-    }
-
-    private void SaverColorB_Click(object sender, RoutedEventArgs e)
-    {
-        if (ChooseDisplayColor(ref _saverR2, ref _saverG2, ref _saverB2))
-            UpdateCustomizationPreview();
-    }
-
-    private void ApplyCustomization_Click(object sender, RoutedEventArgs e)
-    {
-        _screensaverStyle = SelectedIntTag(ScreensaverStyleCombo, 0);
-        _screensaverDelaySeconds = SelectedIntTag(ScreensaverDelayCombo, 60);
-        _sleepDelaySeconds = SelectedIntTag(SleepDelayCombo, 120);
-
-        SaveCustomization();
-        SendCustomization();
-
-        BottomStatus.Text = _serial.IsConnected
-            ? "Display customization applied to LumiPad."
-            : "Customization saved. It will be sent when LumiPad reconnects.";
-    }
-
-    private void SendCustomization()
-    {
-        if (!_serial.IsConnected)
-            return;
-
-        _serial.SetWallpaper(
-            _wallR1, _wallG1, _wallB1,
-            _wallR2, _wallG2, _wallB2);
-
-        _serial.SetScreensaver(
-            _screensaverStyle != 2,
-            _screensaverStyle,
-            _screensaverDelaySeconds,
-            _saverR1, _saverG1, _saverB1,
-            _saverR2, _saverG2, _saverB2);
-
-        _serial.SetSleepTimeout(_sleepDelaySeconds);
     }
 
     private async void MainTabs_SelectionChanged(
