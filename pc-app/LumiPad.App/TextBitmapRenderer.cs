@@ -20,10 +20,10 @@ public static class TextBitmapRenderer
         var visual = new DrawingVisual();
         using (DrawingContext dc = visual.RenderOpen())
         {
-            dc.DrawRectangle(Brushes.Black, null, new Rect(0, 0, width, height));
+            dc.DrawRectangle(System.Windows.Media.Brushes.Black, null, new System.Windows.Rect(0, 0, width, height));
 
             var typeface = new Typeface(
-                new FontFamily("Segoe UI"),
+                new System.Windows.Media.FontFamily("Segoe UI"),
                 FontStyles.Normal,
                 bold ? FontWeights.SemiBold : FontWeights.Normal,
                 FontStretches.Normal);
@@ -31,10 +31,10 @@ public static class TextBitmapRenderer
             var ft = new FormattedText(
                 text,
                 CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight,
+                System.Windows.FlowDirection.LeftToRight,
                 typeface,
                 fontSize,
-                Brushes.White,
+                System.Windows.Media.Brushes.White,
                 1.0)
             {
                 MaxTextWidth = width,
@@ -42,7 +42,7 @@ public static class TextBitmapRenderer
                 Trimming = TextTrimming.CharacterEllipsis
             };
 
-            dc.DrawText(ft, new Point(0, 0));
+            dc.DrawText(ft, new System.Windows.Point(0, 0));
         }
 
         var bitmap = new RenderTargetBitmap(
