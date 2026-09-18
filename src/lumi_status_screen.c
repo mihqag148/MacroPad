@@ -842,7 +842,7 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)66U, (uint16_t)1000U);
+        CLAMP(frame_interval_ms, (uint16_t)40U, (uint16_t)1000U);
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
@@ -1266,7 +1266,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 16, NULL);
+lv_timer_create(refresh_screensaver, 8, NULL);
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
 return screen;
