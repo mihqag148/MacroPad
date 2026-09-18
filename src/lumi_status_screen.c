@@ -55,8 +55,6 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
-static lv_obj_t *saver_media_canvas;
-static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
 static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
 static uint8_t saver_media_frame_count;
 static uint8_t saver_media_received_mask;
@@ -656,38 +654,20 @@ static void init_screensaver(lv_obj_t *screen) {
     lv_obj_set_style_text_color(saver_title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(saver_title);
 
-    saver_media_canvas = lv_canvas_create(screensaver);
-    lv_canvas_set_buffer(
-        saver_media_canvas,
-        saver_media_canvas_buf,
-        LUMI_SAVER_FRAME_W,
-        LUMI_SAVER_FRAME_H,
-        LV_IMG_CF_TRUE_COLOR
-    );
-    lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(saver_media_canvas, 1024);
-    lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void draw_custom_saver_frame(uint8_t frame_index) {
     if (!saver_media_valid ||
-        frame_index >= saver_media_frame_count ||
-        !saver_media_canvas) {
+        frame_index >= saver_media_frame_count) {
         return;
     }
 
-    const uint8_t *src = saver_media_frames[frame_index];
-
-    for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        uint8_t v = src[i];
-        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
-        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
-        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
-        saver_media_canvas_buf[i] = lv_color_make(r, g, b);
-    }
-
-    lv_obj_invalidate(saver_media_canvas);
+    (void)lumi_panel_render_rgb332_scaled(
+        saver_media_frames[frame_index],
+        LUMI_SAVER_FRAME_W,
+        LUMI_SAVER_FRAME_H);
 }
+
 
 static void refresh_screensaver(lv_timer_t *timer) {
     ARG_UNUSED(timer);
@@ -758,23 +738,41 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
-        lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(screensaver);
-        lv_obj_set_style_opa(screensaver, 0, 0);
 
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, screensaver);
-        lv_anim_set_exec_cb(&a, popup_anim_opa_cb);
-        lv_anim_set_values(&a, 0, 255);
-        lv_anim_set_time(&a, 420);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-        lv_anim_start(&a);
+        if (saver_media_valid) {
+            /* Direct-render mode: keep LVGL saver hidden so it cannot
+             * overwrite animation stripes while the panel is streaming.
+             */
+            lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+            saver_media_index = 0U;
+            saver_media_last_ms = lv_tick_get();
+            draw_custom_saver_frame(0U);
+        } else {
+            lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(screensaver);
+            lv_obj_set_style_opa(screensaver, 0, 0);
+
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, screensaver);
+            lv_anim_set_exec_cb(&a, popup_anim_opa_cb);
+            lv_anim_set_values(&a, 0, 255);
+            lv_anim_set_time(&a, 420);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_start(&a);
+        }
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
         lv_anim_del(screensaver, popup_anim_opa_cb);
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
         lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+
+        /* Direct-render frames bypass LVGL, so force the normal UI to repaint
+         * when the saver exits.
+         */
+        if (root_screen) {
+            lv_obj_invalidate(root_screen);
+        }
     }
 
     if (sleep_overlay) {
@@ -793,20 +791,15 @@ static void refresh_screensaver(lv_timer_t *timer) {
     uint32_t lv_now = lv_tick_get();
 
     if (saver_media_valid) {
-        lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
-
         if ((uint32_t)(lv_now - saver_media_last_ms) >= saver_media_interval_ms) {
             saver_media_last_ms = lv_now;
             saver_media_index =
                 (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
             draw_custom_saver_frame(saver_media_index);
         }
-    } else {
-        lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 
+        return;
+    } else {
         if (style == LUMI_SAVER_TAHOE) {
             lv_obj_clear_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
@@ -849,7 +842,7 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)80U, (uint16_t)1000U);
+        CLAMP(frame_interval_ms, (uint16_t)66U, (uint16_t)1000U);
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
@@ -1273,7 +1266,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 50, NULL);
+lv_timer_create(refresh_screensaver, 16, NULL);
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
 return screen;
