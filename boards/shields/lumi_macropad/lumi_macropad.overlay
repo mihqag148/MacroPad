@@ -93,7 +93,8 @@ row-gpios
     };
 };
 
-// ST7789 1.47 inch, physical panel 172x320, used in landscape as 320x172.
+// ST7789 1.47 inch in its native 172x320 scan orientation. LVGL keeps a
+// logical 320x172 UI; lumi_panel.c rotates partial flushes in software.
 // Original Arduino wiring:
 // MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00.
 // ZMK v0.3 uses Zephyr 3.5, whose ST7789 driver expects the display node
@@ -112,21 +113,22 @@ row-gpios
         reg = <0>;
         cmd-data-gpios = <&gpio0 24 GPIO_ACTIVE_LOW>;
         reset-gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
-        width = <320>;
-        height = <172>;
-        x-offset = <0>;
-        y-offset = <34>;
+        width = <172>;
+        height = <320>;
+        x-offset = <34>;
+        y-offset = <0>;
         vcom = <0x19>;
         gctrl = <0x35>;
         vrhs = <0x12>;
         vdvs = <0x20>;
-        // Landscape orientation used by this 1.47-inch panel: MX + MV.
+        // Native scan order: no MADCTL MV cross-axis hardware rotation.
         // Keep BGR cleared so red/blue stay in the correct RGB order.
-        mdac = <0x60>;
+        mdac = <0x00>;
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
-        porch-param = [6c 6c 00 33 33];
+        // Panel/Zephyr baseline timing (approximately 60 Hz).
+        porch-param = [0c 0c 00 33 33];
         cmd2en-param = [5a 69 02 01];
         pwctrl1-param = [a4 a1];
         pvgam-param = [D0 04 0D 11 13 2B 3F 54 4C 18 0D 0B 1F 23];
