@@ -126,7 +126,7 @@ row-gpios
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
-        porch-param = [6c 6c 00 33 33];
+        porch-param = [0c 0c 00 33 33];
         cmd2en-param = [5a 69 02 01];
         pwctrl1-param = [a4 a1];
         pvgam-param = [D0 04 0D 11 13 2B 3F 54 4C 18 0D 0B 1F 23];
@@ -177,7 +177,7 @@ row-gpios
 /* Reserve internal flash for the custom screensaver.
  * Original code partition: 0x26000..0xEC000 (0xC6000 bytes).
  * Keep 0x70000 bytes (~448 KB) for firmware and use the remaining
- * 0x56000 bytes (~352 KB) for 25 RGB332 frames at 160x86.
+ * 0x56000 bytes (~352 KB) for 8 RGB332 frames at 160x86.
  */
 &code_partition {
     reg = <0x26000 0x70000>;
