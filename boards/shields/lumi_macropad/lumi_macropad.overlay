@@ -172,3 +172,21 @@ row-gpios
         compatible = "zephyr,cdc-acm-uart";
     };
 };
+
+
+/* Reserve internal flash for the custom screensaver.
+ * Original code partition: 0x26000..0xEC000 (0xC6000 bytes).
+ * Keep 0x70000 bytes (~448 KB) for firmware and use the remaining
+ * 0x56000 bytes (~352 KB) for 25 RGB332 frames at 160x86.
+ */
+&code_partition {
+    reg = <0x26000 0x70000>;
+};
+
+&flash0 {
+    partitions {
+        lumi_saver_partition: partition@96000 {
+            reg = <0x96000 0x56000>;
+        };
+    };
+};
