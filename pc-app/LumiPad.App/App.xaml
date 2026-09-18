@@ -37,6 +37,7 @@
 
         <Style TargetType="ComboBox">
             <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="MaxDropDownHeight" Value="240"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
