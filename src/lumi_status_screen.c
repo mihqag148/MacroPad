@@ -943,6 +943,14 @@ void lumi_ui_set_screensaver(bool enabled, uint8_t style,
     lumi_ui_note_activity();
 }
 
+void lumi_ui_set_screensaver_delay(uint32_t seconds) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_delay_ms = seconds * 1000U;
+    saver_enabled = seconds > 0U;
+    k_mutex_unlock(&lumi_ui_config_lock);
+    lumi_ui_note_activity();
+}
+
 void lumi_ui_set_sleep_timeout(uint32_t seconds) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     sleep_delay_ms = seconds * 1000U;
