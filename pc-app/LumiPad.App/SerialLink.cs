@@ -327,11 +327,11 @@ public sealed class SerialLink : IDisposable
     public void SetSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
 
-    public void RestartKeyboard() =>
-        _ = SendLineAsync("SYS|RESTART");
+    public Task RestartKeyboardAsync() =>
+        SendLineAsync("SYS|RESTART");
 
-    public void EnterDfu() =>
-        _ = SendLineAsync("SYS|DFU");
+    public Task EnterDfuAsync() =>
+        SendLineAsync("SYS|DFU");
 
     private async Task SendLineAsync(string line)
     {
