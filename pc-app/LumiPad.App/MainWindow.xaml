@@ -58,6 +58,27 @@
                         Orientation="Horizontal"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Right">
+                <Border Background="{DynamicResource Card2}"
+                        BorderBrush="{DynamicResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="10,6"
+                        Margin="0,0,10,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="FlashUsageText"
+                                   Text="FLASH --"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Muted}"/>
+                        <TextBlock Text="  ·  "
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Muted}"/>
+                        <TextBlock x:Name="RamUsageText"
+                                   Text="RAM --"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
+                </Border>
+
                 <Button x:Name="ThemeButton"
                         Content="Light mode"
                         Click="ThemeButton_Click"
@@ -552,6 +573,28 @@
                                     HorizontalAlignment="Center"/>
 
                             <StackPanel Grid.Column="4">
+                                <TextBlock Text="RGB Profile"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"/>
+                                <ComboBox x:Name="RgbProfileCombo"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="RgbProfileCombo_SelectionChanged"
+                                          Margin="0,8,0,8">
+                                    <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
+                                    <ComboBoxItem Content="MEDIA" Tag="1"/>
+                                    <ComboBoxItem Content="FUSION 360" Tag="2"/>
+                                    <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
+                                    <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
+                                </ComboBox>
+                                <Button Content="Save to profile"
+                                        Click="RgbSaveProfile_Click"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,0,0,18"/>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,0,0,18"/>
+
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition/>
