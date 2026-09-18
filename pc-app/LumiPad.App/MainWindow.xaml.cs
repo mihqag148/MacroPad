@@ -171,6 +171,14 @@ public partial class MainWindow : Window
         ["Disconnected."] = "Đã ngắt kết nối.",
         ["Restarting…"] = "Đang khởi động lại…",
         ["DFU / Bootloader"] = "DFU / Bootloader",
+        ["Ready to upload"] = "Sẵn sàng tải lên",
+        ["Uploading…"] = "Đang tải lên…",
+        ["Uploaded & verified"] = "Đã tải lên và xác nhận",
+        ["Upload failed"] = "Tải lên thất bại",
+        ["Not uploaded"] = "Chưa tải lên",
+        ["Prepare failed"] = "Xử lý thất bại",
+        ["Light mode"] = "Chế độ sáng",
+        ["Dark mode"] = "Chế độ tối",
     };
 
     private string L(string en, string vi) => _language == "vi" ? vi : en;
@@ -330,6 +338,7 @@ public partial class MainWindow : Window
         {
             SaveLanguage();
             ApplyLanguage();
+            Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         }
     }
 
@@ -639,26 +648,27 @@ public partial class MainWindow : Window
 
     private void SetDeviceControlsEnabled(bool enabled)
     {
+        bool connected = enabled && _serial.IsConnected;
         if (RgbDevicePanel is not null)
-            RgbDevicePanel.IsEnabled = enabled;
+            RgbDevicePanel.IsEnabled = connected;
 
         if (DeviceTimingPanel is not null)
-            DeviceTimingPanel.IsEnabled = enabled;
+            DeviceTimingPanel.IsEnabled = connected;
 
         if (SendScreensaverButton is not null)
         {
             SendScreensaverButton.IsEnabled =
-                enabled && _screensaverAnimation is not null;
+                connected && _screensaverAnimation is not null;
         }
 
         if (DisconnectButton is not null)
-            DisconnectButton.IsEnabled = enabled;
+            DisconnectButton.IsEnabled = connected;
 
         if (RestartKeyboardButton is not null)
-            RestartKeyboardButton.IsEnabled = enabled;
+            RestartKeyboardButton.IsEnabled = connected;
 
         if (KeyboardDfuButton is not null)
-            KeyboardDfuButton.IsEnabled = enabled;
+            KeyboardDfuButton.IsEnabled = connected;
     }
 
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
@@ -773,7 +783,12 @@ public partial class MainWindow : Window
             ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
 
         if (_uiReady && _serial.IsConnected)
+        {
             _serial.SetScreensaverDelay(_screensaverDelaySeconds);
+            BottomStatus.Text = L(
+                $"Screensaver: {_screensaverDelaySeconds}s",
+                $"Bảo vệ màn hình: {_screensaverDelaySeconds} giây");
+        }
     }
 
     private void SleepDelayCombo_SelectionChanged(
@@ -784,7 +799,12 @@ public partial class MainWindow : Window
             ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
 
         if (_uiReady && _serial.IsConnected)
+        {
             _serial.SetSleepTimeout(_sleepDelaySeconds);
+            BottomStatus.Text = L(
+                _sleepDelaySeconds == 0 ? "Sleep: Never" : $"Sleep: {_sleepDelaySeconds}s",
+                _sleepDelaySeconds == 0 ? "Ngủ: Không bao giờ" : $"Ngủ: {_sleepDelaySeconds} giây");
+        }
     }
 
     private async void RestartKeyboard_Click(object sender, RoutedEventArgs e)
@@ -1303,6 +1323,7 @@ public partial class MainWindow : Window
             return;
 
         ApplyLanguage();
+        Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
 
         if (ZmkTab.IsSelected)
