@@ -55,6 +55,15 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
+static lv_obj_t *saver_media_canvas;
+static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_media_frame_count;
+static uint8_t saver_media_received_mask;
+static uint16_t saver_media_interval_ms = 180;
+static uint8_t saver_media_index;
+static uint32_t saver_media_last_ms;
+static bool saver_media_valid;
 static bool screensaver_visible;
 static lv_obj_t *root_screen;
 static lv_obj_t *sleep_overlay;
@@ -646,6 +655,38 @@ static void init_screensaver(lv_obj_t *screen) {
     lv_label_set_text(saver_title, "LumiPad");
     lv_obj_set_style_text_color(saver_title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(saver_title);
+
+    saver_media_canvas = lv_canvas_create(screensaver);
+    lv_canvas_set_buffer(
+        saver_media_canvas,
+        saver_media_canvas_buf,
+        LUMI_SAVER_FRAME_W,
+        LUMI_SAVER_FRAME_H,
+        LV_IMG_CF_TRUE_COLOR
+    );
+    lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_zoom(saver_media_canvas, 1024);
+    lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void draw_custom_saver_frame(uint8_t frame_index) {
+    if (!saver_media_valid ||
+        frame_index >= saver_media_frame_count ||
+        !saver_media_canvas) {
+        return;
+    }
+
+    const uint8_t *src = saver_media_frames[frame_index];
+
+    for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
+        uint8_t v = src[i];
+        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
+        saver_media_canvas_buf[i] = lv_color_make(r, g, b);
+    }
+
+    lv_obj_invalidate(saver_media_canvas);
 }
 
 static void refresh_screensaver(lv_timer_t *timer) {
@@ -751,7 +792,26 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     uint32_t lv_now = lv_tick_get();
 
-    if (style == LUMI_SAVER_TAHOE) {
+    if (saver_media_valid) {
+        lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
+
+        if ((uint32_t)(lv_now - saver_media_last_ms) >= saver_media_interval_ms) {
+            saver_media_last_ms = lv_now;
+            saver_media_index =
+                (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
+            draw_custom_saver_frame(saver_media_index);
+        }
+    } else {
+        lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
+
+        if (style == LUMI_SAVER_TAHOE) {
+            lv_obj_clear_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
+
         lv_obj_set_pos(
             saver_orb1,
             saver_wave(lv_now, 7200, -30, 72),
@@ -768,11 +828,65 @@ static void refresh_screensaver(lv_timer_t *timer) {
             saver_glass,
             saver_wave(lv_now, 9000, 54, 60)
         );
-    } else {
-        lv_obj_align(saver_glass, LV_ALIGN_CENTER, 0, 0);
+        } else {
+            lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_align(saver_glass, LV_ALIGN_CENTER, 0, 0);
+        }
     }
 
     lv_obj_move_foreground(screensaver);
+}
+
+void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
+    if (frame_count < 1U || frame_count > LUMI_SAVER_MAX_FRAMES) {
+        return;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_media_valid = false;
+    saver_media_frame_count = frame_count;
+    saver_media_received_mask = 0U;
+    saver_media_interval_ms =
+        CLAMP(frame_interval_ms, (uint16_t)80U, (uint16_t)1000U);
+    saver_media_index = 0U;
+    saver_media_last_ms = 0U;
+    k_mutex_unlock(&lumi_ui_config_lock);
+}
+
+void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
+    if (!data ||
+        index >= saver_media_frame_count ||
+        index >= LUMI_SAVER_MAX_FRAMES ||
+        len != LUMI_SAVER_FRAME_BYTES) {
+        return;
+    }
+
+    memcpy(saver_media_frames[index], data, LUMI_SAVER_FRAME_BYTES);
+    saver_media_received_mask |= BIT(index);
+}
+
+void lumi_ui_saver_anim_end(void) {
+    uint8_t expected = (uint8_t)((1U << saver_media_frame_count) - 1U);
+
+    if (saver_media_frame_count > 0U &&
+        saver_media_received_mask == expected) {
+        saver_media_valid = true;
+        saver_media_index = 0U;
+        saver_media_last_ms = 0U;
+        draw_custom_saver_frame(0U);
+    }
+
+    lumi_ui_note_activity();
+}
+
+void lumi_ui_saver_anim_clear(void) {
+    saver_media_valid = false;
+    saver_media_frame_count = 0U;
+    saver_media_received_mask = 0U;
+    saver_media_index = 0U;
+    lumi_ui_note_activity();
 }
 
 void lumi_ui_note_activity(void) {
