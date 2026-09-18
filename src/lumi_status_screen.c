@@ -7,6 +7,7 @@
 #include <zephyr/sys/atomic.h>
 #include <lvgl.h>
 #include <dt-bindings/zmk/keys.h>
+#include <zmk/activity.h>
 #include <zmk/behavior.h>
 #include <zmk/ble.h>
 #include <zmk/display.h>
@@ -40,6 +41,13 @@ static atomic_t popup_action;
 static lv_obj_t *popup;
 static lv_obj_t *popup_icon;
 static lv_obj_t *popup_text;
+
+static lv_obj_t *screensaver;
+static lv_obj_t *saver_orb1;
+static lv_obj_t *saver_orb2;
+static lv_obj_t *saver_glass;
+static lv_obj_t *saver_title;
+static bool screensaver_visible;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -302,13 +310,15 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    lumi_now_playing_user_activity();
+    bool keep_music_visible = false;
 
     if (keycode_matches(event, C_VOL_UP)) {
         atomic_set(&popup_action, POPUP_VOL_UP);
+        keep_music_visible = true;
 
     } else if (keycode_matches(event, C_VOL_DN)) {
         atomic_set(&popup_action, POPUP_VOL_DOWN);
+        keep_music_visible = true;
 
     } else if (keycode_matches(event, C_NEXT)) {
         atomic_set(&popup_action, POPUP_NEXT);
@@ -321,6 +331,10 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
 
     } else if (keycode_matches(event, PG_DN)) {
         atomic_set(&popup_action, POPUP_PAGE_DOWN);
+    }
+
+    if (!keep_music_visible) {
+        lumi_now_playing_user_activity();
     }
 
     return ZMK_EV_EVENT_BUBBLE;
@@ -469,6 +483,10 @@ static void refresh_popup(lv_timer_t *timer) {
     }
 
     /* Hết thời gian thì trượt xuống */
+    if (popup_visible) {
+        lv_obj_move_foreground(popup);
+    }
+
     if (popup_visible &&
         (int32_t)(now - popup_until) >= 0) {
 
@@ -483,6 +501,112 @@ static void refresh_popup(lv_timer_t *timer) {
 
         popup_visible = false;
     }
+}
+
+static int32_t saver_wave(uint32_t now,
+                           uint32_t period,
+                           int32_t min_value,
+                           int32_t max_value) {
+    uint32_t phase = now % period;
+    uint32_t half = period / 2U;
+    uint32_t pos = phase <= half ? phase : period - phase;
+
+    return min_value +
+           (int32_t)(((int64_t)(max_value - min_value) * pos) / half);
+}
+
+static void init_screensaver(lv_obj_t *screen) {
+    screensaver = lv_obj_create(screen);
+    lv_obj_remove_style_all(screensaver);
+    lv_obj_set_pos(screensaver, 0, 0);
+    lv_obj_set_size(screensaver, 320, 172);
+    lv_obj_set_style_bg_color(screensaver, lv_color_hex(0x030407), 0);
+    lv_obj_set_style_bg_opa(screensaver, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+
+    saver_orb1 = lv_obj_create(screensaver);
+    lv_obj_remove_style_all(saver_orb1);
+    lv_obj_set_size(saver_orb1, 104, 104);
+    lv_obj_set_style_radius(saver_orb1, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(saver_orb1, lv_color_hex(0x4A7DFF), 0);
+    lv_obj_set_style_bg_opa(saver_orb1, 72, 0);
+
+    saver_orb2 = lv_obj_create(screensaver);
+    lv_obj_remove_style_all(saver_orb2);
+    lv_obj_set_size(saver_orb2, 92, 92);
+    lv_obj_set_style_radius(saver_orb2, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(saver_orb2, lv_color_hex(0xA955FF), 0);
+    lv_obj_set_style_bg_opa(saver_orb2, 62, 0);
+
+    saver_glass = lv_obj_create(screensaver);
+    lv_obj_remove_style_all(saver_glass);
+    lv_obj_set_size(saver_glass, 176, 58);
+    lv_obj_align(saver_glass, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(saver_glass, lv_color_hex(0x141720), 0);
+    lv_obj_set_style_bg_opa(saver_glass, 210, 0);
+    lv_obj_set_style_radius(saver_glass, 29, 0);
+    lv_obj_set_style_border_width(saver_glass, 1, 0);
+    lv_obj_set_style_border_color(saver_glass, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(saver_glass, 52, 0);
+
+    saver_title = make_label(saver_glass, &lv_font_montserrat_20);
+    lv_label_set_text(saver_title, "LumiPad");
+    lv_obj_set_style_text_color(saver_title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(saver_title);
+}
+
+static void refresh_screensaver(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+
+    enum zmk_activity_state activity = zmk_activity_get_state();
+    bool should_show = activity == ZMK_ACTIVITY_IDLE;
+
+    if (should_show && !screensaver_visible) {
+        screensaver_visible = true;
+        lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(screensaver);
+        lv_obj_set_style_opa(screensaver, 0, 0);
+
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, screensaver);
+        lv_anim_set_exec_cb(&a, popup_anim_opa_cb);
+        lv_anim_set_values(&a, 0, 255);
+        lv_anim_set_time(&a, 420);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    } else if (!should_show && screensaver_visible) {
+        screensaver_visible = false;
+        lv_anim_del(screensaver, popup_anim_opa_cb);
+        lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
+        lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (!screensaver_visible) {
+        return;
+    }
+
+    uint32_t now = lv_tick_get();
+
+    lv_obj_set_pos(
+        saver_orb1,
+        saver_wave(now, 7200, -30, 72),
+        saver_wave(now + 1700, 6100, -28, 52)
+    );
+
+    lv_obj_set_pos(
+        saver_orb2,
+        saver_wave(now + 2600, 8300, 204, 256),
+        saver_wave(now + 900, 6900, 58, 112)
+    );
+
+    lv_obj_set_y(
+        saver_glass,
+        saver_wave(now, 9000, 54, 60)
+    );
+
+    lv_obj_move_foreground(screensaver);
 }
 
 lv_obj_t *zmk_display_status_screen(void) {
@@ -748,10 +872,12 @@ lv_obj_add_flag(
 );
    lumi_page_init();
     lumi_now_playing_init(screen);
+    init_screensaver(screen);
 k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
+lv_timer_create(refresh_screensaver, 50, NULL);
 
 return screen;
 }
