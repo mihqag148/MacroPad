@@ -458,7 +458,7 @@ public partial class MainWindow : Window
         UpdateRgbReadout();
     }
 
-    private static void SelectComboTag(ComboBox combo, string tag)
+    private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
         foreach (var entry in combo.Items)
         {
