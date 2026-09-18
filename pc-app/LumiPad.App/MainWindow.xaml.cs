@@ -1482,7 +1482,7 @@ public partial class MainWindow : Window
             _screensaverPreviewTimer.Stop();
             _screensaverPreviewTimer.Interval =
                 TimeSpan.FromMilliseconds(
-                    Math.Max(40, _screensaverAnimation.FrameIntervalMs));
+                    Math.Max(33, _screensaverAnimation.FrameIntervalMs));
 
             if (_screensaverAnimation.Frames.Count > 1)
                 _screensaverPreviewTimer.Start();
