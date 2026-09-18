@@ -81,6 +81,8 @@ static const struct flash_area *saver_flash;
 static bool saver_flash_checked;
 static uint32_t saver_flash_erased_pages[3];
 static uint8_t saver_media_frame_buffer[LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
+static bool saver_media_cache_loaded;
 static uint8_t saver_media_frame_count;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
@@ -870,6 +872,33 @@ static int saver_flash_read_frame(uint8_t index) {
         sizeof(saver_media_frame_buffer));
 }
 
+static int saver_flash_cache_all_frames(void) {
+    if (!saver_flash_load_metadata()) {
+        saver_media_cache_loaded = false;
+        return -EINVAL;
+    }
+
+    for (uint8_t i = 0; i < saver_media_frame_count; i++) {
+        uint32_t offset =
+            SAVER_FLASH_DATA_OFFSET +
+            (uint32_t)i * LUMI_SAVER_FRAME_BYTES;
+
+        int rc = flash_area_read(
+            saver_flash,
+            offset,
+            saver_media_frames[i],
+            LUMI_SAVER_FRAME_BYTES);
+
+        if (rc != 0) {
+            saver_media_cache_loaded = false;
+            return rc;
+        }
+    }
+
+    saver_media_cache_loaded = true;
+    return 0;
+}
+
 static int saver_flash_commit_header(void) {
     if (!saver_flash) {
         return -ENODEV;
@@ -899,18 +928,24 @@ static void saver_flash_invalidate(void) {
 
     saver_flash_checked = true;
     saver_media_valid = false;
+    saver_media_cache_loaded = false;
 }
 
 static void draw_custom_saver_frame(uint8_t frame_index) {
-    if (!saver_flash_load_metadata() ||
-        frame_index >= saver_media_frame_count ||
-        !saver_media_canvas ||
-        saver_flash_read_frame(frame_index) != 0) {
+    if (!saver_media_cache_loaded &&
+        saver_flash_cache_all_frames() != 0) {
         return;
     }
 
+    if (frame_index >= saver_media_frame_count ||
+        !saver_media_canvas) {
+        return;
+    }
+
+    const uint8_t *src = saver_media_frames[frame_index];
+
     for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        uint8_t v = saver_media_frame_buffer[i];
+        uint8_t v = src[i];
         uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
         uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
         uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
@@ -1005,25 +1040,8 @@ static void refresh_screensaver(lv_timer_t *timer) {
         lv_obj_move_foreground(screensaver);
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
 
-        /* Prepare frame 0 first, then restart the panel scan and LVGL refresh
-         * together. On this TE-less panel this is our software VSync anchor.
-         */
         saver_media_index = 0U;
         draw_custom_saver_frame(0U);
-
-        lv_disp_t *disp = lv_disp_get_default();
-        lv_timer_t *refr_timer =
-            disp ? _lv_disp_get_refr_timer(disp) : NULL;
-
-        if (refr_timer) {
-            lv_timer_pause(refr_timer);
-            k_msleep(2);
-            (void)lumi_panel_resync_scan();
-            lv_timer_set_period(refr_timer, 40);
-            lv_timer_reset(refr_timer);
-            lv_timer_resume(refr_timer);
-        }
-
         saver_media_last_ms = lv_tick_get();
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
@@ -1134,6 +1152,8 @@ void lumi_ui_saver_anim_end(void) {
         saver_media_valid = true;
         saver_media_index = 0U;
         saver_media_last_ms = 0U;
+        saver_media_cache_loaded = false;
+        (void)saver_flash_cache_all_frames();
     } else {
         saver_media_valid = false;
     }
@@ -1151,6 +1171,7 @@ void lumi_ui_saver_anim_clear(void) {
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
+    saver_media_cache_loaded = false;
     lumi_ui_note_activity();
 }
 
@@ -1293,6 +1314,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
     (void)saver_flash_load_metadata();
+    (void)saver_flash_cache_all_frames();
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
     ui_last_activity_ms = k_uptime_get_32();
@@ -1573,24 +1595,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-
-/* Keep animation updates and LVGL display flushes on the same 40 ms cadence
- * (25 Hz / 25 FPS) so their phases do not continuously drift apart.
- */
-lv_timer_t *saver_timer = lv_timer_create(refresh_screensaver, 40, NULL);
-lv_disp_t *disp = lv_disp_get_default();
-if (disp) {
-    lv_timer_t *refr_timer = _lv_disp_get_refr_timer(disp);
-    if (refr_timer) {
-        lv_timer_set_period(refr_timer, 40);
-
-        /* Keep both software timers on the same 40 ms period.
-         * The actual panel/flush phase is anchored when the screensaver starts.
-         */
-        lv_timer_reset(saver_timer);
-        lv_timer_reset(refr_timer);
-    }
-}
+lv_timer_create(refresh_screensaver, 50, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
