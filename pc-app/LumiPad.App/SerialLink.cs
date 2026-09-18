@@ -258,6 +258,45 @@ public sealed class SerialLink : IDisposable
         }
     }
 
+    public async Task SendScreensaverAnimationAsync(
+        ScreensaverAnimation animation,
+        IProgress<int>? progress = null)
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("LumiPad is not connected.");
+
+        if (animation.Frames.Count < 1 ||
+            animation.Frames.Count > ScreensaverMediaService.MaxFrames)
+        {
+            throw new InvalidOperationException("Invalid screensaver frame count.");
+        }
+
+        await SendLineAsync(
+            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}");
+
+        for (int i = 0; i < animation.Frames.Count; i++)
+        {
+            byte[] frame = animation.Frames[i];
+
+            if (frame.Length !=
+                ScreensaverMediaService.Width * ScreensaverMediaService.Height)
+            {
+                throw new InvalidOperationException("Invalid screensaver frame size.");
+            }
+
+            string base64 = Convert.ToBase64String(frame);
+            await SendLineAsync($"SAVFRAME|{i}|{base64}");
+
+            progress?.Report(
+                (int)Math.Round((i + 1) * 100.0 / animation.Frames.Count));
+        }
+
+        await SendLineAsync("SAVEND");
+    }
+
+    public void ClearScreensaverAnimation() =>
+        _ = SendLineAsync("SAVCLEAR");
+
     public void ClearNowPlaying()
     {
         _lastBitmapKey = "";
