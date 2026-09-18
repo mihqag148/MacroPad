@@ -376,6 +376,15 @@ public sealed class SerialLink : IDisposable
         return reader.ReadString(reader.UnconsumedBufferLength);
     }
 
+    public async Task<bool> IsScreensaverReadyAsync()
+    {
+        if (_bleCharacteristic is null)
+            return false;
+
+        string status = await ReadBleStatusAsync();
+        return status.Contains("SAVER:READY", StringComparison.Ordinal);
+    }
+
     public void ClearScreensaverAnimation() =>
         _ = SendLineAsync("SAVCLEAR");
 
@@ -422,39 +431,17 @@ public sealed class SerialLink : IDisposable
         {
             byte[] data = Encoding.UTF8.GetBytes(line + "\n");
 
-            if (_bleCharacteristic is not null &&
-                _bleCharacteristic.CharacteristicProperties.HasFlag(
-                    GattCharacteristicProperties.WriteWithoutResponse))
-            {
-                const int packetSize = 20;
-
-                for (int offset = 0; offset < data.Length; offset += packetSize)
-                {
-                    int len = Math.Min(packetSize, data.Length - offset);
-                    using var writer = new DataWriter();
-                    writer.WriteBytes(data.AsSpan(offset, len).ToArray());
-
-                    var status = await _bleCharacteristic.WriteValueAsync(
-                        writer.DetachBuffer(),
-                        GattWriteOption.WriteWithoutResponse);
-
-                    if (status != GattCommunicationStatus.Success)
-                        throw new IOException($"Bluetooth bulk write failed: {status}");
-
-                    if ((offset / packetSize & 7) == 7)
-                        await Task.Delay(1);
-                }
-
-                return;
-            }
-
             if (_bleCharacteristic is not null)
             {
-                // Older firmware fallback.
-                const int packetSize = 20;
-                for (int offset = 0; offset < data.Length; offset += packetSize)
+                // Screensaver data must be lossless. WriteWithoutResponse can
+                // overrun the Windows/BLE transmit queue during a long GIF
+                // upload and still report success to the app. Use acknowledged
+                // ATT writes so every fragment reaches the nRF52840 in order.
+                const int chunkSize = 20;
+
+                for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
-                    int len = Math.Min(packetSize, data.Length - offset);
+                    int len = Math.Min(chunkSize, data.Length - offset);
                     using var writer = new DataWriter();
                     writer.WriteBytes(data.AsSpan(offset, len).ToArray());
 
@@ -465,6 +452,7 @@ public sealed class SerialLink : IDisposable
                     if (status != GattCommunicationStatus.Success)
                         throw new IOException($"Bluetooth bulk write failed: {status}");
                 }
+
                 return;
             }
 
