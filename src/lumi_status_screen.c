@@ -978,9 +978,6 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
-        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-        saver_force_show = false;
-        k_mutex_unlock(&lumi_ui_config_lock);
 
         /* Only uploaded GIF/video frames are used as a screensaver.
          * Built-in Tahoe/Minimal fallback is intentionally disabled.
