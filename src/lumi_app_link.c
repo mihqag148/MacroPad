@@ -387,14 +387,30 @@ static void handle_line(char *line, bool from_usb) {
         handle_art(save);
     } else if (strcmp(root, "SAVBEGIN") == 0) {
         handle_savbegin(save);
+        if (from_usb) {
+            write_text_usb("SAVACK|BEGIN\r\n");
+        }
     } else if (strcmp(root, "SAVCHUNK") == 0) {
         handle_savchunk(save);
+        if (from_usb) {
+            write_text_usb(
+                strstr(lumi_status, "SAVER:ERROR") != NULL
+                    ? "SAVACK|ERROR\r\n"
+                    : "SAVACK|CHUNK\r\n");
+        }
     } else if (strcmp(root, "SAVEND") == 0) {
         lumi_ui_saver_anim_end();
+        bool saver_ok = lumi_ui_saver_anim_is_valid();
         snprintf(lumi_status, sizeof(lumi_status),
-                 lumi_ui_saver_anim_is_valid()
+                 saver_ok
                      ? "LUMIPAD|2|SAVER:READY"
                      : "LUMIPAD|2|SAVER:ERROR");
+        if (from_usb) {
+            write_text_usb(
+                saver_ok
+                    ? "SAVACK|READY\r\n"
+                    : "SAVACK|ERROR\r\n");
+        }
     } else if (strcmp(root, "SAVCLEAR") == 0) {
         lumi_ui_saver_anim_clear();
         snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:EMPTY");
