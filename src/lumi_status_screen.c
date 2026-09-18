@@ -899,6 +899,10 @@ void lumi_ui_saver_anim_end(void) {
     lumi_ui_note_activity();
 }
 
+bool lumi_ui_saver_anim_is_valid(void) {
+    return saver_media_valid;
+}
+
 void lumi_ui_saver_anim_clear(void) {
     saver_media_valid = false;
     saver_media_frame_count = 0U;
