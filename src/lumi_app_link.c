@@ -483,7 +483,8 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
      * upload/error text only while an upload is in progress or has failed.
      */
     const char *status = lumi_status;
-    if (strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
+    if (strncmp(lumi_status, "MEM|", 4) != 0 &&
+        strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
         strstr(lumi_status, "SAVER:ERROR") == NULL) {
         status = lumi_ui_saver_anim_is_valid()
             ? "LUMIPAD|2|SAVER:READY"
