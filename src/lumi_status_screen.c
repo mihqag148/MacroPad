@@ -689,7 +689,7 @@ static void init_screensaver(lv_obj_t *screen) {
         LUMI_SAVER_FRAME_H,
         LV_IMG_CF_TRUE_COLOR);
     lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(saver_media_canvas, 1024); /* 80x43 -> 320x172 */
+    lv_img_set_zoom(saver_media_canvas, 512); /* 160x86 -> 320x172 */
     lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1053,8 +1053,8 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
-    saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)33U, (uint16_t)5000U);
+    ARG_UNUSED(frame_interval_ms);
+    saver_media_interval_ms = 40U;
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
