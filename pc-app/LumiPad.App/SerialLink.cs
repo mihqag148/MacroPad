@@ -320,13 +320,12 @@ public sealed class SerialLink : IDisposable
                 string base64 =
                     Convert.ToBase64String(frame, offset, len);
 
-                await SendLineAsync(
+                await SendBulkLineAsync(
                     $"SAVCHUNK|{i}|{offset}|{base64}");
 
-                // Leave airtime for HID/encoder reports while a large
-                // screensaver upload is in progress.
+                // Briefly yield airtime to the keyboard HID/encoder traffic.
                 if (_bleCharacteristic is not null)
-                    await Task.Delay(8);
+                    await Task.Delay(2);
 
                 sentChunks++;
                 progress?.Report(
@@ -400,6 +399,74 @@ public sealed class SerialLink : IDisposable
 
     public Task EnterDfuAsync() =>
         SendLineAsync("SYS|DFU");
+
+    private async Task SendBulkLineAsync(string line)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+
+            if (_bleCharacteristic is not null &&
+                _bleCharacteristic.CharacteristicProperties.HasFlag(
+                    GattCharacteristicProperties.WriteWithoutResponse))
+            {
+                const int packetSize = 20;
+
+                for (int offset = 0; offset < data.Length; offset += packetSize)
+                {
+                    int len = Math.Min(packetSize, data.Length - offset);
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data.AsSpan(offset, len).ToArray());
+
+                    var status = await _bleCharacteristic.WriteValueAsync(
+                        writer.DetachBuffer(),
+                        GattWriteOption.WriteWithoutResponse);
+
+                    if (status != GattCommunicationStatus.Success)
+                        throw new IOException($"Bluetooth bulk write failed: {status}");
+
+                    if ((offset / packetSize & 7) == 7)
+                        await Task.Delay(1);
+                }
+
+                return;
+            }
+
+            if (_bleCharacteristic is not null)
+            {
+                // Older firmware fallback.
+                const int packetSize = 20;
+                for (int offset = 0; offset < data.Length; offset += packetSize)
+                {
+                    int len = Math.Min(packetSize, data.Length - offset);
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data.AsSpan(offset, len).ToArray());
+
+                    var status = await _bleCharacteristic.WriteValueAsync(
+                        writer.DetachBuffer(),
+                        GattWriteOption.WriteWithResponse);
+
+                    if (status != GattCommunicationStatus.Success)
+                        throw new IOException($"Bluetooth bulk write failed: {status}");
+                }
+                return;
+            }
+
+            if (_port?.IsOpen == true)
+                _port.Write(data, 0, data.Length);
+        }
+        catch (Exception ex)
+        {
+            LinkError?.Invoke(ex.Message);
+            Disconnect();
+            throw;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
 
     private async Task SendLineAsync(string line)
     {
