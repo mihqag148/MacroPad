@@ -234,10 +234,9 @@ public partial class MainWindow : Window
 
     private static void SetResourceColor(string key, string hex)
     {
-        if (Application.Current.Resources[key] is SolidColorBrush brush &&
-            System.Windows.Media.ColorConverter.ConvertFromString(hex) is MediaColor color)
+        if (System.Windows.Media.ColorConverter.ConvertFromString(hex) is MediaColor color)
         {
-            brush.Color = color;
+            Application.Current.Resources[key] = new SolidColorBrush(color);
         }
     }
 
