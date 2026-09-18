@@ -1,0 +1,37 @@
+name: Build LumiPad Windows app
+
+on:
+  push:
+    paths:
+      - "pc-app/**"
+      - ".github/workflows/build-app.yml"
+  pull_request:
+    paths:
+      - "pc-app/**"
+      - ".github/workflows/build-app.yml"
+  workflow_dispatch:
+
+jobs:
+  windows-app:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore pc-app/LumiPad.App/LumiPad.App.csproj
+
+      - name: Publish
+        run: dotnet publish pc-app/LumiPad.App/LumiPad.App.csproj -c Release -r win-x64 --self-contained false -o publish/LumiPad
+
+      - name: Upload LumiPad app
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumiPad-Windows-x64
+          path: publish/LumiPad/**
+          if-no-files-found: error
