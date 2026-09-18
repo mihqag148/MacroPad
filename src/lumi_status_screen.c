@@ -1556,7 +1556,21 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 33, NULL); /* ~30 FPS display refresh */
+
+/* Keep animation updates and LVGL display flushes on the same 40 ms cadence
+ * (25 Hz / 25 FPS) so their phases do not continuously drift apart.
+ */
+lv_timer_t *saver_timer = lv_timer_create(refresh_screensaver, 40, NULL);
+lv_disp_t *disp = lv_disp_get_default();
+if (disp) {
+    lv_timer_t *refr_timer = _lv_disp_get_refr_timer(disp);
+    if (refr_timer) {
+        lv_timer_set_period(refr_timer, 40);
+        lv_timer_reset(saver_timer);
+        lv_timer_reset(refr_timer);
+    }
+}
+
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
 return screen;
