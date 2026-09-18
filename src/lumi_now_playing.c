@@ -68,6 +68,7 @@ static lv_obj_t *artist_canvas;
 static lv_obj_t *progress;
 static lv_obj_t *elapsed_label;
 static lv_obj_t *remain_label;
+static lv_obj_t *play_control_icon;
 static lv_obj_t *play_label;
 
 static lv_color_t title_canvas_buf[LUMI_TEXT_W * LUMI_TITLE_H];
@@ -163,7 +164,8 @@ static void show_music_page_animated(void) {
 
     lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(page);
-    lv_obj_set_x(page, 18);
+    /* Slide in from the left toward the normal position. */
+    lv_obj_set_x(page, -52);
     lv_obj_set_style_opa(page, 0, 0);
 
     lv_anim_t a;
@@ -171,7 +173,7 @@ static void show_music_page_animated(void) {
     lv_anim_init(&a);
     lv_anim_set_var(&a, page);
     lv_anim_set_exec_cb(&a, page_anim_x_cb);
-    lv_anim_set_values(&a, 18, 0);
+    lv_anim_set_values(&a, -52, 0);
     lv_anim_set_time(&a, 280);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_start(&a);
@@ -292,6 +294,14 @@ static void apply_music_state(struct k_work *work) {
     playing_now = state.playing;
     k_mutex_unlock(&state_lock);
     lv_label_set_text(play_label, playing_now ? "PLAYING" : "PAUSED");
+    if (play_control_icon) {
+        lv_label_set_text(play_control_icon, playing_now ? "II" : LV_SYMBOL_PLAY);
+        lv_obj_set_style_text_color(
+            play_control_icon,
+            lv_color_hex(playing_now ? 0xFF9F0A : 0x30D158),
+            0
+        );
+    }
 
     update_header_status();
     show_music_page_animated();
@@ -641,9 +651,9 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     lv_label_set_text(prev, LV_SYMBOL_PREV);
     lv_obj_set_pos(prev, 112, 127);
 
-    lv_obj_t *play = make_text(page, &lv_font_montserrat_20, 0x30D158);
-    lv_label_set_text(play, LV_SYMBOL_PLAY);
-    lv_obj_set_pos(play, 190, 127);
+    play_control_icon = make_text(page, &lv_font_montserrat_20, 0x30D158);
+    lv_label_set_text(play_control_icon, LV_SYMBOL_PLAY);
+    lv_obj_set_pos(play_control_icon, 190, 127);
 
     lv_obj_t *next = make_text(page, &lv_font_montserrat_20, 0x64D2FF);
     lv_label_set_text(next, LV_SYMBOL_NEXT);
