@@ -1010,6 +1010,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SetScreensaverUploadState(
+        string state,
+        MediaColor color)
+    {
+        ScreensaverUploadState.Text = state;
+        ScreensaverUploadDot.Fill = new SolidColorBrush(color);
+    }
+
     private async void ChooseScreensaverMedia_Click(
         object sender,
         RoutedEventArgs e)
@@ -1087,11 +1095,17 @@ public partial class MainWindow : Window
             ScreensaverSendStatus.Text =
                 L("Ready. Send once to store the lightweight loop in LumiPad RAM.",
                   "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào RAM LumiPad.");
+            SetScreensaverUploadState(
+                L("Ready to upload", "Sẵn sàng tải lên"),
+                MediaColor.FromRgb(255, 159, 10));
             SendScreensaverButton.IsEnabled = true;
         }
         catch (Exception ex)
         {
             _screensaverAnimation = null;
+            SetScreensaverUploadState(
+                L("Prepare failed", "Xử lý thất bại"),
+                MediaColor.FromRgb(255, 69, 58));
             ScreensaverPreviewImage.Source = null;
             ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
             ScreensaverPreviewHint.Visibility = Visibility.Visible;
@@ -1116,6 +1130,9 @@ public partial class MainWindow : Window
 
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
+        SetScreensaverUploadState(
+            L("Uploading…", "Đang tải lên…"),
+            MediaColor.FromRgb(255, 159, 10));
         ScreensaverSendStatus.Text =
             L("Sending frames… Bluetooth can take a little while.",
               "Đang gửi frame… Bluetooth có thể mất một lúc.");
@@ -1128,17 +1145,36 @@ public partial class MainWindow : Window
 
         try
         {
-            await _serial.SendScreensaverAnimationAsync(
+            bool verified = await _serial.SendScreensaverAnimationAsync(
                 _screensaverAnimation,
                 progress);
 
             ScreensaverSendProgress.Value = 100;
-            ScreensaverSendStatus.Text =
-                L("Sent. The custom GIF/video loop will play when the screensaver starts.",
-                  "Đã gửi. GIF/video tùy chỉnh sẽ chạy khi bảo vệ màn hình bắt đầu.");
+
+            if (verified)
+            {
+                SetScreensaverUploadState(
+                    L("Uploaded & verified", "Đã tải lên và xác nhận"),
+                    MediaColor.FromRgb(48, 209, 88));
+                ScreensaverSendStatus.Text =
+                    L("LumiPad confirmed the custom screensaver is ready.",
+                      "LumiPad đã xác nhận bảo vệ màn hình tùy chỉnh sẵn sàng.");
+            }
+            else
+            {
+                SetScreensaverUploadState(
+                    L("Upload failed", "Tải lên thất bại"),
+                    MediaColor.FromRgb(255, 69, 58));
+                ScreensaverSendStatus.Text =
+                    L("LumiPad did not confirm the upload. Flash the matching firmware and try again.",
+                      "LumiPad chưa xác nhận dữ liệu. Hãy flash đúng firmware đi kèm rồi thử lại.");
+            }
         }
         catch (Exception ex)
         {
+            SetScreensaverUploadState(
+                L("Upload failed", "Tải lên thất bại"),
+                MediaColor.FromRgb(255, 69, 58));
             ScreensaverSendStatus.Text = L($"Send failed: {ex.Message}", $"Gửi thất bại: {ex.Message}");
         }
         finally
@@ -1164,6 +1200,9 @@ public partial class MainWindow : Window
             L("Converted to a lightweight loop for LumiPad.",
               "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
         ScreensaverSendProgress.Value = 0;
+        SetScreensaverUploadState(
+            L("Not uploaded", "Chưa tải lên"),
+            MediaColor.FromRgb(99, 99, 102));
         ScreensaverSendStatus.Text =
             L("Custom screensaver cleared; LumiPad falls back to its built-in saver.",
               "Đã xóa bảo vệ màn hình tùy chỉnh; LumiPad sẽ dùng bảo vệ màn hình mặc định.");
