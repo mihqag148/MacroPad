@@ -56,8 +56,12 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
-static lv_obj_t *saver_media_canvas;
-static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
+#define SAVER_STRIPE_SRC_ROWS 4U
+#define SAVER_STRIPE_DST_ROWS (SAVER_STRIPE_SRC_ROWS * 2U)
+
+static const struct device *const saver_display =
+    DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+static lv_color_t saver_stripe_buf[320U * SAVER_STRIPE_DST_ROWS];
 static lv_color_t saver_rgb332_lut[256];
 static bool saver_rgb332_lut_ready;
 
@@ -685,16 +689,6 @@ static void init_screensaver(lv_obj_t *screen) {
     lv_obj_set_style_text_color(saver_title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(saver_title);
 
-    saver_media_canvas = lv_canvas_create(screensaver);
-    lv_canvas_set_buffer(
-        saver_media_canvas,
-        saver_media_canvas_buf,
-        LUMI_SAVER_FRAME_W,
-        LUMI_SAVER_FRAME_H,
-        LV_IMG_CF_TRUE_COLOR);
-    lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(saver_media_canvas, 512); /* 160x86 -> 320x172 */
-    lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
 static int saver_flash_open_once(void) {
@@ -934,7 +928,7 @@ static void saver_flash_invalidate(void) {
 }
 
 static void draw_custom_saver_frame(uint8_t frame_index) {
-    if (!saver_media_canvas ||
+    if (!device_is_ready(saver_display) ||
         frame_index >= saver_media_frame_count) {
         return;
     }
@@ -956,15 +950,59 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
         saver_rgb332_lut_ready = true;
     }
 
-    for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        saver_media_canvas_buf[i] =
-            saver_rgb332_lut[saver_media_frame_buffer[i]];
+    /* Write the 2x image as narrow horizontal stripes instead of asking
+     * LVGL to invalidate one zoomed 320x172 object. Total bytes are the same,
+     * but each RAMWR window is only up to 8 rows high, so any unsynchronised
+     * tear is confined to a much thinner band.
+     */
+    for (uint16_t src_y = 0U;
+         src_y < LUMI_SAVER_FRAME_H;
+         src_y += SAVER_STRIPE_SRC_ROWS) {
+
+        uint16_t src_rows =
+            MIN((uint16_t)SAVER_STRIPE_SRC_ROWS,
+                (uint16_t)(LUMI_SAVER_FRAME_H - src_y));
+        uint16_t dst_rows = (uint16_t)(src_rows * 2U);
+
+        for (uint16_t row = 0U; row < src_rows; row++) {
+            const uint8_t *src =
+                &saver_media_frame_buffer[
+                    (size_t)(src_y + row) * LUMI_SAVER_FRAME_W];
+
+            lv_color_t *dst0 =
+                &saver_stripe_buf[(size_t)(row * 2U) * 320U];
+            lv_color_t *dst1 = dst0 + 320U;
+
+            for (uint16_t x = 0U; x < LUMI_SAVER_FRAME_W; x++) {
+                lv_color_t color = saver_rgb332_lut[src[x]];
+                dst0[x * 2U] = color;
+                dst0[x * 2U + 1U] = color;
+                dst1[x * 2U] = color;
+                dst1[x * 2U + 1U] = color;
+            }
+        }
+
+        struct display_buffer_descriptor desc = {
+            .buf_size = (size_t)320U * dst_rows * sizeof(lv_color_t),
+            .width = 320U,
+            .height = dst_rows,
+            .pitch = 320U,
+        };
+
+        int rc = display_write(
+            saver_display,
+            0U,
+            (uint16_t)(src_y * 2U),
+            &desc,
+            saver_stripe_buf);
+
+        if (rc != 0) {
+            break;
+        }
     }
 
     saver_prefetch_valid = false;
-    lv_obj_invalidate(saver_media_canvas);
 }
-
 
 static void refresh_screensaver(lv_timer_t *timer) {
     ARG_UNUSED(timer);
@@ -1042,14 +1080,6 @@ static void refresh_screensaver(lv_timer_t *timer) {
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
 
-        lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(screensaver);
-        lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
-
         saver_media_index = 0U;
         saver_prefetch_valid = false;
         (void)saver_flash_prefetch_frame(0U);
@@ -1057,8 +1087,6 @@ static void refresh_screensaver(lv_timer_t *timer) {
         saver_media_last_ms = lv_tick_get();
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
-        lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
 
         if (root_screen) {
             lv_obj_invalidate(root_screen);
@@ -1095,7 +1123,6 @@ static void refresh_screensaver(lv_timer_t *timer) {
         (void)saver_flash_prefetch_frame(next_index);
     }
 
-    lv_obj_move_foreground(screensaver);
 }
 
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
@@ -1206,11 +1233,9 @@ void lumi_ui_saver_anim_clear(void) {
 static void lumi_panel_refresh_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
-    /* The ST7789 keeps GRAM across soft sleep, but an input/media update can
-     * arrive while SLPOUT is still waiting its required 120 ms. Force one
-     * complete LVGL redraw after DISPON so encoder activity and Now Playing
-     * are visible immediately after wake.
-     */
+    if (sleep_overlay) {
+        lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
     if (root_screen) {
         lv_obj_invalidate(root_screen);
     }
@@ -1218,11 +1243,18 @@ static void lumi_panel_refresh_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_refresh_work, lumi_panel_refresh_work_handler);
 
+static void lumi_panel_sleep_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    (void)lumi_panel_set_sleep(true);
+}
+
+K_WORK_DEFINE(lumi_panel_sleep_work, lumi_panel_sleep_work_handler);
+
 static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     if (lumi_panel_set_sleep(false) == 0) {
-        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_refresh_work);
+        lumi_panel_refresh_work_handler(NULL);
     }
 }
 
@@ -1244,7 +1276,7 @@ void lumi_ui_note_activity(void) {
     lumi_rgb_set_suspended(false);
 
     if (was_sleeping) {
-        k_work_submit(&lumi_panel_wake_work);
+        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_wake_work);
     }
 }
 
@@ -1351,7 +1383,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         k_mutex_unlock(&lumi_ui_config_lock);
 
         lumi_rgb_set_suspended(true);
-        (void)lumi_panel_set_sleep(true);
+        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
     }
 
     k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));

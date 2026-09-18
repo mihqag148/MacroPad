@@ -14,50 +14,23 @@ static const struct spi_dt_spec bus =
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
 int lumi_panel_init(void) {
-    /* This ST7789 panel variant needs display inversion enabled for
-     * normal black/white polarity. D/C is active-low: logical 1 means
-     * command (physical 0). BL is tied to 3V3.
+    /* Keep the known-good ST7789 baseline timing. This panel has no TE
+     * feedback wired, so forcing FRCTRL2/porch cannot synchronize RAMWR.
      */
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
         return -ENODEV;
     }
+
     uint8_t command = 0x21; /* INVON */
     struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
     const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
+
     int err = gpio_pin_set_dt(&dc, 1);
     if (err == 0) {
         err = spi_write_dt(&bus, &buffers);
     }
     if (err) {
         LOG_ERR("Panel inversion setup failed: %d", err);
-        return err;
-    }
-
-    /* FRCTRL2 (C6h), RTNA=0x1F. Together with the 0x6C/0x6C porch
-     * settings this is the nominal ~25 Hz panel timing target.
-     */
-    command = 0xC6;
-    err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
-    }
-    if (err != 0) {
-        LOG_ERR("Panel FRCTRL2 command failed: %d", err);
-        return err;
-    }
-
-    uint8_t frctrl2 = 0x1F;
-    struct spi_buf data_buffer = {.buf = &frctrl2, .len = 1U};
-    const struct spi_buf_set data_buffers = {
-        .buffers = &data_buffer,
-        .count = 1U,
-    };
-    err = gpio_pin_set_dt(&dc, 0);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &data_buffers);
-    }
-    if (err) {
-        LOG_ERR("Panel FRCTRL2 data failed: %d", err);
     }
     return err;
 }
@@ -67,29 +40,23 @@ int lumi_panel_set_sleep(bool sleeping) {
         return -ENODEV;
     }
 
-    uint8_t command = sleeping ? 0x28 : 0x11;
+    /* Soft sleep deliberately uses DISPOFF instead of SLPIN. Keeping the
+     * controller awake makes wake reliable and avoids the 120 ms SLPOUT
+     * recovery window that previously lost the first LVGL/Now Playing redraw.
+     */
+    uint8_t command = sleeping ? 0x28 : 0x29; /* DISPOFF / DISPON */
     struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
     const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
 
     int err = gpio_pin_set_dt(&dc, 1);
-    if (err != 0) {
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+    if (err) {
+        LOG_ERR("Panel %s failed: %d", sleeping ? "off" : "on", err);
         return err;
     }
 
-    err = spi_write_dt(&bus, &buffers);
-    if (err != 0) {
-        return err;
-    }
-
-    if (sleeping) {
-        k_msleep(10);
-        command = 0x10; /* SLPIN */
-        err = spi_write_dt(&bus, &buffers);
-    } else {
-        k_msleep(120);
-        command = 0x29; /* DISPON */
-        err = spi_write_dt(&bus, &buffers);
-    }
-
-    return err;
+    k_msleep(sleeping ? 5 : 10);
+    return 0;
 }
