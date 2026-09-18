@@ -729,7 +729,7 @@ static bool saver_flash_load_metadata(void) {
         header.frame_bytes != LUMI_SAVER_FRAME_BYTES ||
         header.frame_count < 1U ||
         header.frame_count > LUMI_SAVER_MAX_FRAMES ||
-        header.interval_ms < 40U ||
+        header.interval_ms < 33U ||
         header.data_size !=
             (uint32_t)header.frame_count * LUMI_SAVER_FRAME_BYTES) {
         return false;
@@ -1076,7 +1076,7 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)40U, (uint16_t)1000U);
+        CLAMP(frame_interval_ms, (uint16_t)33U, (uint16_t)5000U);
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
