@@ -70,10 +70,10 @@
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="MaxDropDownHeight" Value="240"/>
-            <Setter Property="Foreground" Value="#111111"/>
-            <Setter Property="TextElement.Foreground" Value="#111111"/>
-            <Setter Property="Background" Value="#F2F2F2"/>
-            <Setter Property="BorderBrush" Value="#B8B8BC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="TextElement.Foreground" Value="White"/>
+            <Setter Property="Background" Value="#27272A"/>
+            <Setter Property="BorderBrush" Value="#505055"/>
             <Setter Property="Padding" Value="10,7"/>
             <Setter Property="MinHeight" Value="34"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -91,7 +91,7 @@
                 </Trigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{DynamicResource Accent}"/>
-                    <Setter Property="Foreground" Value="#111111"/>
+                    <Setter Property="Foreground" Value="White"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -142,8 +142,8 @@
                     <ControlTemplate TargetType="TabItem">
                         <Border x:Name="TabBorder"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
                                 CornerRadius="9"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter ContentSource="Header"
@@ -159,12 +159,12 @@
                                         Value="{DynamicResource Card2}"/>
                                 <Setter TargetName="TabBorder"
                                         Property="BorderBrush"
-                                        Value="{DynamicResource Line}"/>
+                                        Value="Transparent"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="TabBorder"
-                                        Property="BorderBrush"
-                                        Value="{DynamicResource Accent}"/>
+                                        Property="Background"
+                                        Value="{DynamicResource Card2}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
