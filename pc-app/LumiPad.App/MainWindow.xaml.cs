@@ -44,6 +44,8 @@ public partial class MainWindow : Window
     private int _rgbBrightness = 25;
     private int _rgbSpeed = 50;
     private bool _rgbEnabled = true;
+    private int _rgbProfileIndex;
+    private RgbProfileSetting[] _rgbProfiles = CreateDefaultRgbProfiles();
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
 
     private Forms.NotifyIcon? _trayIcon;
@@ -362,6 +364,23 @@ public partial class MainWindow : Window
             "LumiPad",
             "settings.json");
 
+    private sealed class RgbProfileSetting
+    {
+        public int Effect { get; set; }
+        public byte R { get; set; }
+        public byte G { get; set; }
+        public byte B { get; set; }
+    }
+
+    private static RgbProfileSetting[] CreateDefaultRgbProfiles() =>
+    [
+        new() { Effect = 0, R = 255, G = 120, B = 0 },
+        new() { Effect = 1, R = 180, G = 40, B = 255 },
+        new() { Effect = 2, R = 255, G = 90, B = 0 },
+        new() { Effect = 3, R = 0, G = 170, B = 255 },
+        new() { Effect = 3, R = 80, G = 255, B = 100 },
+    ];
+
     private sealed class AppSettings
     {
         public bool RgbEnabled { get; set; } = true;
@@ -372,6 +391,7 @@ public partial class MainWindow : Window
         public byte R { get; set; } = 255;
         public byte G { get; set; } = 120;
         public byte B { get; set; }
+        public RgbProfileSetting[]? RgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public string? ScreensaverMediaPath { get; set; }
@@ -399,6 +419,21 @@ public partial class MainWindow : Window
             _r = settings.R;
             _g = settings.G;
             _b = settings.B;
+
+            if (settings.RgbProfiles is { Length: >= 5 })
+            {
+                _rgbProfiles = settings.RgbProfiles
+                    .Take(5)
+                    .Select(p => new RgbProfileSetting
+                    {
+                        Effect = Math.Clamp(p.Effect, 0, 4),
+                        R = p.R,
+                        G = p.G,
+                        B = p.B
+                    })
+                    .ToArray();
+            }
+
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _screensaverMediaPath = settings.ScreensaverMediaPath;
@@ -427,6 +462,15 @@ public partial class MainWindow : Window
                 R = _r,
                 G = _g,
                 B = _b,
+                RgbProfiles = _rgbProfiles
+                    .Select(p => new RgbProfileSetting
+                    {
+                        Effect = p.Effect,
+                        R = p.R,
+                        G = p.G,
+                        B = p.B
+                    })
+                    .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 ScreensaverMediaPath = _screensaverMediaPath,
@@ -453,6 +497,7 @@ public partial class MainWindow : Window
         if (RgbSpeedSlider is not null)
             RgbSpeedSlider.Value = _rgbSpeed;
 
+        SelectComboTag(RgbProfileCombo, _rgbProfileIndex.ToString());
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
@@ -1048,6 +1093,56 @@ public partial class MainWindow : Window
     private async void NextButton_Click(object sender, RoutedEventArgs e) =>
         await _nowPlaying.NextAsync();
 
+    private void RgbProfileCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count == 0 ||
+            e.AddedItems[0] is not ComboBoxItem item ||
+            !int.TryParse(item.Tag?.ToString(), out int index))
+        {
+            return;
+        }
+
+        _rgbProfileIndex = Math.Clamp(index, 0, _rgbProfiles.Length - 1);
+        var profile = _rgbProfiles[_rgbProfileIndex];
+
+        _rgbEffect = profile.Effect;
+        _r = profile.R;
+        _g = profile.G;
+        _b = profile.B;
+
+        UpdateRgbReadout();
+    }
+
+    private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
+    {
+        int index = Math.Clamp(_rgbProfileIndex, 0, _rgbProfiles.Length - 1);
+        _rgbProfiles[index] = new RgbProfileSetting
+        {
+            Effect = Math.Clamp(_rgbEffect, 0, 4),
+            R = _r,
+            G = _g,
+            B = _b
+        };
+
+        SaveAppSettings();
+
+        if (_serial.IsConnected)
+        {
+            _serial.SetRgbProfile(
+                index,
+                _rgbProfiles[index].Effect,
+                _rgbProfiles[index].R,
+                _rgbProfiles[index].G,
+                _rgbProfiles[index].B);
+        }
+
+        BottomStatus.Text = L(
+            $"RGB profile {index + 1} saved.",
+            $"Đã lưu RGB cho profile {index + 1}.");
+    }
+
     private void LedEnabled_Changed(object sender, RoutedEventArgs e)
     {
         if (!_uiReady)
@@ -1275,6 +1370,12 @@ public partial class MainWindow : Window
 
         // Preserve the known-working pre-redesign protocol: individual
         // commands are sent in a deterministic order instead of RGB|STATE.
+        for (int i = 0; i < _rgbProfiles.Length; i++)
+        {
+            var profile = _rgbProfiles[i];
+            _serial.SetRgbProfile(i, profile.Effect, profile.R, profile.G, profile.B);
+        }
+
         _serial.SetEnabled(_rgbEnabled);
         _serial.SetBrightness(_rgbBrightness);
         _serial.SetSpeed(_rgbSpeed);
