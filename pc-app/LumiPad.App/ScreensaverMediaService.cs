@@ -58,7 +58,7 @@ public static class ScreensaverMediaService
             {
                 int firstDelayCs = BitConverter.ToInt32(item.Value, 0);
                 if (firstDelayCs > 0)
-                    delayMs = Math.Clamp(firstDelayCs * 10, 66, 700);
+                    delayMs = Math.Clamp(firstDelayCs * 10, 40, 700);
             }
         }
         catch
@@ -99,10 +99,10 @@ public static class ScreensaverMediaService
         int count = MaxFrames;
         double spanMs = Math.Min(
             duration.TotalMilliseconds,
-            MaxFrames * (1000.0 / 15.0));
+            MaxFrames * (1000.0 / 25.0));
 
         if (spanMs < 250.0)
-            count = Math.Max(2, (int)Math.Ceiling(spanMs / (1000.0 / 15.0)));
+            count = Math.Max(2, (int)Math.Ceiling(spanMs / (1000.0 / 25.0)));
 
         var frames = new List<byte[]>(count);
 
@@ -128,7 +128,7 @@ public static class ScreensaverMediaService
 
         int intervalMs = Math.Clamp(
             (int)Math.Round(spanMs / count),
-            66,
+            40,
             700);
 
         return new ScreensaverAnimation(
