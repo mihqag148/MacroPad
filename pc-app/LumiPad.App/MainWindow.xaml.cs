@@ -668,7 +668,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void SelectComboTag(ComboBox combo, string tag)
+    private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
         foreach (var entry in combo.Items)
         {
@@ -681,7 +681,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int SelectedIntTag(ComboBox combo, int fallback)
+    private static int SelectedIntTag(System.Windows.Controls.ComboBox combo, int fallback)
     {
         if (combo.SelectedItem is ComboBoxItem item &&
             int.TryParse(item.Tag?.ToString(), out int value))
