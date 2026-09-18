@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using MediaColor = System.Windows.Media.Color;
@@ -32,6 +33,8 @@ public partial class MainWindow : Window
     private byte _b = 0;
     private ScreensaverAnimation? _screensaverAnimation;
     private string? _screensaverMediaPath;
+    private readonly DispatcherTimer _screensaverPreviewTimer = new();
+    private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
     private int _screensaverDelaySeconds = 60;
@@ -44,6 +47,22 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeTrayIcon();
+
+        _screensaverPreviewTimer.Tick += (_, _) =>
+        {
+            if (_screensaverAnimation is null ||
+                _screensaverAnimation.Frames.Count < 2)
+                return;
+
+            _screensaverPreviewIndex =
+                (_screensaverPreviewIndex + 1) %
+                _screensaverAnimation.Frames.Count;
+
+            ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
+                _screensaverAnimation.Frames[_screensaverPreviewIndex],
+                ScreensaverMediaService.Width,
+                ScreensaverMediaService.Height);
+        };
 
         Loaded += async (_, _) =>
         {
@@ -412,6 +431,7 @@ public partial class MainWindow : Window
     {
         _allowExit = true;
 
+        _screensaverPreviewTimer.Stop();
         _reconnectCts.Cancel();
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
@@ -1146,6 +1166,16 @@ public partial class MainWindow : Window
 
             ScreensaverPreviewImage.Visibility = Visibility.Visible;
             ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
+
+            _screensaverPreviewIndex = 0;
+            _screensaverPreviewTimer.Stop();
+            _screensaverPreviewTimer.Interval =
+                TimeSpan.FromMilliseconds(
+                    Math.Max(40, _screensaverAnimation.FrameIntervalMs));
+
+            if (_screensaverAnimation.Frames.Count > 1)
+                _screensaverPreviewTimer.Start();
+
             ScreensaverSendStatus.Text =
                 L("Ready. Send once to store the lightweight loop in LumiPad RAM.",
                   "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào RAM LumiPad.");
@@ -1157,6 +1187,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _screensaverAnimation = null;
+            _screensaverPreviewTimer.Stop();
             SetScreensaverUploadState(
                 L("Prepare failed", "Xử lý thất bại"),
                 MediaColor.FromRgb(255, 69, 58));
@@ -1244,6 +1275,7 @@ public partial class MainWindow : Window
     {
         _screensaverAnimation = null;
         _screensaverMediaPath = null;
+        _screensaverPreviewTimer.Stop();
         _serial.ClearScreensaverAnimation();
 
         ScreensaverPreviewImage.Source = null;
