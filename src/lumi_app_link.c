@@ -16,6 +16,7 @@
 
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
+#include "lumi_ui_config.h"
 
 LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
@@ -145,6 +146,52 @@ static void handle_art(char *save) {
     lumi_now_playing_set_artwork(artwork_tmp, decoded_len);
 }
 
+static void handle_cfg(char *save) {
+    char *cmd = strtok_r(NULL, "|", &save);
+    if (!cmd) {
+        return;
+    }
+
+    if (strcmp(cmd, "WALL") == 0) {
+        char *r1 = strtok_r(NULL, "|", &save);
+        char *g1 = strtok_r(NULL, "|", &save);
+        char *b1 = strtok_r(NULL, "|", &save);
+        char *r2 = strtok_r(NULL, "|", &save);
+        char *g2 = strtok_r(NULL, "|", &save);
+        char *b2 = strtok_r(NULL, "|", &save);
+
+        if (r1 && g1 && b1 && r2 && g2 && b2) {
+            lumi_ui_set_wallpaper(
+                (uint8_t)atoi(r1), (uint8_t)atoi(g1), (uint8_t)atoi(b1),
+                (uint8_t)atoi(r2), (uint8_t)atoi(g2), (uint8_t)atoi(b2));
+        }
+    } else if (strcmp(cmd, "SAVER") == 0) {
+        char *enabled = strtok_r(NULL, "|", &save);
+        char *style = strtok_r(NULL, "|", &save);
+        char *delay = strtok_r(NULL, "|", &save);
+        char *r1 = strtok_r(NULL, "|", &save);
+        char *g1 = strtok_r(NULL, "|", &save);
+        char *b1 = strtok_r(NULL, "|", &save);
+        char *r2 = strtok_r(NULL, "|", &save);
+        char *g2 = strtok_r(NULL, "|", &save);
+        char *b2 = strtok_r(NULL, "|", &save);
+
+        if (enabled && style && delay && r1 && g1 && b1 && r2 && g2 && b2) {
+            lumi_ui_set_screensaver(
+                atoi(enabled) != 0,
+                (uint8_t)atoi(style),
+                (uint32_t)strtoul(delay, NULL, 10),
+                (uint8_t)atoi(r1), (uint8_t)atoi(g1), (uint8_t)atoi(b1),
+                (uint8_t)atoi(r2), (uint8_t)atoi(g2), (uint8_t)atoi(b2));
+        }
+    } else if (strcmp(cmd, "SLEEP") == 0) {
+        char *seconds = strtok_r(NULL, "|", &save);
+        if (seconds) {
+            lumi_ui_set_sleep_timeout((uint32_t)strtoul(seconds, NULL, 10));
+        }
+    }
+}
+
 static void handle_txt(char *save) {
     char *kind = strtok_r(NULL, "|", &save);
     char *width_s = strtok_r(NULL, "|", &save);
@@ -204,6 +251,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_np(save);
     } else if (strcmp(root, "RGB") == 0) {
         handle_rgb(save);
+    } else if (strcmp(root, "CFG") == 0) {
+        handle_cfg(save);
     } else if (strcmp(root, "TXT") == 0) {
         handle_txt(save);
     } else if (strcmp(root, "ART") == 0) {
