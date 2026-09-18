@@ -1005,9 +1005,26 @@ static void refresh_screensaver(lv_timer_t *timer) {
         lv_obj_move_foreground(screensaver);
         lv_obj_set_style_opa(screensaver, LV_OPA_COVER, 0);
 
+        /* Prepare frame 0 first, then restart the panel scan and LVGL refresh
+         * together. On this TE-less panel this is our software VSync anchor.
+         */
         saver_media_index = 0U;
-        saver_media_last_ms = lv_tick_get();
         draw_custom_saver_frame(0U);
+
+        lv_disp_t *disp = lv_disp_get_default();
+        lv_timer_t *refr_timer =
+            disp ? _lv_disp_get_refr_timer(disp) : NULL;
+
+        if (refr_timer) {
+            lv_timer_pause(refr_timer);
+            k_msleep(2);
+            (void)lumi_panel_resync_scan();
+            lv_timer_set_period(refr_timer, 40);
+            lv_timer_reset(refr_timer);
+            lv_timer_resume(refr_timer);
+        }
+
+        saver_media_last_ms = lv_tick_get();
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
         lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
@@ -1567,20 +1584,11 @@ if (disp) {
     if (refr_timer) {
         lv_timer_set_period(refr_timer, 40);
 
-        /* Software phase sync for panels without a TE pin:
-         * - prepare/invalidate the next GIF frame a few ms before scan start;
-         * - restart the panel scan;
-         * - start LVGL's 40 ms refresh cadence from that same scan anchor.
-         *
-         * The 3 ms lead is intentional: frame data is ready before LVGL begins
-         * the SPI flush, while DISPON and the refresh timer share the anchor.
+        /* Keep both software timers on the same 40 ms period.
+         * The actual panel/flush phase is anchored when the screensaver starts.
          */
-        lv_timer_pause(refr_timer);
         lv_timer_reset(saver_timer);
-        k_msleep(2);
-        (void)lumi_panel_resync_scan();
         lv_timer_reset(refr_timer);
-        lv_timer_resume(refr_timer);
     }
 }
 
