@@ -58,6 +58,7 @@ static lv_obj_t *saver_title;
 static uint8_t saver_media_frames[LUMI_SAVER_MAX_FRAMES][LUMI_SAVER_FRAME_BYTES];
 static uint8_t saver_media_frame_count;
 static uint8_t saver_media_received_mask;
+static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
 static uint16_t saver_media_interval_ms = 180;
 static uint8_t saver_media_index;
 static uint32_t saver_media_last_ms;
@@ -841,6 +842,7 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_valid = false;
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
+    memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_interval_ms =
         CLAMP(frame_interval_ms, (uint16_t)40U, (uint16_t)1000U);
     saver_media_index = 0U;
@@ -858,6 +860,29 @@ void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
 
     memcpy(saver_media_frames[index], data, LUMI_SAVER_FRAME_BYTES);
     saver_media_received_mask |= BIT(index);
+}
+
+void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
+                              const uint8_t *data, size_t len) {
+    if (!data ||
+        index >= saver_media_frame_count ||
+        index >= LUMI_SAVER_MAX_FRAMES ||
+        offset >= LUMI_SAVER_FRAME_BYTES ||
+        len == 0U ||
+        (size_t)offset + len > LUMI_SAVER_FRAME_BYTES) {
+        return;
+    }
+
+    memcpy(&saver_media_frames[index][offset], data, len);
+
+    uint16_t end = (uint16_t)(offset + len);
+    if (end > saver_media_received_bytes[index]) {
+        saver_media_received_bytes[index] = end;
+    }
+
+    if (saver_media_received_bytes[index] == LUMI_SAVER_FRAME_BYTES) {
+        saver_media_received_mask |= BIT(index);
+    }
 }
 
 void lumi_ui_saver_anim_end(void) {
@@ -878,6 +903,7 @@ void lumi_ui_saver_anim_clear(void) {
     saver_media_valid = false;
     saver_media_frame_count = 0U;
     saver_media_received_mask = 0U;
+    memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
     lumi_ui_note_activity();
 }
