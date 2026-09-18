@@ -418,8 +418,20 @@ static void feed_bytes(char *line, size_t *line_len,
 static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                          void *buf, uint16_t len, uint16_t offset) {
     ARG_UNUSED(attr);
+
+    /* On normal reads report the actual persisted saver state. Keep explicit
+     * upload/error text only while an upload is in progress or has failed.
+     */
+    const char *status = lumi_status;
+    if (strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
+        strstr(lumi_status, "SAVER:ERROR") == NULL) {
+        status = lumi_ui_saver_anim_is_valid()
+            ? "LUMIPAD|2|SAVER:READY"
+            : "LUMIPAD|2|SAVER:EMPTY";
+    }
+
     return bt_gatt_attr_read(conn, attr, buf, len, offset,
-                             lumi_status, strlen(lumi_status));
+                             status, strlen(status));
 }
 
 static ssize_t write_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
