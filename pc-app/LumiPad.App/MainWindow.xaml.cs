@@ -1471,7 +1471,7 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 $"{_screensaverAnimation.Frames.Count} frames · " +
                 $"{ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · " +
-                $"{_screensaverAnimation.FrameIntervalMs} ms/frame · {scaleMode}";
+                $"Display 30 FPS · GIF {_screensaverAnimation.FrameIntervalMs} ms/frame · {scaleMode}";
 
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
                 _screensaverAnimation.Frames[0],
