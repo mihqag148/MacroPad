@@ -491,8 +491,19 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
             : "LUMIPAD|2|SAVER:EMPTY";
     }
 
-    return bt_gatt_attr_read(conn, attr, buf, len, offset,
-                             status, strlen(status));
+    ssize_t rc = bt_gatt_attr_read(conn, attr, buf, len, offset,
+                                    status, strlen(status));
+
+    if (strncmp(lumi_status, "MEM|", 4) == 0) {
+        snprintf(
+            lumi_status,
+            sizeof(lumi_status),
+            lumi_ui_saver_anim_is_valid()
+                ? "LUMIPAD|2|SAVER:READY"
+                : "LUMIPAD|2|SAVER:EMPTY");
+    }
+
+    return rc;
 }
 
 static ssize_t write_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
