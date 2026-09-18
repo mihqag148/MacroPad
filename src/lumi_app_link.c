@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
 #define LINE_MAX 3200
-#define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_BYTES
+#define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
 #define LUMI_CHAR_UUID     BT_UUID_128_ENCODE(0xD8A90002, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -136,12 +136,17 @@ static void handle_txt(char *save) {
     int height = atoi(height_s);
     bool is_title = kind[0] == 'T';
 
-    if (width != LUMI_TEXT_W ||
+    int max_width = is_title
+        ? LUMI_TITLE_BITMAP_MAX_W
+        : LUMI_ARTIST_BITMAP_MAX_W;
+
+    if (width < LUMI_TEXT_W ||
+        width > max_width ||
         height != (is_title ? LUMI_TITLE_H : LUMI_ARTIST_H)) {
         return;
     }
 
-    size_t expected = is_title ? LUMI_TITLE_BITMAP_BYTES : LUMI_ARTIST_BITMAP_BYTES;
+    size_t expected = (((size_t)width * height) + 7U) / 8U;
     size_t hex_len = strlen(hex);
     if (hex_len < expected * 2U || expected > sizeof(bitmap_tmp)) {
         return;
@@ -159,7 +164,7 @@ static void handle_txt(char *save) {
         bitmap_tmp[i] = (uint8_t)((hi << 4) | lo);
     }
 
-    lumi_now_playing_set_bitmap(is_title, bitmap_tmp, expected);
+    lumi_now_playing_set_bitmap(is_title, (uint16_t)width, bitmap_tmp, expected);
     k_mutex_unlock(&bitmap_lock);
 }
 
@@ -178,6 +183,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_rgb(save);
     } else if (strcmp(root, "TXT") == 0) {
         handle_txt(save);
+    } else if (strcmp(root, "CLEAR") == 0) {
+        lumi_now_playing_clear();
     }
 }
 
