@@ -11,8 +11,8 @@ enum lumi_screensaver_style {
     LUMI_SAVER_OFF = 2,
 };
 
-#define LUMI_SAVER_FRAME_W 64
-#define LUMI_SAVER_FRAME_H 36
+#define LUMI_SAVER_FRAME_W 80
+#define LUMI_SAVER_FRAME_H 43
 #define LUMI_SAVER_FRAME_BYTES (LUMI_SAVER_FRAME_W * LUMI_SAVER_FRAME_H)
 #define LUMI_SAVER_MAX_FRAMES 8
 
@@ -23,6 +23,7 @@ void lumi_ui_set_screensaver(bool enabled, uint8_t style,
                              uint8_t r1, uint8_t g1, uint8_t b1,
                              uint8_t r2, uint8_t g2, uint8_t b2);
 void lumi_ui_set_sleep_timeout(uint32_t seconds);
+void lumi_ui_set_screensaver_delay(uint32_t seconds);
 void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
 
