@@ -166,6 +166,7 @@ int lumi_panel_render_rgb332_scaled(const uint8_t *src,
     }
 
     bool exact_size = src_w == OUT_W && src_h == OUT_H;
+    bool exact_2x = src_w == 160U && src_h == 86U;
 
     for (uint16_t base_y = 0; base_y < OUT_H; base_y += STRIPE_H) {
         uint16_t rows = OUT_H - base_y;
@@ -179,7 +180,9 @@ int lumi_panel_render_rgb332_scaled(const uint8_t *src,
             uint16_t y = base_y + oy;
             uint16_t sy = exact_size
                 ? y
-                : (uint16_t)(((uint32_t)y * src_h) / OUT_H);
+                : (exact_2x
+                    ? (uint16_t)(y >> 1)
+                    : (uint16_t)(((uint32_t)y * src_h) / OUT_H));
 
             if (sy >= src_h) {
                 sy = src_h - 1U;
@@ -188,7 +191,9 @@ int lumi_panel_render_rgb332_scaled(const uint8_t *src,
             for (uint16_t x = 0; x < OUT_W; x++) {
                 uint16_t sx = exact_size
                     ? x
-                    : (uint16_t)(((uint32_t)x * src_w) / OUT_W);
+                    : (exact_2x
+                        ? (uint16_t)(x >> 1)
+                        : (uint16_t)(((uint32_t)x * src_w) / OUT_W));
 
                 if (sx >= src_w) {
                     sx = src_w - 1U;
