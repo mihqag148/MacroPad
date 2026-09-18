@@ -335,9 +335,9 @@
                                         Click="DetectButton_Click"/>
                                 <Button Content="Disconnect"
                                         Click="DisconnectButton_Click"/>
-                                <Button Content="Restart keyboard"
+                                <Button Content="Khởi động lại bàn phím"
                                         Click="RestartKeyboard_Click"/>
-                                <Button Content="Keyboard DFU"
+                                <Button Content="Bàn phím DFU"
                                         Click="KeyboardDfu_Click"
                                         Margin="0"/>
                             </StackPanel>
