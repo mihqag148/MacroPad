@@ -1159,6 +1159,13 @@ void lumi_ui_saver_anim_clear(void) {
     lumi_ui_note_activity();
 }
 
+static void lumi_panel_wake_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    (void)lumi_panel_set_sleep(false);
+}
+
+K_WORK_DEFINE(lumi_panel_wake_work, lumi_panel_wake_work_handler);
+
 void lumi_ui_note_activity(void) {
     bool was_sleeping;
 
@@ -1170,6 +1177,7 @@ void lumi_ui_note_activity(void) {
 
     if (was_sleeping) {
         lumi_rgb_set_suspended(false);
+        k_work_submit(&lumi_panel_wake_work);
     }
 }
 
@@ -1256,6 +1264,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         k_mutex_unlock(&lumi_ui_config_lock);
 
         lumi_rgb_set_suspended(true);
+        (void)lumi_panel_set_sleep(true);
     }
 
     k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
