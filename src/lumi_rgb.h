@@ -17,4 +17,4 @@ void lumi_rgb_set_brightness_percent(uint8_t percent);
 void lumi_rgb_set_auto(bool enabled);
 void lumi_rgb_set_effect(uint8_t effect);
 void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b);
-void lumi_rgb_prepare_sleep(void);
+void lumi_rgb_set_suspended(bool suspended);
