@@ -515,6 +515,9 @@ public sealed class SerialLink : IDisposable
         return status.Contains("SAVER:READY", StringComparison.Ordinal);
     }
 
+    public void ShowScreensaverNow() =>
+        _ = SendLineAsync("CFG|SAVERNOW");
+
     public void ClearScreensaverAnimation() =>
         _ = SendLineAsync("SAVCLEAR");
 
