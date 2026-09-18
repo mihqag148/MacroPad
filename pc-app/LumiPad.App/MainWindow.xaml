@@ -5,7 +5,9 @@
         Title="LumiPad" Width="1080" Height="700"
         MinWidth="940" MinHeight="620"
         Background="{DynamicResource Bg}"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -65,8 +67,8 @@
                           Width="132"
                           Margin="4,0,0,0"
                           SelectionChanged="LanguageCombo_SelectionChanged">
-                    <ComboBoxItem Content="🇬🇧 English" Tag="en" IsSelected="True"/>
-                    <ComboBoxItem Content="🇻🇳 Tiếng Việt" Tag="vi"/>
+                    <ComboBoxItem Content="EN  English" Tag="en" IsSelected="True"/>
+                    <ComboBoxItem Content="VI  Tiếng Việt" Tag="vi"/>
                 </ComboBox>
             </StackPanel>
         </Grid>
