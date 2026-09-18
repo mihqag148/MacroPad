@@ -28,10 +28,10 @@ void lumi_ui_show_screensaver_now(void);
 void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
 
-void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
+bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
 void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len);
-void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
+bool lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len);
-void lumi_ui_saver_anim_end(void);
+bool lumi_ui_saver_anim_end(void);
 bool lumi_ui_saver_anim_is_valid(void);
 void lumi_ui_saver_anim_clear(void);

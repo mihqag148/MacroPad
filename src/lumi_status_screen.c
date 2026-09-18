@@ -1098,9 +1098,9 @@ static void refresh_screensaver(lv_timer_t *timer) {
     lv_obj_move_foreground(screensaver);
 }
 
-void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
+bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     if (frame_count < 1U || frame_count > LUMI_SAVER_MAX_FRAMES) {
-        return;
+        return false;
     }
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
@@ -1116,7 +1116,10 @@ void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
 
     if (saver_flash_prepare_upload() != 0) {
         saver_media_frame_count = 0U;
+        return false;
     }
+
+    return true;
 }
 
 void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
@@ -1135,7 +1138,7 @@ void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
     saver_media_received_mask |= BIT(index);
 }
 
-void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
+bool lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len) {
     if (!data ||
         index >= saver_media_frame_count ||
@@ -1143,11 +1146,11 @@ void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
         offset >= LUMI_SAVER_FRAME_BYTES ||
         len == 0U ||
         (size_t)offset + len > LUMI_SAVER_FRAME_BYTES) {
-        return;
+        return false;
     }
 
     if (saver_flash_write_chunk(index, offset, data, len) != 0) {
-        return;
+        return false;
     }
 
     uint16_t end = (uint16_t)(offset + len);
@@ -1158,17 +1161,22 @@ void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
     if (saver_media_received_bytes[index] == LUMI_SAVER_FRAME_BYTES) {
         saver_media_received_mask |= BIT(index);
     }
+
+    return true;
 }
 
-void lumi_ui_saver_anim_end(void) {
+bool lumi_ui_saver_anim_end(void) {
     uint32_t expected =
         saver_media_frame_count >= 32U
             ? UINT32_MAX
             : ((1U << saver_media_frame_count) - 1U);
 
-    if (saver_media_frame_count > 0U &&
+    bool ok =
+        saver_media_frame_count > 0U &&
         saver_media_received_mask == expected &&
-        saver_flash_commit_header() == 0) {
+        saver_flash_commit_header() == 0;
+
+    if (ok) {
         saver_media_valid = true;
         saver_media_index = 0U;
         saver_media_last_ms = 0U;
@@ -1178,6 +1186,7 @@ void lumi_ui_saver_anim_end(void) {
     }
 
     lumi_ui_note_activity();
+    return ok;
 }
 
 bool lumi_ui_saver_anim_is_valid(void) {

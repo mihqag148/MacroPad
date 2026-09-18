@@ -278,11 +278,15 @@ static void handle_savbegin(char *save) {
     }
 
     uint8_t count = (uint8_t)atoi(count_s);
-    lumi_ui_saver_anim_begin(
+    bool ok = lumi_ui_saver_anim_begin(
         count,
         (uint16_t)atoi(interval_s));
+
     snprintf(lumi_status, sizeof(lumi_status),
-             "LUMIPAD|2|SAVER:UPLOADING:0/%u", (unsigned int)count);
+             ok
+                 ? "LUMIPAD|2|SAVER:UPLOADING:0/%u"
+                 : "LUMIPAD|2|SAVER:ERROR",
+             (unsigned int)count);
 }
 
 static void handle_savchunk(char *save) {
@@ -311,7 +315,11 @@ static void handle_savchunk(char *save) {
     uint8_t index = (uint8_t)atoi(index_s);
     uint16_t offset = (uint16_t)atoi(offset_s);
 
-    lumi_ui_saver_anim_chunk(index, offset, saver_chunk_tmp, decoded_len);
+    if (!lumi_ui_saver_anim_chunk(
+            index, offset, saver_chunk_tmp, decoded_len)) {
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        return;
+    }
 
     if ((size_t)offset + decoded_len >= LUMI_SAVER_FRAME_BYTES) {
         snprintf(lumi_status, sizeof(lumi_status),
@@ -417,7 +425,10 @@ static void handle_line(char *line, bool from_usb) {
     } else if (strcmp(root, "SAVBEGIN") == 0) {
         handle_savbegin(save);
         if (from_usb) {
-            write_text_usb("SAVACK|BEGIN\r\n");
+            write_text_usb(
+                strstr(lumi_status, "SAVER:ERROR") != NULL
+                    ? "SAVACK|ERROR\r\n"
+                    : "SAVACK|BEGIN\r\n");
         }
     } else if (strcmp(root, "SAVCHUNK") == 0) {
         handle_savchunk(save);
@@ -428,8 +439,8 @@ static void handle_line(char *line, bool from_usb) {
                     : "SAVACK|CHUNK\r\n");
         }
     } else if (strcmp(root, "SAVEND") == 0) {
-        lumi_ui_saver_anim_end();
-        bool saver_ok = lumi_ui_saver_anim_is_valid();
+        bool saver_ok = lumi_ui_saver_anim_end() &&
+                        lumi_ui_saver_anim_is_valid();
         snprintf(lumi_status, sizeof(lumi_status),
                  saver_ok
                      ? "LUMIPAD|2|SAVER:READY"

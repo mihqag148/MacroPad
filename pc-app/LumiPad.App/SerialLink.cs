@@ -268,7 +268,7 @@ public sealed class SerialLink : IDisposable
             if (_port?.IsOpen != true)
                 throw new IOException("LumiPad USB link is not available.");
 
-            _port.ReadTimeout = 3000;
+            _port.ReadTimeout = 8000;
             byte[] data = Encoding.UTF8.GetBytes(line + "\n");
             _port.Write(data, 0, data.Length);
 
@@ -412,6 +412,10 @@ public sealed class SerialLink : IDisposable
         if (!IsConnected)
             throw new InvalidOperationException("LumiPad is not connected.");
 
+        await _mediaGate.WaitAsync();
+        try
+        {
+
         if (animation.Frames.Count < 1 ||
             animation.Frames.Count > ScreensaverMediaService.MaxFrames)
         {
@@ -490,6 +494,11 @@ public sealed class SerialLink : IDisposable
         // USB serial writes are lossless and the firmware only commits the
         // flash header after SAVEND.
         return true;
+        }
+        finally
+        {
+            _mediaGate.Release();
+        }
     }
 
     private async Task<string> ReadBleStatusAsync()
