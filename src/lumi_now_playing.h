@@ -21,9 +21,11 @@
 #define LUMI_ARTIST_BITMAP_MAX_BYTES     ((LUMI_ARTIST_BITMAP_MAX_W * LUMI_ARTIST_H + 7) / 8)
 
 void lumi_now_playing_init(lv_obj_t *screen);
-void lumi_now_playing_update(const char *title, const char *artist,
+void lumi_now_playing_update(const char *source,
+                             const char *title, const char *artist,
                              uint32_t position_ms, uint32_t duration_ms,
                              bool playing);
+bool lumi_now_playing_is_active(void);
 void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
                                  const uint8_t *data, size_t len);
 void lumi_now_playing_set_artwork(const uint8_t *data, size_t len);
