@@ -104,6 +104,7 @@ static bool wallpaper_dirty = true;
 static bool saver_style_dirty = true;
 static bool media_active = false;
 static bool soft_sleep = false;
+static bool saver_force_show = false;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -962,15 +963,24 @@ static void refresh_screensaver(lv_timer_t *timer) {
     current_soft_sleep = soft_sleep;
     k_mutex_unlock(&lumi_ui_config_lock);
 
+    bool force_show;
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    force_show = saver_force_show;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
     bool should_show = enabled &&
-                       !current_media_active &&
                        !current_soft_sleep &&
                        saver_media_valid &&
-                       delay > 0U &&
-                       (uint32_t)(now_uptime - ui_last_activity_ms) >= delay;
+                       (force_show ||
+                        (!current_media_active &&
+                         delay > 0U &&
+                         (uint32_t)(now_uptime - ui_last_activity_ms) >= delay));
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        saver_force_show = false;
+        k_mutex_unlock(&lumi_ui_config_lock);
 
         /* Only uploaded GIF/video frames are used as a screensaver.
          * Built-in Tahoe/Minimal fallback is intentionally disabled.
@@ -1125,11 +1135,32 @@ void lumi_ui_note_activity(void) {
     ui_last_activity_ms = k_uptime_get_32();
     was_sleeping = soft_sleep;
     soft_sleep = false;
+    saver_force_show = false;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     /* Any real input/app activity must re-enable the RGB worker.
      * Soft sleep additionally wakes the ST7789 panel.
      */
+    lumi_rgb_set_suspended(false);
+
+    if (was_sleeping) {
+        k_work_submit(&lumi_panel_wake_work);
+    }
+}
+
+void lumi_ui_show_screensaver_now(void) {
+    if (!saver_flash_load_metadata()) {
+        return;
+    }
+
+    bool was_sleeping;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    was_sleeping = soft_sleep;
+    soft_sleep = false;
+    saver_force_show = true;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
     lumi_rgb_set_suspended(false);
 
     if (was_sleeping) {
