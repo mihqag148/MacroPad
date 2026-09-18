@@ -24,16 +24,25 @@
             <StackPanel Orientation="Horizontal">
                 <Border Width="142" Height="48" CornerRadius="10"
                         Background="Black" Margin="0,0,12,0"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                    <Grid Margin="10,3">
-                        <TextBlock Text="Lumi3D" Foreground="#E8E5E1"
-                                   FontFamily="Arial" FontWeight="Bold"
-                                   FontSize="25" VerticalAlignment="Center"/>
-                        <TextBlock Text="ESTD 2025" Foreground="#E8E5E1"
-                                   FontFamily="Arial" FontWeight="SemiBold"
-                                   FontSize="6.5" Margin="2,30,0,0"
-                                   VerticalAlignment="Top"/>
-                    </Grid>
+                        BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                        Padding="9,4">
+                    <Viewbox Stretch="Uniform">
+                        <Grid Width="180" Height="54">
+                            <TextBlock Text="Lumi3D"
+                                       Foreground="#E8E5E1"
+                                       FontFamily="Arial"
+                                       FontWeight="Bold"
+                                       FontSize="40"
+                                       VerticalAlignment="Top"/>
+                            <TextBlock Text="ESTD 2025"
+                                       Foreground="#E8E5E1"
+                                       FontFamily="Arial"
+                                       FontWeight="SemiBold"
+                                       FontSize="9"
+                                       Margin="3,43,0,0"
+                                       VerticalAlignment="Top"/>
+                        </Grid>
+                    </Viewbox>
                 </Border>
 
                 <StackPanel VerticalAlignment="Center">
@@ -362,7 +371,7 @@
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Deep sleep after"
+                                        <TextBlock Text="Sleep after"
                                                    Foreground="{DynamicResource Muted}"
                                                    Margin="0,0,0,6"/>
                                         <ComboBox x:Name="SleepDelayCombo">
@@ -380,7 +389,7 @@
                                         Margin="0,26,0,0"
                                         Click="ApplyCustomization_Click"/>
 
-                                <TextBlock Text="Deep sleep only activates on battery power. USB power keeps the keyboard awake."
+                                <TextBlock Text="Connected sleep turns the screen black and pauses RGB but keeps Bluetooth alive, so music or any key can wake LumiPad instantly."
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="12" TextWrapping="Wrap"
                                            Margin="0,12,0,0"/>
