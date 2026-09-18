@@ -13,15 +13,15 @@ static const struct spi_dt_spec bus =
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
 int lumi_panel_init(void) {
-    /* Base code.py uses invert=False. Zephyr 3.5 unconditionally sends INVON;
-     * undo it once on the display queue, before the first LVGL frame.
+    /* Match the original CircuitPython setup: invert=False.
+     * Send INVOFF once before the first LVGL frame.
      * D/C is active-low: logical 1 means command (physical 0).
      * BL is tied to 3V3; there is no backlight control.
      */
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
         return -ENODEV;
     }
-    uint8_t command = 0x21; /* INVON */
+    uint8_t command = 0x20; /* INVOFF */
     struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
     const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
     int err = gpio_pin_set_dt(&dc, 1);
