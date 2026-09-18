@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private string? _screensaverMediaPath;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
+    private int _screensaverDelaySeconds = 60;
+    private int _sleepDelaySeconds = 120;
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
@@ -409,6 +411,7 @@ public partial class MainWindow : Window
                 : "Connected over USB fallback. Now Playing and RGB are live.";
 
             SendAllRgb();
+            SendPowerTiming();
         }
 
         DetectButton.IsEnabled = true;
@@ -445,6 +448,7 @@ public partial class MainWindow : Window
                     : "Reconnected over USB fallback.";
 
                 SendAllRgb();
+                SendPowerTiming();
             }
             catch (OperationCanceledException)
             {
@@ -453,6 +457,111 @@ public partial class MainWindow : Window
             catch
             {
             }
+        }
+    }
+
+    private static int ComboSeconds(ComboBox combo, int fallback)
+    {
+        if (combo.SelectedItem is ComboBoxItem item &&
+            int.TryParse(item.Tag?.ToString(), out int seconds))
+        {
+            return Math.Max(0, seconds);
+        }
+
+        return fallback;
+    }
+
+    private void SendPowerTiming()
+    {
+        _serial.SetScreensaverDelay(_screensaverDelaySeconds);
+        _serial.SetSleepTimeout(_sleepDelaySeconds);
+    }
+
+    private void ScreensaverDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _screensaverDelaySeconds =
+            ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
+
+        if (_uiReady && _serial.IsConnected)
+            _serial.SetScreensaverDelay(_screensaverDelaySeconds);
+    }
+
+    private void SleepDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _sleepDelaySeconds =
+            ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
+
+        if (_uiReady && _serial.IsConnected)
+            _serial.SetSleepTimeout(_sleepDelaySeconds);
+    }
+
+    private async void RestartKeyboard_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_serial.IsConnected)
+        {
+            BottomStatus.Text = "Connect LumiPad before restarting the keyboard.";
+            return;
+        }
+
+        BottomStatus.Text = "Restarting keyboard…";
+
+        try
+        {
+            await _serial.RestartKeyboardAsync();
+            await Task.Delay(150);
+            _serial.Disconnect();
+
+            DeviceStatus.Text = "Restarting…";
+            DeviceDot.Fill =
+                new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
+            BottomStatus.Text =
+                "Keyboard is restarting. LumiPad will reconnect automatically.";
+        }
+        catch (Exception ex)
+        {
+            BottomStatus.Text = $"Restart failed: {ex.Message}";
+        }
+    }
+
+    private async void KeyboardDfu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_serial.IsConnected)
+        {
+            BottomStatus.Text = "Connect LumiPad before entering DFU.";
+            return;
+        }
+
+        var result = System.Windows.MessageBox.Show(
+            "Put the keyboard into DFU/bootloader mode for firmware flashing?",
+            "LumiPad DFU",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _autoReconnectEnabled = false;
+        BottomStatus.Text = "Entering keyboard DFU…";
+
+        try
+        {
+            await _serial.EnterDfuAsync();
+            await Task.Delay(150);
+            _serial.Disconnect();
+
+            DeviceStatus.Text = "DFU / Bootloader";
+            DeviceDot.Fill =
+                new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
+            BottomStatus.Text =
+                "Keyboard is in DFU. Flash firmware, then press Connect when it boots normally.";
+        }
+        catch (Exception ex)
+        {
+            BottomStatus.Text = $"DFU failed: {ex.Message}";
         }
     }
 
