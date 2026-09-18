@@ -3,8 +3,12 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/poweroff.h>
 #include <lvgl.h>
 #include <dt-bindings/zmk/keys.h>
 #include <zmk/activity.h>
@@ -22,8 +26,12 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/keys.h>
 #include <zmk/keymap.h>
+#include <zmk/pm.h>
+#include <zmk/usb.h>
 #include "lumi_panel.h"
 #include "lumi_now_playing.h"
+#include "lumi_rgb.h"
+#include "lumi_ui_config.h"
 
 #define KEY_COUNT 12
 #define COLS 4
@@ -48,6 +56,20 @@ static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
 static bool screensaver_visible;
+static lv_obj_t *root_screen;
+
+K_MUTEX_DEFINE(lumi_ui_config_lock);
+static uint32_t ui_last_activity_ms;
+static uint32_t saver_delay_ms = 60000U;
+static uint32_t sleep_delay_ms = 120000U;
+static bool saver_enabled = true;
+static uint8_t saver_style = LUMI_SAVER_TAHOE;
+static uint32_t wallpaper_color_a = 0x000000;
+static uint32_t wallpaper_color_b = 0x10151F;
+static uint32_t saver_color_a = 0x4A7DFF;
+static uint32_t saver_color_b = 0xA955FF;
+static bool wallpaper_dirty = true;
+static bool saver_style_dirty = true;
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -168,6 +190,12 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
         0
     );
 
+    lv_obj_set_style_bg_opa(
+        tiles[i],
+        pressed ? 205 : 78,
+        0
+    );
+
     lv_obj_set_style_border_color(
         tiles[i],
         lv_color_hex(0xFFFFFF),
@@ -272,6 +300,7 @@ static int position_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *event = as_zmk_position_state_changed(eh);
 
     if (event && event->state) {
+        lumi_ui_note_activity();
         lumi_now_playing_user_activity();
     }
 
@@ -310,6 +339,7 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
+    lumi_ui_note_activity();
     bool keep_music_visible = false;
 
     if (keycode_matches(event, C_VOL_UP)) {
@@ -559,8 +589,58 @@ static void init_screensaver(lv_obj_t *screen) {
 static void refresh_screensaver(lv_timer_t *timer) {
     ARG_UNUSED(timer);
 
-    enum zmk_activity_state activity = zmk_activity_get_state();
-    bool should_show = activity == ZMK_ACTIVITY_IDLE;
+    uint32_t now_uptime = k_uptime_get_32();
+    uint32_t delay;
+    bool enabled;
+    uint8_t style;
+    uint32_t color_a;
+    uint32_t color_b;
+    bool update_wallpaper;
+    bool update_saver;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    delay = saver_delay_ms;
+    enabled = saver_enabled;
+    style = saver_style;
+    color_a = saver_color_a;
+    color_b = saver_color_b;
+    update_wallpaper = wallpaper_dirty;
+    update_saver = saver_style_dirty;
+    wallpaper_dirty = false;
+    saver_style_dirty = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (update_wallpaper && root_screen) {
+        uint32_t wa;
+        uint32_t wb;
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        wa = wallpaper_color_a;
+        wb = wallpaper_color_b;
+        k_mutex_unlock(&lumi_ui_config_lock);
+
+        lv_obj_set_style_bg_color(root_screen, lv_color_hex(wa), 0);
+        lv_obj_set_style_bg_grad_color(root_screen, lv_color_hex(wb), 0);
+        lv_obj_set_style_bg_grad_dir(root_screen, LV_GRAD_DIR_VER, 0);
+    }
+
+    if (update_saver) {
+        lv_obj_set_style_bg_color(saver_orb1, lv_color_hex(color_a), 0);
+        lv_obj_set_style_bg_color(saver_orb2, lv_color_hex(color_b), 0);
+
+        if (style == LUMI_SAVER_MINIMAL) {
+            lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_color(saver_glass, lv_color_hex(0x0F1117), 0);
+        } else {
+            lv_obj_clear_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    bool should_show = enabled &&
+                       style != LUMI_SAVER_OFF &&
+                       delay > 0U &&
+                       (uint32_t)(now_uptime - ui_last_activity_ms) >= delay;
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
@@ -587,34 +667,114 @@ static void refresh_screensaver(lv_timer_t *timer) {
         return;
     }
 
-    uint32_t now = lv_tick_get();
+    uint32_t lv_now = lv_tick_get();
 
-    lv_obj_set_pos(
-        saver_orb1,
-        saver_wave(now, 7200, -30, 72),
-        saver_wave(now + 1700, 6100, -28, 52)
-    );
+    if (style == LUMI_SAVER_TAHOE) {
+        lv_obj_set_pos(
+            saver_orb1,
+            saver_wave(lv_now, 7200, -30, 72),
+            saver_wave(lv_now + 1700, 6100, -28, 52)
+        );
 
-    lv_obj_set_pos(
-        saver_orb2,
-        saver_wave(now + 2600, 8300, 204, 256),
-        saver_wave(now + 900, 6900, 58, 112)
-    );
+        lv_obj_set_pos(
+            saver_orb2,
+            saver_wave(lv_now + 2600, 8300, 204, 256),
+            saver_wave(lv_now + 900, 6900, 58, 112)
+        );
 
-    lv_obj_set_y(
-        saver_glass,
-        saver_wave(now, 9000, 54, 60)
-    );
+        lv_obj_set_y(
+            saver_glass,
+            saver_wave(lv_now, 9000, 54, 60)
+        );
+    } else {
+        lv_obj_align(saver_glass, LV_ALIGN_CENTER, 0, 0);
+    }
 
     lv_obj_move_foreground(screensaver);
+}
+
+void lumi_ui_note_activity(void) {
+    ui_last_activity_ms = k_uptime_get_32();
+}
+
+void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
+                           uint8_t r2, uint8_t g2, uint8_t b2) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    wallpaper_color_a = ((uint32_t)r1 << 16) | ((uint32_t)g1 << 8) | b1;
+    wallpaper_color_b = ((uint32_t)r2 << 16) | ((uint32_t)g2 << 8) | b2;
+    wallpaper_dirty = true;
+    k_mutex_unlock(&lumi_ui_config_lock);
+}
+
+void lumi_ui_set_screensaver(bool enabled, uint8_t style,
+                             uint32_t delay_seconds,
+                             uint8_t r1, uint8_t g1, uint8_t b1,
+                             uint8_t r2, uint8_t g2, uint8_t b2) {
+    if (style > LUMI_SAVER_OFF) {
+        style = LUMI_SAVER_TAHOE;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_enabled = enabled;
+    saver_style = style;
+    saver_delay_ms = delay_seconds * 1000U;
+    saver_color_a = ((uint32_t)r1 << 16) | ((uint32_t)g1 << 8) | b1;
+    saver_color_b = ((uint32_t)r2 << 16) | ((uint32_t)g2 << 8) | b2;
+    saver_style_dirty = true;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    lumi_ui_note_activity();
+}
+
+void lumi_ui_set_sleep_timeout(uint32_t seconds) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    sleep_delay_ms = seconds * 1000U;
+    k_mutex_unlock(&lumi_ui_config_lock);
+    lumi_ui_note_activity();
+}
+
+static void lumi_sleep_work_handler(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
+
+static void lumi_sleep_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    uint32_t timeout;
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    timeout = sleep_delay_ms;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    uint32_t now = k_uptime_get_32();
+    bool usb_powered = zmk_usb_is_powered();
+
+    if (timeout > 0U &&
+        !usb_powered &&
+        (uint32_t)(now - ui_last_activity_ms) >= timeout) {
+        lumi_rgb_prepare_sleep();
+
+        const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+        if (device_is_ready(display)) {
+            display_blanking_on(display);
+        }
+
+        if (zmk_pm_suspend_devices() >= 0) {
+            sys_poweroff();
+        }
+    }
+
+    k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
 }
 
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
     lv_obj_t *screen = lv_obj_create(NULL);
+    root_screen = screen;
+    ui_last_activity_ms = k_uptime_get_32();
     lv_obj_remove_style_all(screen);
     lv_obj_set_size(screen, 320, 172);
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(wallpaper_color_a), 0);
+    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(wallpaper_color_b), 0);
+    lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     for (uint8_t i = 0; i < KEY_COUNT; i++) {
@@ -878,6 +1038,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
 lv_timer_create(refresh_screensaver, 50, NULL);
+k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
 return screen;
 }
