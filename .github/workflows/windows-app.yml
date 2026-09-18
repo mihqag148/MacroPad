@@ -21,6 +21,21 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - name: Generate LumiPad icon
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $png = Join-Path $PWD "pc-app\LumiPad.App\Assets\LumiPadLogo.png"
+          $ico = Join-Path $PWD "pc-app\LumiPad.App\Assets\LumiPad.ico"
+          $bmp = New-Object System.Drawing.Bitmap($png)
+          $handle = $bmp.GetHicon()
+          $icon = [System.Drawing.Icon]::FromHandle($handle)
+          $stream = [System.IO.File]::Create($ico)
+          $icon.Save($stream)
+          $stream.Close()
+          $icon.Dispose()
+          $bmp.Dispose()
+
       - name: Restore
         run: dotnet restore pc-app/LumiPad.App/LumiPad.App.csproj
 
