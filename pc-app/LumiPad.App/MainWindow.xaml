@@ -181,7 +181,9 @@
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
                             CornerRadius="28" Padding="22">
-                        <StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="0,0,6,0">
                             <TextBlock Text="SCREENSAVER MEDIA" FontSize="12"
                                        Foreground="{DynamicResource Muted}"
                                        FontWeight="SemiBold"/>
@@ -314,7 +316,8 @@
                                     </ComboBox>
                                 </StackPanel>
                             </Grid>
-                        </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
 
                     <Border Grid.Row="2"
