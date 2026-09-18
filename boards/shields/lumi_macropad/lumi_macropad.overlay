@@ -98,7 +98,7 @@ row-gpios
 // MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00.
 // ZMK v0.3 uses Zephyr 3.5, whose ST7789 driver expects the display node
 // directly below the SPI controller.
-&spi1 {
+&spi3 {
     compatible = "nordic,nrf-spim";
     status = "okay";
     pinctrl-0 = <&lumi_tft_spi_default>;
@@ -108,7 +108,7 @@ row-gpios
 
     lumi_tft: st7789v@0 {
         compatible = "sitronix,st7789v";
-        spi-max-frequency = <8000000>;
+        spi-max-frequency = <32000000>;
         reg = <0>;
         cmd-data-gpios = <&gpio0 24 GPIO_ACTIVE_LOW>;
         reset-gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
@@ -138,7 +138,7 @@ row-gpios
 
 // Four WS2812B LEDs on P0.06. The SPI peripheral only generates the
 // WS2812 data waveform; there is no separate SCK wire to the LEDs.
-&spi3 {
+&spi1 {
     compatible = "nordic,nrf-spim";
     status = "okay";
     pinctrl-0 = <&lumi_rgb_spi_default>;
