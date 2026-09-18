@@ -12,7 +12,7 @@
 #include "lumi_now_playing.h"
 #include "lumi_ui_config.h"
 
-#define MUSIC_TIMEOUT_MS 3500
+#define MUSIC_TIMEOUT_MS 30000
 #define USER_ACTIVITY_HIDE_MS 10000
 #define SCROLL_STEP_MS 75
 #define SCROLL_HOLD_MS 650
@@ -303,10 +303,24 @@ void lumi_now_playing_update(const char *source,
                              bool playing) {
     k_mutex_lock(&state_lock, K_FOREVER);
 
+    bool track_changed =
+        strcmp(state.source, source && source[0] ? source : "MUSIC") != 0 ||
+        strcmp(state.title, title ? title : "") != 0;
+
     snprintf(state.source, sizeof(state.source), "%s",
              source && source[0] ? source : "MUSIC");
     snprintf(state.title, sizeof(state.title), "%s", title ? title : "");
     snprintf(state.artist, sizeof(state.artist), "%s", artist ? artist : "");
+
+    if (track_changed) {
+        state.suppress_until_ms = 0U;
+        state.title_bitmap_valid = false;
+        state.artist_bitmap_valid = false;
+        state.artwork_valid = false;
+        state.title_scroll = 0;
+        state.artist_scroll = 0;
+    }
+
     state.position_ms = position_ms;
     state.duration_ms = duration_ms;
     state.playing = playing;
