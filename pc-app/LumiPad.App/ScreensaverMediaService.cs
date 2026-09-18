@@ -50,20 +50,9 @@ public static class ScreensaverMediaService
         int total = image.GetFrameCount(dimension);
         int count = Math.Min(MaxFrames, Math.Max(1, total));
 
-        int delayMs = 180;
-        try
-        {
-            var item = image.GetPropertyItem(0x5100);
-            if (item?.Value is { Length: >= 4 })
-            {
-                int firstDelayCs = BitConverter.ToInt32(item.Value, 0);
-                if (firstDelayCs > 0)
-                    delayMs = Math.Clamp(firstDelayCs * 10, 40, 700);
-            }
-        }
-        catch
-        {
-        }
+        // LumiPad custom saver is rendered at the requested ~25 FPS.
+        // Do not inherit a very slow first-frame delay from the source GIF.
+        int delayMs = 40;
 
         var frames = new List<byte[]>(count);
 
