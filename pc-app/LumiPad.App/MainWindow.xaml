@@ -53,13 +53,21 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Right">
                 <Button x:Name="ThemeButton"
                         Content="Light mode"
                         Click="ThemeButton_Click"
-                        Padding="12,7"
-                        Margin="0"/>
+                        Padding="12,7"/>
+
+                <ComboBox x:Name="LanguageCombo"
+                          Width="132"
+                          Margin="4,0,0,0"
+                          SelectionChanged="LanguageCombo_SelectionChanged">
+                    <ComboBoxItem Content="🇬🇧 English" Tag="en" IsSelected="True"/>
+                    <ComboBoxItem Content="🇻🇳 Tiếng Việt" Tag="vi"/>
+                </ComboBox>
             </StackPanel>
         </Grid>
 
