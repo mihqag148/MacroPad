@@ -84,6 +84,8 @@ int lumi_panel_render_rgb332_scaled(const uint8_t *src,
     enum { OUT_W = 320, OUT_H = 172, STRIPE_H = 8 };
     static uint8_t stripe[OUT_W * STRIPE_H * 2];
 
+    bool exact_2x = src_w == 160U && src_h == 86U;
+
     for (uint16_t y0 = 0; y0 < OUT_H; y0 += STRIPE_H) {
         uint16_t rows = OUT_H - y0;
         if (rows > STRIPE_H) {
@@ -94,13 +96,17 @@ int lumi_panel_render_rgb332_scaled(const uint8_t *src,
 
         for (uint16_t oy = 0; oy < rows; oy++) {
             uint16_t y = y0 + oy;
-            uint16_t sy = (uint16_t)(((uint32_t)y * src_h) / OUT_H);
+            uint16_t sy = exact_2x
+                ? (uint16_t)(y >> 1)
+                : (uint16_t)(((uint32_t)y * src_h) / OUT_H);
             if (sy >= src_h) {
                 sy = src_h - 1U;
             }
 
             for (uint16_t x = 0; x < OUT_W; x++) {
-                uint16_t sx = (uint16_t)(((uint32_t)x * src_w) / OUT_W);
+                uint16_t sx = exact_2x
+                    ? (uint16_t)(x >> 1)
+                    : (uint16_t)(((uint32_t)x * src_w) / OUT_W);
                 if (sx >= src_w) {
                     sx = src_w - 1U;
                 }
