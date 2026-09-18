@@ -287,6 +287,24 @@ public sealed class SerialLink : IDisposable
         }
     }
 
+    // A single corrupted byte on the USB serial link is enough to make the
+    // firmware reject one chunk out of the hundreds sent per animation.
+    // Resend that one line instead of failing the whole upload.
+    private async Task<string> SendUsbSaverLineWithRetryAsync(string line, int maxAttempts = 4)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await SendUsbSaverLineAsync(line);
+            }
+            catch when (attempt < maxAttempts && _port?.IsOpen == true)
+            {
+                await Task.Delay(40);
+            }
+        }
+    }
+
     public void Disconnect()
     {
         if (_port is not null)
@@ -435,7 +453,7 @@ public sealed class SerialLink : IDisposable
             $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}";
 
         if (useUsb)
-            await SendUsbSaverLineAsync(begin);
+            await SendUsbSaverLineWithRetryAsync(begin);
         else
             await SendLineAsync(begin);
 
@@ -455,7 +473,7 @@ public sealed class SerialLink : IDisposable
                 string line = $"SAVCHUNK|{i}|{offset}|{base64}";
 
                 if (useUsb)
-                    await SendUsbSaverLineAsync(line);
+                    await SendUsbSaverLineWithRetryAsync(line);
                 else
                     await SendBulkLineAsync(line);
 
@@ -470,7 +488,7 @@ public sealed class SerialLink : IDisposable
 
         if (useUsb)
         {
-            string finalAck = await SendUsbSaverLineAsync("SAVEND");
+            string finalAck = await SendUsbSaverLineWithRetryAsync("SAVEND");
             if (!finalAck.EndsWith("|READY", StringComparison.Ordinal))
                 return false;
         }
