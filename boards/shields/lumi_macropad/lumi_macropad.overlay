@@ -120,9 +120,9 @@ row-gpios
         gctrl = <0x35>;
         vrhs = <0x12>;
         vdvs = <0x20>;
-        // Zephyr/LVGL already feeds RGB565 in RGB order.
-        // Keep landscape rotation (MV) but clear BGR so blue/red are not swapped.
-        mdac = <0x20>;
+        // Landscape orientation used by this 1.47-inch panel: MX + MV.
+        // Keep BGR cleared so red/blue stay in the correct RGB order.
+        mdac = <0x60>;
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
