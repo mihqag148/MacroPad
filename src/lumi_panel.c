@@ -30,11 +30,48 @@ static int lumi_panel_command(uint8_t command) {
     return err;
 }
 
+static int lumi_panel_command_data(uint8_t command,
+                                   const uint8_t *data,
+                                   size_t len) {
+    int err = lumi_panel_command(command);
+    if (err != 0 || !data || len == 0U) {
+        return err;
+    }
+
+    err = gpio_pin_set_dt(&dc, 0);
+    if (err != 0) {
+        return err;
+    }
+
+    struct spi_buf buffer = {
+        .buf = (void *)data,
+        .len = len,
+    };
+    const struct spi_buf_set buffers = {
+        .buffers = &buffer,
+        .count = 1,
+    };
+
+    return spi_write_dt(&bus, &buffers);
+}
+
 int lumi_panel_init(void) {
     int err = lumi_panel_command(0x21); /* INVON */
     if (err) {
         LOG_ERR("Panel inversion setup failed: %d", err);
+        return err;
     }
+
+    /* FRCTRL2: use the slowest normal-mode divider. Together with the
+     * enlarged front/back porch in devicetree this targets roughly 25 Hz,
+     * matching the 40 ms screensaver cadence.
+     */
+    const uint8_t frctrl2 = 0x1FU;
+    err = lumi_panel_command_data(0xC6, &frctrl2, 1U);
+    if (err) {
+        LOG_ERR("Panel frame-rate setup failed: %d", err);
+    }
+
     return err;
 }
 
