@@ -25,8 +25,8 @@ public sealed record ScreensaverAnimation(
 
 public static class ScreensaverMediaService
 {
-    public const int Width = 80;
-    public const int Height = 43;
+    public const int Width = 160;
+    public const int Height = 86;
     public const int MaxFrames = 8;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
@@ -58,7 +58,7 @@ public static class ScreensaverMediaService
             {
                 int firstDelayCs = BitConverter.ToInt32(item.Value, 0);
                 if (firstDelayCs > 0)
-                    delayMs = Math.Clamp(firstDelayCs * 10, 150, 700);
+                    delayMs = Math.Clamp(firstDelayCs * 10, 66, 700);
             }
         }
         catch
@@ -97,10 +97,12 @@ public static class ScreensaverMediaService
             throw new InvalidOperationException("Cannot read video duration.");
 
         int count = MaxFrames;
-        double spanMs = Math.Min(duration.TotalMilliseconds, 6000.0);
+        double spanMs = Math.Min(
+            duration.TotalMilliseconds,
+            MaxFrames * (1000.0 / 15.0));
 
-        if (spanMs < 600.0)
-            count = Math.Max(2, (int)Math.Ceiling(spanMs / 120.0));
+        if (spanMs < 250.0)
+            count = Math.Max(2, (int)Math.Ceiling(spanMs / (1000.0 / 15.0)));
 
         var frames = new List<byte[]>(count);
 
@@ -126,7 +128,7 @@ public static class ScreensaverMediaService
 
         int intervalMs = Math.Clamp(
             (int)Math.Round(spanMs / count),
-            150,
+            66,
             700);
 
         return new ScreensaverAnimation(
