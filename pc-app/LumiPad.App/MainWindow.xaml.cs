@@ -24,6 +24,14 @@ public partial class MainWindow : Window
         {
             _uiReady = true;
 
+            _serial.LinkError += message =>
+                Dispatcher.Invoke(() =>
+                {
+                    DeviceStatus.Text = "Bluetooth write error";
+                    DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
+                    BottomStatus.Text = message;
+                });
+
             _nowPlaying.Updated += data =>
                 Dispatcher.Invoke(() => ApplyNowPlaying(data));
 
