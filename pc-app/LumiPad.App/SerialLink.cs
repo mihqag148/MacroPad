@@ -24,6 +24,9 @@ public sealed class SerialLink : IDisposable
     private string _connectionName = "";
     private string _lastBitmapKey = "";
     private string _lastArtworkKey = "";
+    private string _lastNowPlayingKey = "";
+    private bool _lastNowPlayingPlaying;
+    private DateTimeOffset _lastNowPlayingSent = DateTimeOffset.MinValue;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
@@ -185,6 +188,8 @@ public sealed class SerialLink : IDisposable
         _connectionName = "";
         _lastBitmapKey = "";
         _lastArtworkKey = "";
+        _lastNowPlayingKey = "";
+        _lastNowPlayingSent = DateTimeOffset.MinValue;
     }
 
     public void SendNowPlaying(NowPlayingData data)
@@ -192,12 +197,28 @@ public sealed class SerialLink : IDisposable
         if (!IsConnected)
             return;
 
-        _ = SendNowPlayingAsync(data);
+        string key = $"{data.SourceName}\u001F{data.Title}\u001F{data.Artist}";
+        bool important =
+            !string.Equals(key, _lastNowPlayingKey, StringComparison.Ordinal) ||
+            data.IsPlaying != _lastNowPlayingPlaying;
+
+        if (!important &&
+            DateTimeOffset.UtcNow - _lastNowPlayingSent <
+                TimeSpan.FromMilliseconds(1600))
+        {
+            return;
+        }
+
+        // Do not build a queue of stale media updates. If a previous BLE
+        // transmission is still running, keep the newest state for the next poll.
+        if (!_mediaGate.Wait(0))
+            return;
+
+        _ = SendNowPlayingAsync(data, key);
     }
 
-    private async Task SendNowPlayingAsync(NowPlayingData data)
+    private async Task SendNowPlayingAsync(NowPlayingData data, string key)
     {
-        await _mediaGate.WaitAsync();
         try
         {
             var source = Uri.EscapeDataString(data.SourceName ?? "MUSIC");
@@ -208,6 +229,10 @@ public sealed class SerialLink : IDisposable
                 $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
                 $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
                 $"{(data.IsPlaying ? 1 : 0)}|{source}|{title}|{artist}");
+
+            _lastNowPlayingKey = key;
+            _lastNowPlayingPlaying = data.IsPlaying;
+            _lastNowPlayingSent = DateTimeOffset.UtcNow;
 
             string bitmapKey = $"{data.Title}\u001F{data.Artist}";
             if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
@@ -297,6 +322,11 @@ public sealed class SerialLink : IDisposable
 
                 await SendLineAsync(
                     $"SAVCHUNK|{i}|{offset}|{base64}");
+
+                // Leave airtime for HID/encoder reports while a large
+                // screensaver upload is in progress.
+                if (_bleCharacteristic is not null)
+                    await Task.Delay(8);
 
                 sentChunks++;
                 progress?.Report(
