@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private byte _r = 255;
     private byte _g = 120;
     private byte _b = 0;
+    private ScreensaverAnimation? _screensaverAnimation;
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
@@ -323,10 +324,17 @@ public partial class MainWindow : Window
         _serial.ClearNowPlaying();
     }
 
-    private static BitmapSource CreateArtworkBitmap(byte[] rgb332)
+    private static BitmapSource CreateArtworkBitmap(byte[] rgb332) =>
+        CreateRgb332Bitmap(rgb332, 76, 76);
+
+    private static BitmapSource CreateRgb332Bitmap(
+        byte[] rgb332,
+        int width,
+        int height)
     {
-        const int width = 76;
-        const int height = 76;
+        if (rgb332.Length != width * height)
+            throw new ArgumentException("RGB332 buffer size does not match dimensions.");
+
         int stride = width * 4;
         byte[] bgra = new byte[stride * height];
 
@@ -357,6 +365,7 @@ public partial class MainWindow : Window
         bitmap.Freeze();
         return bitmap;
     }
+
 
     private static string FormatTime(TimeSpan value)
     {
@@ -653,6 +662,123 @@ public partial class MainWindow : Window
             else
                 _serial.SetEffect(effect);
         }
+    }
+
+    private async void ChooseScreensaverMedia_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose LumiPad screensaver",
+            Filter = "GIF / Video|*.gif;*.mp4;*.m4v;*.mov|GIF|*.gif|Video|*.mp4;*.m4v;*.mov",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        SendScreensaverButton.IsEnabled = false;
+        ScreensaverSendProgress.Value = 0;
+        ScreensaverSendStatus.Text = "Preparing local media…";
+
+        try
+        {
+            _screensaverAnimation =
+                await ScreensaverMediaService.LoadAsync(dialog.FileName);
+
+            ScreensaverFileName.Text = _screensaverAnimation.FileName;
+            ScreensaverMediaInfo.Text =
+                $"{_screensaverAnimation.Frames.Count} frames · " +
+                $"{ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · " +
+                $"{_screensaverAnimation.FrameIntervalMs} ms/frame";
+
+            ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
+                _screensaverAnimation.Frames[0],
+                ScreensaverMediaService.Width,
+                ScreensaverMediaService.Height);
+
+            ScreensaverPreviewImage.Visibility = Visibility.Visible;
+            ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
+            ScreensaverSendStatus.Text =
+                "Ready. Send once to store the lightweight loop in LumiPad RAM.";
+            SendScreensaverButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            _screensaverAnimation = null;
+            ScreensaverFileName.Text = "No file selected";
+            ScreensaverPreviewImage.Source = null;
+            ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
+            ScreensaverPreviewHint.Visibility = Visibility.Visible;
+            ScreensaverSendStatus.Text = $"Cannot prepare file: {ex.Message}";
+        }
+    }
+
+    private async void SendScreensaverMedia_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_screensaverAnimation is null)
+            return;
+
+        if (!_serial.IsConnected)
+        {
+            ScreensaverSendStatus.Text =
+                "Connect LumiPad first, then send the screensaver.";
+            return;
+        }
+
+        SendScreensaverButton.IsEnabled = false;
+        ScreensaverSendProgress.Value = 0;
+        ScreensaverSendStatus.Text =
+            "Sending frames… Bluetooth can take a little while.";
+
+        var progress = new Progress<int>(value =>
+        {
+            ScreensaverSendProgress.Value = value;
+            ScreensaverSendStatus.Text = $"Sending… {value}%";
+        });
+
+        try
+        {
+            await _serial.SendScreensaverAnimationAsync(
+                _screensaverAnimation,
+                progress);
+
+            ScreensaverSendProgress.Value = 100;
+            ScreensaverSendStatus.Text =
+                "Sent. The custom GIF/video loop will play when the screensaver starts.";
+        }
+        catch (Exception ex)
+        {
+            ScreensaverSendStatus.Text = $"Send failed: {ex.Message}";
+        }
+        finally
+        {
+            SendScreensaverButton.IsEnabled =
+                _screensaverAnimation is not null;
+        }
+    }
+
+    private void ClearScreensaverMedia_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _screensaverAnimation = null;
+        _serial.ClearScreensaverAnimation();
+
+        ScreensaverPreviewImage.Source = null;
+        ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
+        ScreensaverPreviewHint.Visibility = Visibility.Visible;
+        ScreensaverFileName.Text = "No file selected";
+        ScreensaverMediaInfo.Text =
+            "Converted to a lightweight loop for LumiPad.";
+        ScreensaverSendProgress.Value = 0;
+        ScreensaverSendStatus.Text =
+            "Custom screensaver cleared; LumiPad falls back to its built-in saver.";
+        SendScreensaverButton.IsEnabled = false;
     }
 
     private async void MainTabs_SelectionChanged(
