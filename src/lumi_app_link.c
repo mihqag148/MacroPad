@@ -12,6 +12,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/base64.h>
 
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
@@ -19,7 +20,7 @@
 LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
-#define LINE_MAX 3200
+#define LINE_MAX 8200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -33,6 +34,7 @@ static char ble_line[LINE_MAX];
 static size_t ble_len;
 
 static uint8_t bitmap_tmp[BITMAP_TMP_MAX];
+static uint8_t artwork_tmp[LUMI_ARTWORK_BYTES];
 K_MUTEX_DEFINE(bitmap_lock);
 
 static int hex_nibble(char c) {
@@ -122,6 +124,27 @@ static void handle_rgb(char *save) {
     }
 }
 
+static void handle_art(char *save) {
+    char *base64 = strtok_r(NULL, "|", &save);
+    if (!base64) {
+        return;
+    }
+
+    size_t decoded_len = 0;
+    int rc = base64_decode(
+        artwork_tmp,
+        sizeof(artwork_tmp),
+        &decoded_len,
+        (const uint8_t *)base64,
+        strlen(base64));
+
+    if (rc != 0 || decoded_len != LUMI_ARTWORK_BYTES) {
+        return;
+    }
+
+    lumi_now_playing_set_artwork(artwork_tmp, decoded_len);
+}
+
 static void handle_txt(char *save) {
     char *kind = strtok_r(NULL, "|", &save);
     char *width_s = strtok_r(NULL, "|", &save);
@@ -183,6 +206,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_rgb(save);
     } else if (strcmp(root, "TXT") == 0) {
         handle_txt(save);
+    } else if (strcmp(root, "ART") == 0) {
+        handle_art(save);
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     }
