@@ -29,6 +29,9 @@ public partial class MainWindow : Window
     private byte _g = 120;
     private byte _b = 0;
     private ScreensaverAnimation? _screensaverAnimation;
+    private string? _screensaverMediaPath;
+    private int _rgbEffect = 3;
+    private bool _rgbAuto;
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
@@ -484,61 +487,23 @@ public partial class MainWindow : Window
             _serial.SetBrightness(value);
     }
 
-    private void EffectCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (!_uiReady ||
-            EffectCombo.SelectedItem is not ComboBoxItem item)
-            return;
-
-        if (!int.TryParse(item.Tag?.ToString(), out int effect))
-            return;
-
-        if (effect < 0)
-        {
-            _serial.SetAutoLayer();
-        }
-        else if (effect == 3)
-        {
-            _serial.SetSolid(_r, _g, _b);
-        }
-        else
-        {
-            _serial.SetEffect(effect);
-        }
-    }
-
     private void BuildColorWheel()
     {
-        const int size = 148;
-        int stride = size * 4;
-        byte[] pixels = new byte[stride * size];
-        double center = (size - 1) / 2.0;
-        double radius = center - 2.0;
+        const int width = 220;
+        const int height = 185;
+        int stride = width * 4;
+        byte[] pixels = new byte[stride * height];
 
-        for (int y = 0; y < size; y++)
+        for (int y = 0; y < height; y++)
         {
-            for (int x = 0; x < size; x++)
+            double saturation = 1.0 - y / (double)(height - 1);
+
+            for (int x = 0; x < width; x++)
             {
-                double dx = x - center;
-                double dy = y - center;
-                double dist = Math.Sqrt(dx * dx + dy * dy);
-
-                int p = y * stride + x * 4;
-
-                if (dist > radius)
-                {
-                    pixels[p + 3] = 0;
-                    continue;
-                }
-
-                double saturation = Math.Clamp(dist / radius, 0.0, 1.0);
-                double hue = Math.Atan2(dy, dx) * 180.0 / Math.PI;
-                if (hue < 0) hue += 360.0;
-
+                double hue = x * 360.0 / (width - 1);
                 (byte r, byte g, byte b) = HsvToRgb(hue, saturation, 1.0);
 
+                int p = y * stride + x * 4;
                 pixels[p] = b;
                 pixels[p + 1] = g;
                 pixels[p + 2] = r;
@@ -547,13 +512,13 @@ public partial class MainWindow : Window
         }
 
         var bitmap = BitmapSource.Create(
-            size, size, 96, 96,
+            width, height, 96, 96,
             PixelFormats.Bgra32,
             null, pixels, stride);
 
         bitmap.Freeze();
         ColorWheelImage.Source = bitmap;
-        UpdateColorWheelCursor();
+        UpdateRgbReadout();
     }
 
     private void ColorWheelImage_MouseLeftButtonDown(
@@ -561,27 +526,15 @@ public partial class MainWindow : Window
         System.Windows.Input.MouseButtonEventArgs e)
     {
         var pos = e.GetPosition(ColorWheelImage);
-        double center = ColorWheelImage.ActualWidth / 2.0;
-        double dx = pos.X - center;
-        double dy = pos.Y - center;
-        double radius = center - 2.0;
-        double dist = Math.Sqrt(dx * dx + dy * dy);
 
-        if (dist > radius)
-            return;
+        double width = Math.Max(1.0, ColorWheelImage.ActualWidth);
+        double height = Math.Max(1.0, ColorWheelImage.ActualHeight);
 
-        double saturation = Math.Clamp(dist / radius, 0.0, 1.0);
-        double hue = Math.Atan2(dy, dx) * 180.0 / Math.PI;
-        if (hue < 0) hue += 360.0;
+        double hue = Math.Clamp(pos.X / width, 0.0, 1.0) * 360.0;
+        double saturation = 1.0 - Math.Clamp(pos.Y / height, 0.0, 1.0);
 
         (_r, _g, _b) = HsvToRgb(hue, saturation, 1.0);
-
-        ColorPreview.Background =
-            new SolidColorBrush(MediaColor.FromRgb(_r, _g, _b));
-
-        EffectCombo.SelectedIndex = 4;
-        _serial.SetSolid(_r, _g, _b);
-        UpdateColorWheelCursor(pos.X, pos.Y);
+        ApplySelectedRgbColor(true);
     }
 
     private static (byte r, byte g, byte b) HsvToRgb(
@@ -595,12 +548,12 @@ public partial class MainWindow : Window
 
         double r1, g1, b1;
 
-        if (hue < 60)      (r1, g1, b1) = (c, x, 0);
-        else if (hue < 120)(r1, g1, b1) = (x, c, 0);
-        else if (hue < 180)(r1, g1, b1) = (0, c, x);
-        else if (hue < 240)(r1, g1, b1) = (0, x, c);
-        else if (hue < 300)(r1, g1, b1) = (x, 0, c);
-        else               (r1, g1, b1) = (c, 0, x);
+        if (hue < 60)       (r1, g1, b1) = (c, x, 0);
+        else if (hue < 120) (r1, g1, b1) = (x, c, 0);
+        else if (hue < 180) (r1, g1, b1) = (0, c, x);
+        else if (hue < 240) (r1, g1, b1) = (0, x, c);
+        else if (hue < 300) (r1, g1, b1) = (x, 0, c);
+        else                (r1, g1, b1) = (c, 0, x);
 
         return (
             (byte)Math.Round((r1 + m) * 255.0),
@@ -608,59 +561,127 @@ public partial class MainWindow : Window
             (byte)Math.Round((b1 + m) * 255.0));
     }
 
-    private void UpdateColorWheelCursor(double? x = null, double? y = null)
+    private void UpdateRgbReadout()
     {
-        if (ColorWheelCursor is null)
-            return;
+        if (ColorPreview is not null)
+            ColorPreview.Background =
+                new SolidColorBrush(MediaColor.FromRgb(_r, _g, _b));
 
-        double px = x ?? ColorWheelImage.Width / 2.0;
-        double py = y ?? ColorWheelImage.Height / 2.0;
+        if (RgbHexText is not null)
+            RgbHexText.Text = $"#{_r:X2}{_g:X2}{_b:X2}";
 
-        ColorWheelCursor.Margin = new Thickness(
-            px - ColorWheelCursor.Width / 2.0,
-            py - ColorWheelCursor.Height / 2.0,
-            0,
-            0);
-        ColorWheelCursor.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
-        ColorWheelCursor.VerticalAlignment = System.Windows.VerticalAlignment.Top;
+        if (RgbRText is not null) RgbRText.Text = _r.ToString();
+        if (RgbGText is not null) RgbGText.Text = _g.ToString();
+        if (RgbBText is not null) RgbBText.Text = _b.ToString();
     }
 
-    private void ChooseColor_Click(object sender, RoutedEventArgs e)
+    private void ApplySelectedRgbColor(bool send)
     {
-        using var dialog = new Forms.ColorDialog
-        {
-            FullOpen = true,
-            Color = Drawing.Color.FromArgb(_r, _g, _b)
-        };
+        UpdateRgbReadout();
 
-        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        if (send && _uiReady)
+        {
+            _rgbAuto = false;
+            _rgbEffect = 3;
+            _serial.SetSolid(_r, _g, _b);
+        }
+    }
+
+    private void RgbSwatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.Tag is not string hex ||
+            System.Windows.Media.ColorConverter.ConvertFromString(hex)
+                is not MediaColor color)
             return;
 
-        _r = dialog.Color.R;
-        _g = dialog.Color.G;
-        _b = dialog.Color.B;
+        _r = color.R;
+        _g = color.G;
+        _b = color.B;
+        ApplySelectedRgbColor(true);
+    }
 
-        ColorPreview.Background =
-            new SolidColorBrush(MediaColor.FromRgb(_r, _g, _b));
+    private void RgbMode_Click(object sender, RoutedEventArgs e)
+    {
+        string mode = (sender as Button)?.Tag?.ToString() ?? "Static";
 
-        EffectCombo.SelectedIndex = 4;
-        _serial.SetSolid(_r, _g, _b);
+        RgbStaticPresets.Visibility =
+            mode == "Static" ? Visibility.Visible : Visibility.Collapsed;
+        RgbDynamicPresets.Visibility =
+            mode == "Dynamic" ? Visibility.Visible : Visibility.Collapsed;
+        RgbReactivePresets.Visibility =
+            mode == "Reactive" ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!_uiReady)
+            return;
+
+        if (mode == "Static")
+        {
+            _rgbAuto = false;
+            _rgbEffect = 3;
+            _serial.SetSolid(_r, _g, _b);
+        }
+        else if (mode == "Reactive")
+        {
+            _rgbAuto = false;
+            _rgbEffect = 4;
+            _serial.SetEffect(4);
+        }
+    }
+
+    private void RgbPreset_Click(object sender, RoutedEventArgs e)
+    {
+        string tag = (sender as Button)?.Tag?.ToString() ?? "";
+
+        if (tag == "AUTO")
+        {
+            _rgbAuto = true;
+            _serial.SetAutoLayer();
+            return;
+        }
+
+        if (!int.TryParse(tag, out int effect))
+            return;
+
+        _rgbAuto = false;
+        _rgbEffect = effect;
+
+        if (effect == 3)
+            _serial.SetSolid(_r, _g, _b);
+        else
+            _serial.SetEffect(effect);
+    }
+
+    private void RgbSpeedSlider_ValueChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<double> e)
+    {
+        int value = (int)Math.Round(e.NewValue);
+
+        if (RgbSpeedText is not null)
+            RgbSpeedText.Text = $"{value}%";
+
+        if (_uiReady)
+            _serial.SetSpeed(value);
     }
 
     private void SendAllRgb()
     {
         _serial.SetEnabled(LedEnabled.IsChecked == true);
         _serial.SetBrightness((int)Math.Round(BrightnessSlider.Value));
+        _serial.SetSpeed((int)Math.Round(RgbSpeedSlider.Value));
 
-        if (EffectCombo.SelectedItem is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out int effect))
+        if (_rgbAuto)
         {
-            if (effect < 0)
-                _serial.SetAutoLayer();
-            else if (effect == 3)
-                _serial.SetSolid(_r, _g, _b);
-            else
-                _serial.SetEffect(effect);
+            _serial.SetAutoLayer();
+        }
+        else if (_rgbEffect == 3)
+        {
+            _serial.SetSolid(_r, _g, _b);
+        }
+        else
+        {
+            _serial.SetEffect(_rgbEffect);
         }
     }
 
@@ -679,20 +700,57 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true)
             return;
 
+        _screensaverMediaPath = dialog.FileName;
+        await PrepareScreensaverMediaAsync();
+    }
+
+    private ScreensaverScaleMode SelectedScreensaverScaleMode()
+    {
+        if (ScreensaverScaleCombo.SelectedItem is ComboBoxItem item &&
+            Enum.TryParse<ScreensaverScaleMode>(
+                item.Tag?.ToString(),
+                true,
+                out var mode))
+        {
+            return mode;
+        }
+
+        return ScreensaverScaleMode.Fill;
+    }
+
+    private async void ScreensaverScaleCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady || string.IsNullOrWhiteSpace(_screensaverMediaPath))
+            return;
+
+        await PrepareScreensaverMediaAsync();
+    }
+
+    private async Task PrepareScreensaverMediaAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_screensaverMediaPath))
+            return;
+
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
         ScreensaverSendStatus.Text = "Preparing local media…";
 
         try
         {
+            var scaleMode = SelectedScreensaverScaleMode();
+
             _screensaverAnimation =
-                await ScreensaverMediaService.LoadAsync(dialog.FileName);
+                await ScreensaverMediaService.LoadAsync(
+                    _screensaverMediaPath,
+                    scaleMode);
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
             ScreensaverMediaInfo.Text =
                 $"{_screensaverAnimation.Frames.Count} frames · " +
                 $"{ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · " +
-                $"{_screensaverAnimation.FrameIntervalMs} ms/frame";
+                $"{_screensaverAnimation.FrameIntervalMs} ms/frame · {scaleMode}";
 
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
                 _screensaverAnimation.Frames[0],
@@ -708,7 +766,6 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _screensaverAnimation = null;
-            ScreensaverFileName.Text = "No file selected";
             ScreensaverPreviewImage.Source = null;
             ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
             ScreensaverPreviewHint.Visibility = Visibility.Visible;
@@ -767,6 +824,7 @@ public partial class MainWindow : Window
         RoutedEventArgs e)
     {
         _screensaverAnimation = null;
+        _screensaverMediaPath = null;
         _serial.ClearScreensaverAnimation();
 
         ScreensaverPreviewImage.Source = null;
