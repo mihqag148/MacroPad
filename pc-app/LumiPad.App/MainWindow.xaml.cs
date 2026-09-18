@@ -612,8 +612,8 @@ public partial class MainWindow : Window
             py - ColorWheelCursor.Height / 2.0,
             0,
             0);
-        ColorWheelCursor.HorizontalAlignment = HorizontalAlignment.Left;
-        ColorWheelCursor.VerticalAlignment = VerticalAlignment.Top;
+        ColorWheelCursor.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        ColorWheelCursor.VerticalAlignment = System.Windows.VerticalAlignment.Top;
     }
 
     private void ChooseColor_Click(object sender, RoutedEventArgs e)
