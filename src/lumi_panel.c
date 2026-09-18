@@ -14,24 +14,18 @@ static const struct spi_dt_spec bus =
     SPI_DT_SPEC_GET(PANEL, SPI_OP_MODE_MASTER | SPI_WORD_SET(8), 0);
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
-static int lumi_panel_write_data(const uint8_t *data, size_t len) {
-    if (!data || len == 0U) {
-        return -EINVAL;
-    }
-
-    int err = gpio_pin_set_dt(&dc, 0);
-    if (err != 0) {
-        return err;
-    }
-
-    struct spi_buf buffer = {.buf = (void *)data, .len = len};
-    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
-
-    return spi_write_dt(&bus, &buffers);
-}
-
-
-static volatile bool async_flush_busy;
+/* Held across the entire command/window/DMA transaction, including sleep.
+ * A semaphore can be released by the SPI completion ISR (unlike a mutex).
+ */
+K_SEM_DEFINE(panel_idle, 1, 1);
+#define LOGICAL_WIDTH 320
+#define LOGICAL_HEIGHT 172
+#define ROTATED_PIXELS ((LOGICAL_WIDTH * LOGICAL_HEIGHT * CONFIG_LV_Z_VDB_SIZE) / 100)
+BUILD_ASSERT(sizeof(lv_color_t) == 2, "Panel requires RGB565");
+static lv_color_t rotated[ROTATED_PIXELS] __aligned(4);
+/* Descriptors and pixel storage must outlive the asynchronous call. */
+static struct spi_buf pixel_buffer;
+static const struct spi_buf_set pixel_buffers = {.buffers = &pixel_buffer, .count = 1};
 
 static int lumi_panel_send_command(uint8_t command) {
     struct spi_buf buffer = {.buf = &command, .len = 1U};
@@ -66,10 +60,10 @@ static int lumi_panel_set_window(const lv_area_t *area) {
         return -EINVAL;
     }
 
-    uint16_t x1 = (uint16_t)area->x1;
-    uint16_t x2 = (uint16_t)area->x2;
-    uint16_t y1 = (uint16_t)(area->y1 + 34);
-    uint16_t y2 = (uint16_t)(area->y2 + 34);
+    uint16_t x1 = (uint16_t)(LOGICAL_HEIGHT - 1 - area->y2 + DT_PROP(PANEL, x_offset));
+    uint16_t x2 = (uint16_t)(LOGICAL_HEIGHT - 1 - area->y1 + DT_PROP(PANEL, x_offset));
+    uint16_t y1 = (uint16_t)(area->x1 + DT_PROP(PANEL, y_offset));
+    uint16_t y2 = (uint16_t)(area->x2 + DT_PROP(PANEL, y_offset));
 
     uint8_t data[4];
 
@@ -110,7 +104,7 @@ static void lumi_panel_async_done(const struct device *dev,
     ARG_UNUSED(dev);
 
     lv_disp_drv_t *drv = (lv_disp_drv_t *)userdata;
-    async_flush_busy = false;
+    k_sem_give(&panel_idle);
 
     if (result != 0) {
         LOG_ERR("Async TFT payload failed: %d", result);
@@ -129,42 +123,54 @@ static void lumi_panel_async_flush(lv_disp_drv_t *drv,
         return;
     }
 
-    if (async_flush_busy) {
-        LOG_ERR("Unexpected overlapping TFT flush");
+    uint32_t width = (uint32_t)(area->x2 - area->x1 + 1);
+    uint32_t height = (uint32_t)(area->y2 - area->y1 + 1);
+    if (area->x1 < 0 || area->y1 < 0 || area->x2 >= LOGICAL_WIDTH ||
+        area->y2 >= LOGICAL_HEIGHT || area->x2 < area->x1 || area->y2 < area->y1 ||
+        width * height > ARRAY_SIZE(rotated)) {
+        LOG_ERR("Invalid TFT flush area");
         lv_disp_flush_ready(drv);
         return;
     }
 
+    k_sem_take(&panel_idle, K_FOREVER);
+    /* Old MX|MV landscape -> native MADCTL=0:
+     * (x,y) -> (171-y,x). Emit native rows, columns increasing.
+     * Copy lv_color_t unchanged: LV_COLOR_16_SWAP already sets wire byte order.
+     */
+    for (uint32_t x = 0; x < width; x++) {
+        for (uint32_t y = 0; y < height; y++) {
+            rotated[x * height + y] = color_p[(height - 1 - y) * width + x];
+        }
+    }
+
     int err = lumi_panel_set_window(area);
     if (err != 0) {
+        k_sem_give(&panel_idle);
         LOG_ERR("TFT window setup failed: %d", err);
         lv_disp_flush_ready(drv);
         return;
     }
 
-    uint32_t width = (uint32_t)(area->x2 - area->x1 + 1);
-    uint32_t height = (uint32_t)(area->y2 - area->y1 + 1);
-    size_t len = (size_t)width * height * sizeof(lv_color_t);
-
-    struct spi_buf buffer = {.buf = color_p, .len = len};
-    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
+    pixel_buffer.buf = rotated;
+    pixel_buffer.len = (size_t)width * height * sizeof(lv_color_t);
 
     err = gpio_pin_set_dt(&dc, 0);
     if (err != 0) {
+        k_sem_give(&panel_idle);
         LOG_ERR("TFT D/C setup failed: %d", err);
         lv_disp_flush_ready(drv);
         return;
     }
 
-    async_flush_busy = true;
     err = spi_transceive_cb(bus.bus,
                             &bus.config,
-                            &buffers,
+                            &pixel_buffers,
                             NULL,
                             lumi_panel_async_done,
                             drv);
     if (err != 0) {
-        async_flush_busy = false;
+        k_sem_give(&panel_idle);
         LOG_ERR("Async TFT transfer start failed: %d", err);
         lv_disp_flush_ready(drv);
     }
@@ -176,71 +182,29 @@ int lumi_panel_enable_async_flush(void) {
         return -ENODEV;
     }
 
+    if (disp->driver->draw_buf->size > ARRAY_SIZE(rotated)) {
+        return -ENOMEM;
+    }
+    disp->driver->hor_res = LOGICAL_WIDTH;
+    disp->driver->ver_res = LOGICAL_HEIGHT;
+    disp->driver->rotated = LV_DISP_ROT_NONE;
+    disp->driver->sw_rotate = 0;
     disp->driver->flush_cb = lumi_panel_async_flush;
+    lv_disp_drv_update(disp, disp->driver);
     LOG_INF("LVGL TFT flush switched to asynchronous SPI");
     return 0;
 }
 
 int lumi_panel_init(void) {
-    /* This ST7789 panel variant needs display inversion enabled for
-     * normal black/white polarity. D/C is active-low: logical 1 means
-     * command (physical 0). BL is tied to 3V3.
-     */
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
         return -ENODEV;
     }
-    uint8_t command = 0x21; /* INVON */
-    struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
-    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
-    int err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
-    }
-    if (err) {
-        LOG_ERR("Panel inversion setup failed: %d", err);
-        return err;
-    }
-
-    /* Program PORCTRL explicitly as well as through devicetree so the
-     * runtime timing does not depend on the display driver's init sequence.
-     * FPA=BPA=0x6C; remaining porch bytes match the panel baseline.
+    /* Zephyr initializes native MADCTL, baseline porch and default C6=0x0f.
+     * Keep panel inversion required by this module; do not override timing.
      */
-    command = 0xB2;
-    err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
-    }
-    if (err != 0) {
-        LOG_ERR("Panel PORCTRL command failed: %d", err);
-        return err;
-    }
-
-    const uint8_t porch[5] = {0x6C, 0x6C, 0x00, 0x33, 0x33};
-    err = lumi_panel_write_data(porch, sizeof(porch));
-    if (err != 0) {
-        LOG_ERR("Panel PORCTRL data failed: %d", err);
-        return err;
-    }
-
-    /* FRCTRL2 (C6h), RTNA=0x1F. Datasheet nominal timing is about 25 Hz
-     * with FPA=BPA=0x6C and a 10 MHz internal oscillator.
-     */
-    command = 0xC6;
-    err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
-    }
-    if (err != 0) {
-        LOG_ERR("Panel FRCTRL2 command failed: %d", err);
-        return err;
-    }
-
-    const uint8_t frctrl2 = 0x1F;
-    err = lumi_panel_write_data(&frctrl2, 1U);
-    if (err) {
-        LOG_ERR("Panel FRCTRL2 data failed: %d", err);
-    }
-
+    k_sem_take(&panel_idle, K_FOREVER);
+    int err = lumi_panel_send_command(0x21); /* INVON */
+    k_sem_give(&panel_idle);
     return err;
 }
 
@@ -249,29 +213,12 @@ int lumi_panel_set_sleep(bool sleeping) {
         return -ENODEV;
     }
 
-    uint8_t command = sleeping ? 0x28 : 0x11;
-    struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
-    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
-
-    int err = gpio_pin_set_dt(&dc, 1);
-    if (err != 0) {
-        return err;
+    k_sem_take(&panel_idle, K_FOREVER);
+    int err = lumi_panel_send_command(sleeping ? 0x28 : 0x11);
+    if (err == 0) {
+        k_msleep(sleeping ? 10 : 120);
+        err = lumi_panel_send_command(sleeping ? 0x10 : 0x29);
     }
-
-    err = spi_write_dt(&bus, &buffers);
-    if (err != 0) {
-        return err;
-    }
-
-    if (sleeping) {
-        k_msleep(10);
-        command = 0x10; /* SLPIN */
-        err = spi_write_dt(&bus, &buffers);
-    } else {
-        k_msleep(120);
-        command = 0x29; /* DISPON */
-        err = spi_write_dt(&bus, &buffers);
-    }
-
+    k_sem_give(&panel_idle);
     return err;
 }
