@@ -10,7 +10,10 @@
 #include <zephyr/logging/log.h>
 
 #include <drivers/behavior.h>
+#include <zmk/activity.h>
 #include <zmk/behavior.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/activity_state_changed.h>
 #include <zmk/keymap.h>
 
 #include "lumi_rgb.h"
@@ -226,6 +229,25 @@ static void lumi_rgb_work_handler(struct k_work *work) {
 
     k_work_reschedule(&lumi_rgb_work, K_MSEC(FRAME_MS));
 }
+
+static int lumi_rgb_activity_listener(const zmk_event_t *eh) {
+    const struct zmk_activity_state_changed *event =
+        as_zmk_activity_state_changed(eh);
+
+    if (!event || event->state != ZMK_ACTIVITY_SLEEP) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    if (device_is_ready(strip)) {
+        fill((struct led_rgb){0});
+        led_strip_update_rgb(strip, pixels, LED_COUNT);
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(lumi_rgb_activity, lumi_rgb_activity_listener);
+ZMK_SUBSCRIPTION(lumi_rgb_activity, zmk_activity_state_changed);
 
 static int lumi_rgb_init(void) {
     if (!device_is_ready(strip)) {
