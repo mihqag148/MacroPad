@@ -518,6 +518,65 @@ public sealed class SerialLink : IDisposable
     public void ShowScreensaverNow() =>
         _ = SendLineAsync("CFG|SAVERNOW");
 
+    public async Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
+        ReadMemoryUsageAsync()
+    {
+        string response;
+
+        if (_port?.IsOpen == true)
+        {
+            await _writeGate.WaitAsync();
+            try
+            {
+                _port.ReadTimeout = 800;
+                _port.DiscardInBuffer();
+                byte[] data = Encoding.UTF8.GetBytes("MEM\n");
+                _port.Write(data, 0, data.Length);
+                response = await Task.Run(() => _port.ReadLine().Trim());
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
+        }
+        else if (_bleCharacteristic is not null)
+        {
+            try
+            {
+                await SendLineAsync("MEM");
+                await Task.Delay(35);
+                response = await ReadBleStatusAsync();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        else
+        {
+            return null;
+        }
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 5 ||
+            !string.Equals(parts[0], "MEM", StringComparison.Ordinal) ||
+            !long.TryParse(parts[1], out long flashUsed) ||
+            !long.TryParse(parts[2], out long flashTotal) ||
+            !long.TryParse(parts[3], out long ramUsed) ||
+            !long.TryParse(parts[4], out long ramTotal) ||
+            flashTotal <= 0 ||
+            ramTotal <= 0)
+        {
+            return null;
+        }
+
+        return (flashUsed, flashTotal, ramUsed, ramTotal);
+    }
+
     public void ClearScreensaverAnimation() =>
         _ = SendLineAsync("SAVCLEAR");
 
