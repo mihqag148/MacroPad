@@ -321,8 +321,17 @@ public sealed class SerialLink : IDisposable
             $"CFG|SAVER|{(enabled ? 1 : 0)}|{style}|{delaySeconds}|" +
             $"{r1}|{g1}|{b1}|{r2}|{g2}|{b2}");
 
+    public void SetScreensaverDelay(int seconds) =>
+        _ = SendLineAsync($"CFG|SAVERDELAY|{Math.Max(0, seconds)}");
+
     public void SetSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
+
+    public void RestartKeyboard() =>
+        _ = SendLineAsync("SYS|RESTART");
+
+    public void EnterDfu() =>
+        _ = SendLineAsync("SYS|DFU");
 
     private async Task SendLineAsync(string line)
     {
