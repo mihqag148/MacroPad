@@ -11,8 +11,7 @@
     <Product>LumiPad</Product>
     <AssemblyTitle>LumiPad</AssemblyTitle>
     <Description>LumiPad wireless macropad companion</Description>
-    <ApplicationIcon>Assets\LumiPad.ico</ApplicationIcon>
-  </PropertyGroup>
+</PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
