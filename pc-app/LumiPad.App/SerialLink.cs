@@ -14,6 +14,7 @@ public sealed class SerialLink : IDisposable
     private static readonly Guid CharacteristicUuid = Guid.Parse("D8A90002-6B5A-4C3B-9F2A-7C4E4C554D49");
 
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly SemaphoreSlim _mediaGate = new(1, 1);
 
     private SerialPort? _port;
     private BluetoothLEDevice? _bleDevice;
@@ -187,19 +188,32 @@ public sealed class SerialLink : IDisposable
         if (!IsConnected)
             return;
 
-        var title = Uri.EscapeDataString(data.Title ?? "");
-        var artist = Uri.EscapeDataString(data.Artist ?? "");
+        _ = SendNowPlayingAsync(data);
+    }
 
-        _ = SendLineAsync(
-            $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
-            $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
-            $"{(data.IsPlaying ? 1 : 0)}|{title}|{artist}");
-
-        string bitmapKey = $"{data.Title}\u001F{data.Artist}";
-        if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
+    private async Task SendNowPlayingAsync(NowPlayingData data)
+    {
+        await _mediaGate.WaitAsync();
+        try
         {
-            _lastBitmapKey = bitmapKey;
-            _ = SendUnicodeBitmapsAsync(data.Title ?? "", data.Artist ?? "");
+            var title = Uri.EscapeDataString(data.Title ?? "");
+            var artist = Uri.EscapeDataString(data.Artist ?? "");
+
+            await SendLineAsync(
+                $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
+                $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
+                $"{(data.IsPlaying ? 1 : 0)}|{title}|{artist}");
+
+            string bitmapKey = $"{data.Title}\u001F{data.Artist}";
+            if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
+            {
+                _lastBitmapKey = bitmapKey;
+                await SendUnicodeBitmapsAsync(data.Title ?? "", data.Artist ?? "");
+            }
+        }
+        finally
+        {
+            _mediaGate.Release();
         }
     }
 
@@ -277,5 +291,6 @@ public sealed class SerialLink : IDisposable
     {
         Disconnect();
         _writeGate.Dispose();
+        _mediaGate.Dispose();
     }
 }
