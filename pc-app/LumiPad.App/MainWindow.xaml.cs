@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private bool _trayTipShown;
     private bool _zmkInitialized;
     private bool _autoReconnectEnabled = true;
+    private string _connectionPreference = "auto";
     private readonly CancellationTokenSource _reconnectCts = new();
 
     private byte _r = 255;
@@ -794,6 +795,21 @@ public partial class MainWindow : Window
 
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
     {
+        _connectionPreference = "auto";
+        _autoReconnectEnabled = true;
+        await DetectAsync();
+    }
+
+    private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
+    {
+        _connectionPreference = "usb";
+        _autoReconnectEnabled = true;
+        await DetectAsync();
+    }
+
+    private async void ConnectBluetoothButton_Click(object sender, RoutedEventArgs e)
+    {
+        _connectionPreference = "bluetooth";
         _autoReconnectEnabled = true;
         await DetectAsync();
     }
@@ -803,9 +819,19 @@ public partial class MainWindow : Window
         DetectButton.IsEnabled = false;
         DeviceStatus.Text = L("Detecting…", "Đang tìm…");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-        BottomStatus.Text = L("Searching Bluetooth first, then USB fallback…", "Đang tìm Bluetooth trước, sau đó thử USB…");
+        BottomStatus.Text = _connectionPreference switch
+        {
+            "usb" => L("Searching USB…", "Đang tìm USB…"),
+            "bluetooth" => L("Searching Bluetooth…", "Đang tìm Bluetooth…"),
+            _ => L("Searching USB first, then Bluetooth…", "Đang tìm USB trước, sau đó Bluetooth…")
+        };
 
-        var connection = await _serial.AutoDetectAsync();
+        var connection = _connectionPreference switch
+        {
+            "usb" => await _serial.ConnectUsbAsync(),
+            "bluetooth" => await _serial.ConnectBluetoothAsync(),
+            _ => await _serial.AutoDetectAsync()
+        };
 
         if (connection is null)
         {
@@ -855,7 +881,12 @@ public partial class MainWindow : Window
                 if (!_autoReconnectEnabled || _serial.IsConnected)
                     continue;
 
-                var connection = await _serial.AutoDetectAsync(token);
+                var connection = _connectionPreference switch
+                {
+                    "usb" => await _serial.ConnectUsbAsync(token),
+                    "bluetooth" => await _serial.ConnectBluetoothAsync(token),
+                    _ => await _serial.AutoDetectAsync(token)
+                };
                 if (connection is null)
                     continue;
 
