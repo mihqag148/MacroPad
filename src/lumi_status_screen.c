@@ -58,6 +58,10 @@ static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
 static lv_obj_t *saver_media_canvas;
 static lv_color_t saver_media_canvas_buf[LUMI_SAVER_FRAME_BYTES];
+/* RGB332 source byte -> panel colour. Built with lv_color_make() so it stays
+ * correct for whatever colour depth and byte order LVGL is configured with.
+ */
+static lv_color_t saver_rgb332_lut[256];
 
 #define SAVER_FLASH_MAGIC 0x4C534156U /* "LSAV" */
 #define SAVER_FLASH_VERSION 1U
@@ -643,7 +647,18 @@ static int32_t saver_wave(uint32_t now,
            (int32_t)(((int64_t)(max_value - min_value) * pos) / half);
 }
 
+static void build_rgb332_lut(void) {
+    for (size_t v = 0; v < ARRAY_SIZE(saver_rgb332_lut); v++) {
+        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
+        saver_rgb332_lut[v] = lv_color_make(r, g, b);
+    }
+}
+
 static void init_screensaver(lv_obj_t *screen) {
+    build_rgb332_lut();
+
     screensaver = lv_obj_create(screen);
     lv_obj_remove_style_all(screensaver);
     lv_obj_set_pos(screensaver, 0, 0);
@@ -692,6 +707,10 @@ static void init_screensaver(lv_obj_t *screen) {
         LV_IMG_CF_TRUE_COLOR);
     lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
     lv_img_set_zoom(saver_media_canvas, 512); /* 160x86 -> 320x172 */
+    /* Exact 2.0x integer upscale: every destination pixel maps to one whole
+     * source pixel, so interpolation only costs CPU without changing output.
+     */
+    lv_img_set_antialias(saver_media_canvas, false);
     lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -945,11 +964,8 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
     }
 
     for (size_t i = 0; i < LUMI_SAVER_FRAME_BYTES; i++) {
-        uint8_t v = saver_media_frame_buffer[i];
-        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
-        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
-        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
-        saver_media_canvas_buf[i] = lv_color_make(r, g, b);
+        saver_media_canvas_buf[i] =
+            saver_rgb332_lut[saver_media_frame_buffer[i]];
     }
 
     saver_prefetch_valid = false;
