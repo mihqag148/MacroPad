@@ -1323,6 +1323,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
+    (void)lumi_panel_enable_async_flush();
     (void)saver_flash_load_metadata();
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
