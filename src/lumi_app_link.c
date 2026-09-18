@@ -347,7 +347,10 @@ static void handle_line(char *line, bool from_usb) {
         handle_savchunk(save);
     } else if (strcmp(root, "SAVEND") == 0) {
         lumi_ui_saver_anim_end();
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:READY");
+        snprintf(lumi_status, sizeof(lumi_status),
+                 lumi_ui_saver_anim_is_valid()
+                     ? "LUMIPAD|2|SAVER:READY"
+                     : "LUMIPAD|2|SAVER:ERROR");
     } else if (strcmp(root, "SAVCLEAR") == 0) {
         lumi_ui_saver_anim_clear();
         snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:EMPTY");
