@@ -1175,8 +1175,12 @@ void lumi_ui_note_activity(void) {
     soft_sleep = false;
     k_mutex_unlock(&lumi_ui_config_lock);
 
+    /* Any real input/app activity must re-enable the RGB worker.
+     * Soft sleep additionally wakes the ST7789 panel.
+     */
+    lumi_rgb_set_suspended(false);
+
     if (was_sleeping) {
-        lumi_rgb_set_suspended(false);
         k_work_submit(&lumi_panel_wake_work);
     }
 }
