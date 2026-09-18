@@ -24,6 +24,7 @@ void lumi_ui_set_screensaver(bool enabled, uint8_t style,
                              uint8_t r2, uint8_t g2, uint8_t b2);
 void lumi_ui_set_sleep_timeout(uint32_t seconds);
 void lumi_ui_set_screensaver_delay(uint32_t seconds);
+void lumi_ui_show_screensaver_now(void);
 void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
 
