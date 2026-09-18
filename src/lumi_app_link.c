@@ -13,6 +13,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/base64.h>
+#include <zephyr/sys/reboot.h>
 
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
@@ -191,11 +192,32 @@ static void handle_cfg(char *save) {
                 (uint8_t)atoi(r1), (uint8_t)atoi(g1), (uint8_t)atoi(b1),
                 (uint8_t)atoi(r2), (uint8_t)atoi(g2), (uint8_t)atoi(b2));
         }
+    } else if (strcmp(cmd, "SAVERDELAY") == 0) {
+        char *seconds = strtok_r(NULL, "|", &save);
+        if (seconds) {
+            lumi_ui_set_screensaver_delay((uint32_t)strtoul(seconds, NULL, 10));
+        }
     } else if (strcmp(cmd, "SLEEP") == 0) {
         char *seconds = strtok_r(NULL, "|", &save);
         if (seconds) {
             lumi_ui_set_sleep_timeout((uint32_t)strtoul(seconds, NULL, 10));
         }
+    }
+}
+
+static void handle_sys(char *save) {
+    char *cmd = strtok_r(NULL, "|", &save);
+    if (!cmd) {
+        return;
+    }
+
+    if (strcmp(cmd, "RESTART") == 0) {
+        k_sleep(K_MSEC(80));
+        sys_reboot(SYS_REBOOT_WARM);
+    } else if (strcmp(cmd, "DFU") == 0) {
+        /* nice!nano v2 uses the Adafruit nRF52 bootloader magic reset value. */
+        k_sleep(K_MSEC(80));
+        sys_reboot(0x57);
     }
 }
 
@@ -299,6 +321,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_rgb(save);
     } else if (strcmp(root, "CFG") == 0) {
         handle_cfg(save);
+    } else if (strcmp(root, "SYS") == 0) {
+        handle_sys(save);
     } else if (strcmp(root, "TXT") == 0) {
         handle_txt(save);
     } else if (strcmp(root, "ART") == 0) {
