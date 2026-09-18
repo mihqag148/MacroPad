@@ -12,6 +12,22 @@ static const struct spi_dt_spec bus =
     SPI_DT_SPEC_GET(PANEL, SPI_OP_MODE_MASTER | SPI_WORD_SET(8), 0);
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
+static int lumi_panel_write_data(const uint8_t *data, size_t len) {
+    if (!data || len == 0U) {
+        return -EINVAL;
+    }
+
+    int err = gpio_pin_set_dt(&dc, 0);
+    if (err != 0) {
+        return err;
+    }
+
+    struct spi_buf buffer = {.buf = (void *)data, .len = len};
+    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
+
+    return spi_write_dt(&bus, &buffers);
+}
+
 int lumi_panel_init(void) {
     /* This ST7789 panel variant needs display inversion enabled for
      * normal black/white polarity. D/C is active-low: logical 1 means
@@ -29,7 +45,28 @@ int lumi_panel_init(void) {
     }
     if (err) {
         LOG_ERR("Panel inversion setup failed: %d", err);
+        return err;
     }
+
+    /* FRCTRL2 (C6h), RTNA=0x1F. With the enlarged porch timing in
+     * devicetree this targets approximately 25 Hz panel refresh.
+     */
+    command = 0xC6;
+    err = gpio_pin_set_dt(&dc, 1);
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+    if (err != 0) {
+        LOG_ERR("Panel FRCTRL2 command failed: %d", err);
+        return err;
+    }
+
+    const uint8_t frctrl2 = 0x1F;
+    err = lumi_panel_write_data(&frctrl2, 1U);
+    if (err) {
+        LOG_ERR("Panel FRCTRL2 data failed: %d", err);
+    }
+
     return err;
 }
 
