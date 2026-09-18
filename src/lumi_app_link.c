@@ -22,7 +22,7 @@
 LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
-#define LINE_MAX 8200
+#define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -37,7 +37,8 @@ static size_t ble_len;
 
 static uint8_t bitmap_tmp[BITMAP_TMP_MAX];
 static uint8_t artwork_tmp[LUMI_ARTWORK_BYTES];
-static uint8_t saver_frame_tmp[LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_chunk_tmp[256];
+static char lumi_status[64] = "LUMIPAD|2|SAVER:EMPTY";
 K_MUTEX_DEFINE(bitmap_lock);
 
 static int hex_nibble(char c) {
@@ -229,36 +230,49 @@ static void handle_savbegin(char *save) {
         return;
     }
 
+    uint8_t count = (uint8_t)atoi(count_s);
     lumi_ui_saver_anim_begin(
-        (uint8_t)atoi(count_s),
+        count,
         (uint16_t)atoi(interval_s));
+    snprintf(lumi_status, sizeof(lumi_status),
+             "LUMIPAD|2|SAVER:UPLOADING:0/%u", (unsigned int)count);
 }
 
-static void handle_savframe(char *save) {
+static void handle_savchunk(char *save) {
     char *index_s = strtok_r(NULL, "|", &save);
+    char *offset_s = strtok_r(NULL, "|", &save);
     char *base64 = strtok_r(NULL, "|", &save);
 
-    if (!index_s || !base64) {
+    if (!index_s || !offset_s || !base64) {
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
         return;
     }
 
     size_t decoded_len = 0;
     int rc = base64_decode(
-        saver_frame_tmp,
-        sizeof(saver_frame_tmp),
+        saver_chunk_tmp,
+        sizeof(saver_chunk_tmp),
         &decoded_len,
         (const uint8_t *)base64,
         strlen(base64));
 
-    if (rc != 0 || decoded_len != LUMI_SAVER_FRAME_BYTES) {
+    if (rc != 0 || decoded_len == 0U) {
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
         return;
     }
 
-    lumi_ui_saver_anim_frame(
-        (uint8_t)atoi(index_s),
-        saver_frame_tmp,
-        decoded_len);
+    uint8_t index = (uint8_t)atoi(index_s);
+    uint16_t offset = (uint16_t)atoi(offset_s);
+
+    lumi_ui_saver_anim_chunk(index, offset, saver_chunk_tmp, decoded_len);
+
+    if ((size_t)offset + decoded_len >= LUMI_SAVER_FRAME_BYTES) {
+        snprintf(lumi_status, sizeof(lumi_status),
+                 "LUMIPAD|2|SAVER:UPLOADING:%u",
+                 (unsigned int)(index + 1U));
+    }
 }
+
 
 static void handle_txt(char *save) {
     char *kind = strtok_r(NULL, "|", &save);
@@ -329,12 +343,14 @@ static void handle_line(char *line, bool from_usb) {
         handle_art(save);
     } else if (strcmp(root, "SAVBEGIN") == 0) {
         handle_savbegin(save);
-    } else if (strcmp(root, "SAVFRAME") == 0) {
-        handle_savframe(save);
+    } else if (strcmp(root, "SAVCHUNK") == 0) {
+        handle_savchunk(save);
     } else if (strcmp(root, "SAVEND") == 0) {
         lumi_ui_saver_anim_end();
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:READY");
     } else if (strcmp(root, "SAVCLEAR") == 0) {
         lumi_ui_saver_anim_clear();
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:EMPTY");
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     }
@@ -367,13 +383,11 @@ static void feed_bytes(char *line, size_t *line_len,
 
 /* ---------------- Bluetooth GATT transport ---------------- */
 
-static const char lumi_identity[] = "LUMIPAD|2";
-
 static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                          void *buf, uint16_t len, uint16_t offset) {
     ARG_UNUSED(attr);
     return bt_gatt_attr_read(conn, attr, buf, len, offset,
-                             lumi_identity, strlen(lumi_identity));
+                             lumi_status, strlen(lumi_status));
 }
 
 static ssize_t write_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
