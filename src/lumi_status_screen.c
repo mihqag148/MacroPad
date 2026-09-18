@@ -1604,7 +1604,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 50, NULL);
+lv_timer_create(refresh_screensaver, 40, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
