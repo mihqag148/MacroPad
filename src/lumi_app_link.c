@@ -151,7 +151,6 @@ static void handle_rgb(char *save) {
             }
 
             lumi_rgb_set_enabled(atoi(enabled) != 0);
-            snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|RGB:READY");
         }
     } else if (strcmp(cmd, "SOLID") == 0) {
         char *r = strtok_r(NULL, "|", &save);
