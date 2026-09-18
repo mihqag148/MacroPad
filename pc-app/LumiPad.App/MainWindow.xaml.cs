@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -99,10 +98,10 @@ public partial class MainWindow : Window
         using var bitmap = new Drawing.Bitmap(64, 64);
         using (var g = Drawing.Graphics.FromImage(bitmap))
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(Drawing.Color.Transparent);
 
-            using var brush = new LinearGradientBrush(
+            using var brush = new System.Drawing.Drawing2D.LinearGradientBrush(
                 new Drawing.Rectangle(4, 4, 56, 56),
                 Drawing.Color.FromArgb(255, 149, 0),
                 Drawing.Color.FromArgb(88, 86, 214),
@@ -187,7 +186,7 @@ public partial class MainWindow : Window
         _appIcon?.Dispose();
         _appIcon = null;
 
-        Application.Current.Shutdown();
+        System.Windows.Application.Current.Shutdown();
     }
 
     private string ThemeFilePath =>
@@ -236,7 +235,7 @@ public partial class MainWindow : Window
     {
         if (System.Windows.Media.ColorConverter.ConvertFromString(hex) is MediaColor color)
         {
-            Application.Current.Resources[key] = new SolidColorBrush(color);
+            System.Windows.Application.Current.Resources[key] = new SolidColorBrush(color);
         }
     }
 
