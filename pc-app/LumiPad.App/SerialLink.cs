@@ -105,6 +105,7 @@ public sealed class SerialLink : IDisposable
                     _bleDevice = candidate;
                     _bleService = service;
                     _bleCharacteristic = characteristic;
+                    candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
 
                     _connectionName = $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : "LumiPad")}";
                     return _connectionName;
@@ -120,6 +121,17 @@ public sealed class SerialLink : IDisposable
         }
 
         return null;
+    }
+
+    private void OnBleConnectionStatusChanged(
+        BluetoothLEDevice sender,
+        object args)
+    {
+        if (sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected)
+            return;
+
+        LinkError?.Invoke("Bluetooth disconnected");
+        Disconnect();
     }
 
     private async Task<string?> TryUsbAsync(CancellationToken cancellationToken)
@@ -178,6 +190,9 @@ public sealed class SerialLink : IDisposable
         }
 
         _bleCharacteristic = null;
+
+        if (_bleDevice is not null)
+            _bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
 
         _bleService?.Dispose();
         _bleService = null;
