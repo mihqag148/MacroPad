@@ -242,6 +242,8 @@ static void handle_cfg(char *save) {
         if (seconds) {
             lumi_ui_set_screensaver_delay((uint32_t)strtoul(seconds, NULL, 10));
         }
+    } else if (strcmp(cmd, "SAVERNOW") == 0) {
+        lumi_ui_show_screensaver_now();
     } else if (strcmp(cmd, "SLEEP") == 0) {
         char *seconds = strtok_r(NULL, "|", &save);
         if (seconds) {
