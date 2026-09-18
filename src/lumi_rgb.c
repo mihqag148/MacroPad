@@ -205,6 +205,11 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
     led_enabled = true;
 }
 
+void lumi_rgb_prepare_sleep(void) {
+    led_enabled = false;
+    lumi_rgb_prepare_sleep();
+}
+
 static void lumi_rgb_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
 
