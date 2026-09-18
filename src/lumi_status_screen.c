@@ -689,7 +689,7 @@ static void init_screensaver(lv_obj_t *screen) {
         LUMI_SAVER_FRAME_H,
         LV_IMG_CF_TRUE_COLOR);
     lv_obj_align(saver_media_canvas, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(saver_media_canvas, 512); /* 160x86 -> 320x172 */
+    lv_img_set_zoom(saver_media_canvas, 1024); /* 80x43 -> 320x172 */
     lv_obj_add_flag(saver_media_canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
