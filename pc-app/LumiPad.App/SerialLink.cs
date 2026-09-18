@@ -36,11 +36,13 @@ public sealed class SerialLink : IDisposable
     {
         Disconnect();
 
-        var ble = await TryBluetoothAsync(cancellationToken);
-        if (ble is not null)
-            return ble;
+        // Prefer the dedicated USB CDC link when the keyboard is physically
+        // connected. It is much faster for media/screensaver transfers.
+        var usb = await TryUsbAsync(cancellationToken);
+        if (usb is not null)
+            return usb;
 
-        return await TryUsbAsync(cancellationToken);
+        return await TryBluetoothAsync(cancellationToken);
     }
 
     private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
@@ -180,6 +182,72 @@ public sealed class SerialLink : IDisposable
         return null;
     }
 
+    private async Task<bool> EnsureUsbForBulkAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_port?.IsOpen == true)
+            return true;
+
+        foreach (var name in SerialPort.GetPortNames().OrderBy(x => x))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            SerialPort? candidate = null;
+            try
+            {
+                candidate = new SerialPort(name, 115200)
+                {
+                    ReadTimeout = 350,
+                    WriteTimeout = 1200,
+                    DtrEnable = true,
+                    NewLine = "\n"
+                };
+
+                candidate.Open();
+                await Task.Delay(80, cancellationToken);
+
+                candidate.DiscardInBuffer();
+                candidate.WriteLine("HELLO");
+
+                string response = await Task.Run(() =>
+                {
+                    try { return candidate.ReadLine().Trim(); }
+                    catch { return ""; }
+                }, cancellationToken);
+
+                if (response.StartsWith("LUMIPAD|", StringComparison.Ordinal))
+                {
+                    _port = candidate;
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            candidate?.Dispose();
+        }
+
+        return false;
+    }
+
+    private async Task SendUsbLineAsync(string line)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            if (_port?.IsOpen != true)
+                throw new IOException("LumiPad USB link is not available.");
+
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+            _port.Write(data, 0, data.Length);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
     public void Disconnect()
     {
         if (_port is not null)
@@ -311,7 +379,12 @@ public sealed class SerialLink : IDisposable
             throw new InvalidOperationException("Invalid screensaver frame count.");
         }
 
-        const int rawChunkSize = 180;
+        // Even when the app is currently linked over Bluetooth, probe the
+        // dedicated CDC port before a large upload. USB wins automatically
+        // when present; Bluetooth remains the fallback.
+        bool useUsb = await EnsureUsbForBulkAsync();
+
+        int rawChunkSize = useUsb ? 240 : 180;
         int frameBytes =
             ScreensaverMediaService.Width * ScreensaverMediaService.Height;
         int chunksPerFrame =
@@ -319,8 +392,13 @@ public sealed class SerialLink : IDisposable
         int totalChunks = chunksPerFrame * animation.Frames.Count;
         int sentChunks = 0;
 
-        await SendLineAsync(
-            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}");
+        string begin =
+            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}";
+
+        if (useUsb)
+            await SendUsbLineAsync(begin);
+        else
+            await SendLineAsync(begin);
 
         for (int i = 0; i < animation.Frames.Count; i++)
         {
@@ -335,11 +413,14 @@ public sealed class SerialLink : IDisposable
                 string base64 =
                     Convert.ToBase64String(frame, offset, len);
 
-                await SendBulkLineAsync(
-                    $"SAVCHUNK|{i}|{offset}|{base64}");
+                string line = $"SAVCHUNK|{i}|{offset}|{base64}";
 
-                // Briefly yield airtime to the keyboard HID/encoder traffic.
-                if (_bleCharacteristic is not null)
+                if (useUsb)
+                    await SendUsbLineAsync(line);
+                else
+                    await SendBulkLineAsync(line);
+
+                if (!useUsb)
                     await Task.Delay(2);
 
                 sentChunks++;
@@ -348,17 +429,21 @@ public sealed class SerialLink : IDisposable
             }
         }
 
-        await SendLineAsync("SAVEND");
-        await Task.Delay(120);
+        if (useUsb)
+            await SendUsbLineAsync("SAVEND");
+        else
+            await SendLineAsync("SAVEND");
 
-        if (_bleCharacteristic is not null)
+        await Task.Delay(useUsb ? 40 : 120);
+
+        if (!useUsb && _bleCharacteristic is not null)
         {
             string status = await ReadBleStatusAsync();
             return status.Contains("SAVER:READY", StringComparison.Ordinal);
         }
 
-        // USB transport has already acknowledged every write at the serial layer,
-        // but the current protocol has no reverse status packet.
+        // USB serial writes are lossless and the firmware only commits the
+        // flash header after SAVEND.
         return true;
     }
 
