@@ -95,7 +95,7 @@ static uint32_t ui_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
 static uint32_t sleep_delay_ms = 120000U;
 static bool saver_enabled = true;
-static uint8_t saver_style = LUMI_SAVER_TAHOE;
+static uint8_t saver_style = LUMI_SAVER_OFF;
 static uint32_t wallpaper_color_a = 0x000000;
 static uint32_t wallpaper_color_b = 0x10151F;
 static uint32_t saver_color_a = 0x4A7DFF;
@@ -965,35 +965,20 @@ static void refresh_screensaver(lv_timer_t *timer) {
     bool should_show = enabled &&
                        !current_media_active &&
                        !current_soft_sleep &&
-                       (saver_media_valid || style != LUMI_SAVER_OFF) &&
+                       saver_media_valid &&
                        delay > 0U &&
                        (uint32_t)(now_uptime - ui_last_activity_ms) >= delay;
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
 
-        if (saver_media_valid) {
-            /* Direct-render mode: keep LVGL saver hidden so it cannot
-             * overwrite animation stripes while the panel is streaming.
-             */
-            lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
-            saver_media_index = 0U;
-            saver_media_last_ms = lv_tick_get();
-            draw_custom_saver_frame(0U);
-        } else {
-            lv_obj_clear_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(screensaver);
-            lv_obj_set_style_opa(screensaver, 0, 0);
-
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, screensaver);
-            lv_anim_set_exec_cb(&a, popup_anim_opa_cb);
-            lv_anim_set_values(&a, 0, 255);
-            lv_anim_set_time(&a, 420);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-            lv_anim_start(&a);
-        }
+        /* Only uploaded GIF/video frames are used as a screensaver.
+         * Built-in Tahoe/Minimal fallback is intentionally disabled.
+         */
+        lv_obj_add_flag(screensaver, LV_OBJ_FLAG_HIDDEN);
+        saver_media_index = 0U;
+        saver_media_last_ms = lv_tick_get();
+        draw_custom_saver_frame(0U);
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
         lv_anim_del(screensaver, popup_anim_opa_cb);
@@ -1023,140 +1008,13 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     uint32_t lv_now = lv_tick_get();
 
-    if (saver_media_valid) {
-        if ((uint32_t)(lv_now - saver_media_last_ms) >= saver_media_interval_ms) {
-            saver_media_last_ms = lv_now;
-            saver_media_index =
-                (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
-            draw_custom_saver_frame(saver_media_index);
-        }
-
-        return;
-    } else {
-        if (style == LUMI_SAVER_TAHOE) {
-            lv_obj_clear_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
-
-        lv_obj_set_pos(
-            saver_orb1,
-            saver_wave(lv_now, 7200, -30, 72),
-            saver_wave(lv_now + 1700, 6100, -28, 52)
-        );
-
-        lv_obj_set_pos(
-            saver_orb2,
-            saver_wave(lv_now + 2600, 8300, 204, 256),
-            saver_wave(lv_now + 900, 6900, 58, 112)
-        );
-
-        lv_obj_set_y(
-            saver_glass,
-            saver_wave(lv_now, 9000, 54, 60)
-        );
-        } else {
-            lv_obj_add_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(saver_glass, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_align(saver_glass, LV_ALIGN_CENTER, 0, 0);
-        }
+    if ((uint32_t)(lv_now - saver_media_last_ms) >= saver_media_interval_ms) {
+        saver_media_last_ms = lv_now;
+        saver_media_index =
+            (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
+        draw_custom_saver_frame(saver_media_index);
     }
 
-    lv_obj_move_foreground(screensaver);
-}
-
-void lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
-    if (frame_count < 1U || frame_count > LUMI_SAVER_MAX_FRAMES) {
-        return;
-    }
-
-    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-    saver_media_valid = false;
-    saver_media_frame_count = frame_count;
-    saver_media_received_mask = 0U;
-    memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
-    saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)33U, (uint16_t)5000U);
-    saver_media_index = 0U;
-    saver_media_last_ms = 0U;
-    k_mutex_unlock(&lumi_ui_config_lock);
-
-    if (saver_flash_prepare_upload() != 0) {
-        saver_media_frame_count = 0U;
-    }
-}
-
-void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len) {
-    if (!data ||
-        index >= saver_media_frame_count ||
-        index >= LUMI_SAVER_MAX_FRAMES ||
-        len != LUMI_SAVER_FRAME_BYTES) {
-        return;
-    }
-
-    if (saver_flash_write_chunk(index, 0U, data, len) != 0) {
-        return;
-    }
-
-    saver_media_received_bytes[index] = LUMI_SAVER_FRAME_BYTES;
-    saver_media_received_mask |= BIT(index);
-}
-
-void lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
-                              const uint8_t *data, size_t len) {
-    if (!data ||
-        index >= saver_media_frame_count ||
-        index >= LUMI_SAVER_MAX_FRAMES ||
-        offset >= LUMI_SAVER_FRAME_BYTES ||
-        len == 0U ||
-        (size_t)offset + len > LUMI_SAVER_FRAME_BYTES) {
-        return;
-    }
-
-    if (saver_flash_write_chunk(index, offset, data, len) != 0) {
-        return;
-    }
-
-    uint16_t end = (uint16_t)(offset + len);
-    if (end > saver_media_received_bytes[index]) {
-        saver_media_received_bytes[index] = end;
-    }
-
-    if (saver_media_received_bytes[index] == LUMI_SAVER_FRAME_BYTES) {
-        saver_media_received_mask |= BIT(index);
-    }
-}
-
-void lumi_ui_saver_anim_end(void) {
-    uint32_t expected =
-        saver_media_frame_count >= 32U
-            ? UINT32_MAX
-            : ((1U << saver_media_frame_count) - 1U);
-
-    if (saver_media_frame_count > 0U &&
-        saver_media_received_mask == expected &&
-        saver_flash_commit_header() == 0) {
-        saver_media_valid = true;
-        saver_media_index = 0U;
-        saver_media_last_ms = 0U;
-    } else {
-        saver_media_valid = false;
-    }
-
-    lumi_ui_note_activity();
-}
-
-bool lumi_ui_saver_anim_is_valid(void) {
-    return saver_flash_load_metadata();
-}
-
-void lumi_ui_saver_anim_clear(void) {
-    saver_flash_invalidate();
-    saver_media_frame_count = 0U;
-    saver_media_received_mask = 0U;
-    memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
-    saver_media_index = 0U;
-    lumi_ui_note_activity();
 }
 
 static void lumi_panel_wake_work_handler(struct k_work *work) {
