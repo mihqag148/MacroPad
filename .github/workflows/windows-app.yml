@@ -25,15 +25,25 @@ jobs:
         shell: powershell
         run: |
           Add-Type -AssemblyName System.Drawing
-          $png = Join-Path $PWD "pc-app\LumiPad.App\Assets\LumiPadLogo.png"
           $ico = Join-Path $PWD "pc-app\LumiPad.App\Assets\LumiPad.ico"
-          $bmp = New-Object System.Drawing.Bitmap($png)
+          $bmp = New-Object System.Drawing.Bitmap 256,256
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $g.Clear([System.Drawing.Color]::Black)
+          $font = New-Object System.Drawing.Font("Arial", 78, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+          $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(232,229,225))
+          $text = "L3D"
+          $size = $g.MeasureString($text, $font)
+          $g.DrawString($text, $font, $brush, (256-$size.Width)/2, (256-$size.Height)/2)
           $handle = $bmp.GetHicon()
           $icon = [System.Drawing.Icon]::FromHandle($handle)
           $stream = [System.IO.File]::Create($ico)
           $icon.Save($stream)
           $stream.Close()
           $icon.Dispose()
+          $brush.Dispose()
+          $font.Dispose()
+          $g.Dispose()
           $bmp.Dispose()
 
       - name: Restore
