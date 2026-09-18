@@ -52,33 +52,14 @@
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="ThemeButton" Content="Light mode"
-                            Click="ThemeButton_Click" Padding="12,7"/>
-                    <Button x:Name="DetectButton" Content="Detect LumiPad"
-                            Click="DetectButton_Click" Padding="12,7"/>
-                    <Button Content="Disconnect"
-                            Click="DisconnectButton_Click" Padding="12,7" Margin="0"/>
-
-                    <Border Background="{DynamicResource Card2}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="18" Padding="14,8" Margin="8,0,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="DeviceDot" Width="9" Height="9"
-                                     Fill="#66666A" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="DeviceStatus" Text="Not connected"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <TextBlock x:Name="BottomStatus"
-                           Text="Bluetooth preferred; USB fallback."
-                           Foreground="{DynamicResource Muted}"
-                           FontSize="11"
-                           HorizontalAlignment="Right"
-                           Margin="0,5,0,0"/>
+            <StackPanel Grid.Column="1"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Right">
+                <Button x:Name="ThemeButton"
+                        Content="Light mode"
+                        Click="ThemeButton_Click"
+                        Padding="12,7"
+                        Margin="0"/>
             </StackPanel>
         </Grid>
 
@@ -87,6 +68,11 @@
 
             <TabItem Header="Home">
                 <Grid Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.18*"/>
                         <ColumnDefinition Width="18"/>
@@ -262,7 +248,100 @@
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource Muted}"
                                        Margin="0,8,0,0"/>
+
+                            <Border Height="1"
+                                    Background="{DynamicResource Line}"
+                                    Margin="0,14,0,12"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="14"/>
+                                    <ColumnDefinition/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="Screensaver after"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <ComboBox x:Name="ScreensaverDelayCombo"
+                                              SelectionChanged="ScreensaverDelayCombo_SelectionChanged">
+                                        <ComboBoxItem Content="15 seconds" Tag="15"/>
+                                        <ComboBoxItem Content="30 seconds" Tag="30"/>
+                                        <ComboBoxItem Content="1 minute" Tag="60" IsSelected="True"/>
+                                        <ComboBoxItem Content="2 minutes" Tag="120"/>
+                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                        <ComboBoxItem Content="Never" Tag="0"/>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Sleep after"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <ComboBox x:Name="SleepDelayCombo"
+                                              SelectionChanged="SleepDelayCombo_SelectionChanged">
+                                        <ComboBoxItem Content="1 minute" Tag="60"/>
+                                        <ComboBoxItem Content="2 minutes" Tag="120" IsSelected="True"/>
+                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                        <ComboBoxItem Content="15 minutes" Tag="900"/>
+                                        <ComboBoxItem Content="30 minutes" Tag="1800"/>
+                                        <ComboBoxItem Content="Never" Tag="0"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2"
+                            Grid.ColumnSpan="3"
+                            Background="{DynamicResource Card2}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="18"
+                            Padding="14,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="DeviceDot"
+                                             Width="9" Height="9"
+                                             Fill="#66666A"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="DeviceStatus"
+                                               Text="Not connected"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock x:Name="BottomStatus"
+                                           Text="Bluetooth preferred; USB fallback."
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="11"
+                                           Margin="17,3,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button x:Name="DetectButton"
+                                        Content="Connect"
+                                        Click="DetectButton_Click"/>
+                                <Button Content="Disconnect"
+                                        Click="DisconnectButton_Click"/>
+                                <Button Content="Restart keyboard"
+                                        Click="RestartKeyboard_Click"/>
+                                <Button Content="Keyboard DFU"
+                                        Click="KeyboardDfu_Click"
+                                        Margin="0"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
                 </Grid>
