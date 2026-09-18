@@ -184,25 +184,70 @@
                     <Border Grid.Column="2"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="28" Padding="26">
+                            CornerRadius="28" Padding="22">
                         <StackPanel>
-                            <TextBlock Text="DISPLAY" FontSize="12"
+                            <TextBlock Text="SCREENSAVER MEDIA" FontSize="12"
                                        Foreground="{DynamicResource Muted}"
                                        FontWeight="SemiBold"/>
-                            <TextBlock Text="Smart Now Playing" FontSize="23"
-                                       FontWeight="SemiBold" Margin="0,8,0,18"/>
-                            <TextBlock TextWrapping="Wrap"
+                            <TextBlock Text="GIF / MP4 local" FontSize="22"
+                                       FontWeight="SemiBold" Margin="0,7,0,12"/>
+
+                            <Border Height="150"
+                                    Background="#050505"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="16"
+                                    ClipToBounds="True">
+                                <Grid>
+                                    <Image x:Name="ScreensaverPreviewImage"
+                                           Stretch="Uniform"
+                                           Visibility="Collapsed"/>
+                                    <TextBlock x:Name="ScreensaverPreviewHint"
+                                               Text="Choose a GIF or MP4"
+                                               Foreground="{DynamicResource Muted}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock x:Name="ScreensaverFileName"
+                                       Text="No file selected"
+                                       TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource Muted}"
-                                       Text="The music screen only appears while an allowed music source is actively playing. Pressing any macropad key returns to the normal key grid for 10 seconds, then music returns automatically if playback is still active."/>
-                            <Border Height="1" Background="{DynamicResource Line}"
-                                    Margin="0,22,0,22"/>
-                            <TextBlock Text="Supported sources" FontWeight="SemiBold"/>
-                            <TextBlock TextWrapping="Wrap"
+                                       Margin="0,10,0,0"/>
+
+                            <TextBlock x:Name="ScreensaverMediaInfo"
+                                       Text="Converted to a lightweight loop for LumiPad."
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
                                        Foreground="{DynamicResource Muted}"
-                                       Margin="0,6,0,0"
-                                       Text="Spotify · Apple Music · Windows Music · YouTube / YouTube Music in Chrome, Edge, Firefox, Brave or Opera"/>
+                                       Margin="0,4,0,12"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Choose GIF / MP4"
+                                        Click="ChooseScreensaverMedia_Click"/>
+                                <Button x:Name="SendScreensaverButton"
+                                        Content="Send to LumiPad"
+                                        Click="SendScreensaverMedia_Click"
+                                        IsEnabled="False"/>
+                                <Button Content="Clear"
+                                        Click="ClearScreensaverMedia_Click"
+                                        Margin="0"/>
+                            </StackPanel>
+
+                            <ProgressBar x:Name="ScreensaverSendProgress"
+                                         Minimum="0" Maximum="100" Value="0"
+                                         Height="5" Margin="0,14,0,0"/>
+
+                            <TextBlock x:Name="ScreensaverSendStatus"
+                                       Text="The file stays local. Only reduced animation frames are sent."
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Muted}"
+                                       Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
+
                 </Grid>
             </TabItem>
 
