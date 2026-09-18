@@ -260,6 +260,33 @@ public sealed class SerialLink : IDisposable
         }
     }
 
+    private async Task<string> SendUsbSaverLineAsync(string line)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            if (_port?.IsOpen != true)
+                throw new IOException("LumiPad USB link is not available.");
+
+            _port.ReadTimeout = 3000;
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+            _port.Write(data, 0, data.Length);
+
+            string ack = await Task.Run(() => _port.ReadLine().Trim());
+            if (!ack.StartsWith("SAVACK|", StringComparison.Ordinal))
+                throw new IOException($"Unexpected LumiPad USB response: {ack}");
+
+            if (ack.EndsWith("|ERROR", StringComparison.Ordinal))
+                throw new IOException("LumiPad rejected a screensaver chunk.");
+
+            return ack;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
     public void Disconnect()
     {
         if (_port is not null)
@@ -408,7 +435,7 @@ public sealed class SerialLink : IDisposable
             $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}";
 
         if (useUsb)
-            await SendUsbLineAsync(begin);
+            await SendUsbSaverLineAsync(begin);
         else
             await SendLineAsync(begin);
 
@@ -428,7 +455,7 @@ public sealed class SerialLink : IDisposable
                 string line = $"SAVCHUNK|{i}|{offset}|{base64}";
 
                 if (useUsb)
-                    await SendUsbLineAsync(line);
+                    await SendUsbSaverLineAsync(line);
                 else
                     await SendBulkLineAsync(line);
 
@@ -442,11 +469,17 @@ public sealed class SerialLink : IDisposable
         }
 
         if (useUsb)
-            await SendUsbLineAsync("SAVEND");
+        {
+            string finalAck = await SendUsbSaverLineAsync("SAVEND");
+            if (!finalAck.EndsWith("|READY", StringComparison.Ordinal))
+                return false;
+        }
         else
+        {
             await SendLineAsync("SAVEND");
+        }
 
-        await Task.Delay(useUsb ? 40 : 120);
+        await Task.Delay(useUsb ? 20 : 120);
 
         if (!useUsb && _bleCharacteristic is not null)
         {
