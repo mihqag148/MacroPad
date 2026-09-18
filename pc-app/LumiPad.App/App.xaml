@@ -112,13 +112,11 @@
 
                             <ContentPresenter x:Name="ContentSite"
                                               IsHitTestVisible="False"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Content="{Binding SelectedItem.Content, RelativeSource={RelativeSource TemplatedParent}}"
                                               Margin="{TemplateBinding Padding}"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Left"
-                                              TextElement.Foreground="#FFFFFF"/>
+                                              TextElement.Foreground="{DynamicResource TextPrimary}"/>
 
                             <Popup x:Name="PART_Popup"
                                    Placement="Bottom"
