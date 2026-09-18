@@ -252,6 +252,18 @@
                                          Minimum="0" Maximum="100" Value="0"
                                          Height="5" Margin="0,14,0,0"/>
 
+                            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                <Ellipse x:Name="ScreensaverUploadDot"
+                                         Width="9" Height="9"
+                                         Fill="#66666A"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,7,0"/>
+                                <TextBlock x:Name="ScreensaverUploadState"
+                                           Text="Not uploaded"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+
                             <TextBlock x:Name="ScreensaverSendStatus"
                                        Text="The file stays local. Only reduced animation frames are sent."
                                        FontSize="11"
