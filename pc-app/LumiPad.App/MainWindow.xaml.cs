@@ -72,7 +72,7 @@ public partial class MainWindow : Window
 
     private void InitializeTrayIcon()
     {
-        _appIcon = CreateColorIcon();
+        _appIcon = CreateLogoIcon();
 
         _trayIcon = new Forms.NotifyIcon
         {
@@ -93,37 +93,17 @@ public partial class MainWindow : Window
             BitmapSizeOptions.FromWidthAndHeight(64, 64));
     }
 
-    private static Drawing.Icon CreateColorIcon()
+    private static Drawing.Icon CreateLogoIcon()
     {
-        using var bitmap = new Drawing.Bitmap(64, 64);
-        using (var g = Drawing.Graphics.FromImage(bitmap))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(Drawing.Color.Transparent);
+        var uri = new Uri(
+            "pack://application:,,,/Assets/LumiPadLogo.png",
+            UriKind.Absolute);
 
-            using var brush = new System.Drawing.Drawing2D.LinearGradientBrush(
-                new Drawing.Rectangle(4, 4, 56, 56),
-                Drawing.Color.FromArgb(255, 149, 0),
-                Drawing.Color.FromArgb(88, 86, 214),
-                45f);
+        var resource = System.Windows.Application.GetResourceStream(uri)
+            ?? throw new InvalidOperationException("LumiPad logo resource not found.");
 
-            g.FillEllipse(brush, 4, 4, 56, 56);
-
-            using var font = new Drawing.Font(
-                "Segoe UI",
-                30,
-                Drawing.FontStyle.Bold,
-                Drawing.GraphicsUnit.Pixel);
-
-            var size = g.MeasureString("L", font);
-            using var textBrush = new Drawing.SolidBrush(Drawing.Color.White);
-            g.DrawString(
-                "L",
-                font,
-                textBrush,
-                (64 - size.Width) / 2f,
-                (64 - size.Height) / 2f - 1f);
-        }
+        using var source = new Drawing.Bitmap(resource.Stream);
+        using var bitmap = new Drawing.Bitmap(source, new Drawing.Size(64, 64));
 
         IntPtr handle = bitmap.GetHicon();
         using var temp = Drawing.Icon.FromHandle(handle);
@@ -293,19 +273,70 @@ public partial class MainWindow : Window
         DurationText.Text = FormatTime(data.Duration);
         PlayButton.Content = "❚❚";
 
+        if (data.ArtworkRgb332 is { Length: 5776 } artwork)
+        {
+            AlbumArtImage.Source = CreateArtworkBitmap(artwork);
+            AlbumArtImage.Visibility = Visibility.Visible;
+            AlbumArtFallback.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            AlbumArtImage.Source = null;
+            AlbumArtImage.Visibility = Visibility.Collapsed;
+            AlbumArtFallback.Visibility = Visibility.Visible;
+        }
+
         _serial.SendNowPlaying(data);
     }
 
     private void ClearNowPlaying()
     {
         TitleText.Text = "Nothing Playing";
-        ArtistText.Text = "Lumi MacroPad";
+        ArtistText.Text = "LumiPad";
+        AlbumArtImage.Source = null;
+        AlbumArtImage.Visibility = Visibility.Collapsed;
+        AlbumArtFallback.Visibility = Visibility.Visible;
         TrackProgress.Value = 0;
         ElapsedText.Text = "0:00";
         DurationText.Text = "0:00";
         PlayButton.Content = "▶";
 
         _serial.ClearNowPlaying();
+    }
+
+    private static BitmapSource CreateArtworkBitmap(byte[] rgb332)
+    {
+        const int width = 76;
+        const int height = 76;
+        int stride = width * 4;
+        byte[] bgra = new byte[stride * height];
+
+        for (int i = 0; i < width * height; i++)
+        {
+            byte v = rgb332[i];
+            byte r = (byte)((((v >> 5) & 0x07) * 255) / 7);
+            byte g = (byte)((((v >> 2) & 0x07) * 255) / 7);
+            byte b = (byte)(((v & 0x03) * 255) / 3);
+
+            int p = i * 4;
+            bgra[p] = b;
+            bgra[p + 1] = g;
+            bgra[p + 2] = r;
+            bgra[p + 3] = 255;
+        }
+
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            bgra,
+            stride);
+
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static string FormatTime(TimeSpan value)
