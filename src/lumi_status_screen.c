@@ -634,6 +634,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
         } else {
             lv_obj_clear_flag(saver_orb1, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(saver_orb2, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_color(saver_glass, lv_color_hex(0x141720), 0);
         }
     }
 
