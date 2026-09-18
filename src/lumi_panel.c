@@ -62,9 +62,8 @@ int lumi_panel_init(void) {
         return err;
     }
 
-    /* FRCTRL2: use the slowest normal-mode divider. Together with the
-     * enlarged front/back porch in devicetree this targets roughly 25 Hz,
-     * matching the 40 ms screensaver cadence.
+    /* FRCTRL2: RTNA=0x1F. With BPA=FPA=0x6C from devicetree,
+     * the ST7789 normal-mode formula gives approximately 25.0 Hz.
      */
     const uint8_t frctrl2 = 0x1FU;
     err = lumi_panel_command_data(0xC6, &frctrl2, 1U);
@@ -94,5 +93,17 @@ int lumi_panel_set_sleep(bool sleeping) {
     }
 
     k_msleep(120);
+    return lumi_panel_command(0x29); /* DISPON */
+}
+
+int lumi_panel_resync_scan(void) {
+    int err = lumi_panel_command(0x28); /* DISPOFF */
+    if (err != 0) {
+        return err;
+    }
+
+    /* A short off interval gives us a reproducible software phase anchor. */
+    k_msleep(1);
+
     return lumi_panel_command(0x29); /* DISPON */
 }
