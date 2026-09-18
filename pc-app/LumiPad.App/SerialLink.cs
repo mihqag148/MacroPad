@@ -270,6 +270,19 @@ public sealed class SerialLink : IDisposable
     public void SetEffect(int effect) => _ = SendLineAsync($"RGB|FX|{effect}");
     public void SetSolid(byte r, byte g, byte b) => _ = SendLineAsync($"RGB|SOLID|{r}|{g}|{b}");
 
+    public void SetWallpaper(byte r1, byte g1, byte b1, byte r2, byte g2, byte b2) =>
+        _ = SendLineAsync($"CFG|WALL|{r1}|{g1}|{b1}|{r2}|{g2}|{b2}");
+
+    public void SetScreensaver(bool enabled, int style, int delaySeconds,
+                               byte r1, byte g1, byte b1,
+                               byte r2, byte g2, byte b2) =>
+        _ = SendLineAsync(
+            $"CFG|SAVER|{(enabled ? 1 : 0)}|{style}|{delaySeconds}|" +
+            $"{r1}|{g1}|{b1}|{r2}|{g2}|{b2}");
+
+    public void SetSleepTimeout(int seconds) =>
+        _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
+
     private async Task SendLineAsync(string line)
     {
         await _writeGate.WaitAsync();
