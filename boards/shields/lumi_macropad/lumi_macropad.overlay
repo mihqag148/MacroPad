@@ -98,7 +98,7 @@ row-gpios
 // MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00.
 // ZMK v0.3 uses Zephyr 3.5, whose ST7789 driver expects the display node
 // directly below the SPI controller.
-&spi3 {
+&spi1 {
     compatible = "nordic,nrf-spim";
     status = "okay";
     pinctrl-0 = <&lumi_tft_spi_default>;
@@ -112,17 +112,17 @@ row-gpios
         reg = <0>;
         cmd-data-gpios = <&gpio0 24 GPIO_ACTIVE_LOW>;
         reset-gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
-        width = <172>;
-        height = <320>;
-        x-offset = <34>;
-        y-offset = <0>;
+        width = <320>;
+        height = <172>;
+        x-offset = <0>;
+        y-offset = <34>;
         vcom = <0x19>;
         gctrl = <0x35>;
         vrhs = <0x12>;
         vdvs = <0x20>;
-        // Native scan order; custom LVGL flush rotates the logical landscape UI.
+        // Landscape orientation used by this 1.47-inch panel: MX + MV.
         // Keep BGR cleared so red/blue stay in the correct RGB order.
-        mdac = <0x00>;
+        mdac = <0x60>;
         gamma = <0x01>;
         colmod = <0x05>;
         lcm = <0x2c>;
@@ -136,9 +136,9 @@ row-gpios
     };
 };
 
-// Four WS2812B LEDs on P0.06 via SPIM1. The SPI peripheral only generates the
+// Four WS2812B LEDs on P0.06. The SPI peripheral only generates the
 // WS2812 data waveform; there is no separate SCK wire to the LEDs.
-&spi1 {
+&spi3 {
     compatible = "nordic,nrf-spim";
     status = "okay";
     pinctrl-0 = <&lumi_rgb_spi_default>;
@@ -177,7 +177,7 @@ row-gpios
 /* Reserve internal flash for the custom screensaver.
  * Original code partition: 0x26000..0xEC000 (0xC6000 bytes).
  * Keep 0x70000 bytes (~448 KB) for firmware and use the remaining
- * 0x56000 bytes (~352 KB) for 25 RGB332 frames at 160x86.
+ * 0x56000 bytes (~352 KB) for 8 RGB332 frames at 160x86.
  */
 &code_partition {
     reg = <0x26000 0x70000>;

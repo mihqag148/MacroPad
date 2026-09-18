@@ -1323,7 +1323,6 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
-    (void)lumi_panel_enable_async_flush();
     (void)saver_flash_load_metadata();
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
@@ -1605,7 +1604,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_screensaver, 40, NULL);
+lv_timer_create(refresh_screensaver, 50, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
