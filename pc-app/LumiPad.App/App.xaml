@@ -16,10 +16,11 @@
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
         </Style>
 
         <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
@@ -31,10 +32,11 @@
 
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
         </Style>
 
         <Style TargetType="ComboBox">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
@@ -42,6 +44,7 @@
         </Style>
 
         <Style TargetType="ComboBoxItem">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Background" Value="{DynamicResource Card2}"/>
             <Setter Property="Padding" Value="10,7"/>
@@ -55,6 +58,10 @@
                     <Setter Property="Foreground" Value="White"/>
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <Style TargetType="Slider">
+            <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
         </Style>
 
         <Style TargetType="TabControl">
