@@ -55,6 +55,7 @@ enum {
 };
 static uint32_t press_started[KEY_COUNT];
 static bool highlighted[KEY_COUNT];
+static uint32_t icon_colors[KEY_COUNT];
 static lv_color_t accent;
 
 /* Slots are ZMK positions 0..11 in order. Position 12 is the encoder.
@@ -63,6 +64,7 @@ static lv_color_t accent;
 struct key_caption {
     char text[16];
     const char *icon;
+    uint32_t color;
 };
 struct page_state {
     zmk_keymap_layer_id_t id;
@@ -73,39 +75,42 @@ struct page_state {
 static void describe_key(uint32_t code, struct key_caption *out) {
     const char *text = NULL;
     out->icon = LV_SYMBOL_KEYBOARD;
+    out->color = 0xFFFFFF;
+
     switch (code) {
-    case LC(C): text = "COPY"; out->icon = LV_SYMBOL_COPY; break;
-    case LC(V): text = "PASTE"; out->icon = LV_SYMBOL_PASTE; break;
-    case LC(X): text = "CUT"; out->icon = LV_SYMBOL_CUT; break;
-    case LC(Z): text = "UNDO"; out->icon = LV_SYMBOL_LEFT; break;
-    case LC(Y): text = "REDO"; out->icon = LV_SYMBOL_RIGHT; break;
-    case LC(A): text = "SELECT ALL"; out->icon = LV_SYMBOL_LIST; break;
-    case LC(S): text = "SAVE"; out->icon = LV_SYMBOL_SAVE; break;
-    case LC(F): text = "FIND"; out->icon = LV_SYMBOL_EYE_OPEN; break;
-    case ENTER: text = "ENTER"; out->icon = LV_SYMBOL_OK; break;
-    case BACKSPACE: text = "BACKSPACE"; out->icon = LV_SYMBOL_BACKSPACE; break;
-    case TAB: text = "TAB"; out->icon = LV_SYMBOL_RIGHT; break;
-    case ESC: text = "ESC"; out->icon = LV_SYMBOL_CLOSE; break;
-    case DELETE: text = "DELETE"; out->icon = LV_SYMBOL_TRASH; break;
-    case C_PLAY_PAUSE: text = "PLAY/PAUSE"; out->icon = LV_SYMBOL_PLAY; break;
-    case C_PREVIOUS: text = "PREVIOUS"; out->icon = LV_SYMBOL_PREV; break;
-    case C_NEXT: text = "NEXT"; out->icon = LV_SYMBOL_NEXT; break;
-    case C_STOP: text = "STOP"; out->icon = LV_SYMBOL_STOP; break;
-    case C_MUTE: text = "MUTE"; out->icon = LV_SYMBOL_MUTE; break;
-    case C_VOL_DN: text = "VOL -"; out->icon = LV_SYMBOL_VOLUME_MID; break;
-    case C_VOL_UP: text = "VOL +"; out->icon = LV_SYMBOL_VOLUME_MAX; break;
-    case C_AC_BACK: text = "BACK"; out->icon = LV_SYMBOL_LEFT; break;
-    case C_AC_FORWARD: text = "FORWARD"; out->icon = LV_SYMBOL_RIGHT; break;
-    case HOME: text = "HOME"; out->icon = LV_SYMBOL_HOME; break;
-    case END: text = "END"; out->icon = LV_SYMBOL_DOWN; break;
-    case PG_UP: text = "PAGE UP"; out->icon = LV_SYMBOL_UP; break;
-    case PG_DN: text = "PAGE DOWN"; out->icon = LV_SYMBOL_DOWN; break;
+    case LC(C): text = "COPY"; out->icon = LV_SYMBOL_COPY; out->color = 0x64D2FF; break;
+    case LC(V): text = "PASTE"; out->icon = LV_SYMBOL_PASTE; out->color = 0x30D158; break;
+    case LC(X): text = "CUT"; out->icon = LV_SYMBOL_CUT; out->color = 0xFF453A; break;
+    case LC(Z): text = "UNDO"; out->icon = LV_SYMBOL_LEFT; out->color = 0x0A84FF; break;
+    case LC(Y): text = "REDO"; out->icon = LV_SYMBOL_RIGHT; out->color = 0xBF5AF2; break;
+    case LC(A): text = "SELECT ALL"; out->icon = LV_SYMBOL_LIST; out->color = 0xFFD60A; break;
+    case LC(S): text = "SAVE"; out->icon = LV_SYMBOL_SAVE; out->color = 0xFF9F0A; break;
+    case LC(F): text = "FIND"; out->icon = LV_SYMBOL_EYE_OPEN; out->color = 0x5AC8FA; break;
+    case ENTER: text = "ENTER"; out->icon = LV_SYMBOL_OK; out->color = 0x30D158; break;
+    case BACKSPACE: text = "BACKSPACE"; out->icon = LV_SYMBOL_BACKSPACE; out->color = 0xFF453A; break;
+    case TAB: text = "TAB"; out->icon = LV_SYMBOL_RIGHT; out->color = 0x64D2FF; break;
+    case ESC: text = "ESC"; out->icon = LV_SYMBOL_CLOSE; out->color = 0xFF9F0A; break;
+    case DELETE: text = "DELETE"; out->icon = LV_SYMBOL_TRASH; out->color = 0xFF453A; break;
+    case C_PLAY_PAUSE: text = "PLAY/PAUSE"; out->icon = LV_SYMBOL_PLAY; out->color = 0x30D158; break;
+    case C_PREVIOUS: text = "PREVIOUS"; out->icon = LV_SYMBOL_PREV; out->color = 0x64D2FF; break;
+    case C_NEXT: text = "NEXT"; out->icon = LV_SYMBOL_NEXT; out->color = 0x64D2FF; break;
+    case C_STOP: text = "STOP"; out->icon = LV_SYMBOL_STOP; out->color = 0xFF453A; break;
+    case C_MUTE: text = "MUTE"; out->icon = LV_SYMBOL_MUTE; out->color = 0xFF453A; break;
+    case C_VOL_DN: text = "VOL -"; out->icon = LV_SYMBOL_VOLUME_MID; out->color = 0x0A84FF; break;
+    case C_VOL_UP: text = "VOL +"; out->icon = LV_SYMBOL_VOLUME_MAX; out->color = 0x0A84FF; break;
+    case C_AC_BACK: text = "BACK"; out->icon = LV_SYMBOL_LEFT; out->color = 0x5AC8FA; break;
+    case C_AC_FORWARD: text = "FORWARD"; out->icon = LV_SYMBOL_RIGHT; out->color = 0x5AC8FA; break;
+    case HOME: text = "HOME"; out->icon = LV_SYMBOL_HOME; out->color = 0xFF9F0A; break;
+    case END: text = "END"; out->icon = LV_SYMBOL_DOWN; out->color = 0xBF5AF2; break;
+    case PG_UP: text = "PAGE UP"; out->icon = LV_SYMBOL_UP; out->color = 0xBF5AF2; break;
+    case PG_DN: text = "PAGE DOWN"; out->icon = LV_SYMBOL_DOWN; out->color = 0xBF5AF2; break;
     default: break;
     }
+
     if (text) {
         snprintf(out->text, sizeof(out->text), "%s", text);
     } else if (STRIP_MODS(code) >= A && STRIP_MODS(code) <= Z) {
-        /* Keep Fusion F/V/M/E/L honest after Studio edits: show actual keys. */
+        out->color = 0xD8F8FF;
         snprintf(out->text, sizeof(out->text), "%s%s%s%s%c",
                  SELECT_MODS(code) & (MOD_LCTL | MOD_RCTL) ? "C+" : "",
                  SELECT_MODS(code) & (MOD_LALT | MOD_RALT) ? "A+" : "",
@@ -113,6 +118,7 @@ static void describe_key(uint32_t code, struct key_caption *out) {
                  SELECT_MODS(code) & (MOD_LGUI | MOD_RGUI) ? "W+" : "",
                  (char)('A' + STRIP_MODS(code) - A));
     } else {
+        out->color = 0xFFFFFF;
         snprintf(out->text, sizeof(out->text), "0x%08X", (unsigned int)code);
     }
 }
@@ -133,6 +139,7 @@ static struct page_state read_page(const zmk_event_t *eh) {
             zmk_keymap_get_layer_binding_at_idx(state.id, i);
         struct key_caption *key = &state.keys[i];
         key->icon = LV_SYMBOL_KEYBOARD;
+        key->color = 0xFFFFFF;
         if (!binding || !binding->behavior_dev) {
             snprintf(key->text, sizeof(key->text), "--");
         } else if (strcmp(binding->behavior_dev, DEVICE_DT_NAME(DT_NODELABEL(kp))) == 0) {
@@ -153,16 +160,17 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
         0
     );
 
-  lv_obj_set_style_border_color(
-    tiles[i],
-    lv_color_hex(0xFFFFFF),
-    0
-);
+    lv_obj_set_style_border_color(
+        tiles[i],
+        lv_color_hex(0xFFFFFF),
+        0
+    );
+
     lv_obj_set_style_text_color(
-    icons[i],
-    lv_color_hex(0xFFFFFF),
-    0
-);
+        icons[i],
+        lv_color_hex(icon_colors[i] ? icon_colors[i] : 0xFFFFFF),
+        0
+    );
 
     lv_obj_set_style_text_color(
         captions[i],
@@ -170,14 +178,13 @@ static void set_tile_pressed(uint8_t i, bool pressed) {
         0
     );
 
-   lv_obj_align(
-    icons[i],
-    LV_ALIGN_CENTER,
-    0,
-    pressed ? 3 : 0
-);
-
-}   // <- THÊM DÒNG NÀY
+    lv_obj_align(
+        icons[i],
+        LV_ALIGN_CENTER,
+        0,
+        pressed ? 3 : 0
+    );
+}
 
 static void update_page(struct page_state state) {
     static struct page_state previous;
@@ -186,6 +193,7 @@ static void update_page(struct page_state state) {
                 strcmp(previous.name, state.name) == 0;
     for (uint8_t i = 0; same && i < KEY_COUNT; i++) {
         same = previous.keys[i].icon == state.keys[i].icon &&
+               previous.keys[i].color == state.keys[i].color &&
                strcmp(previous.keys[i].text, state.keys[i].text) == 0;
     }
     if (!layer_label || same) {
@@ -200,6 +208,7 @@ static void update_page(struct page_state state) {
     for (uint8_t i = 0; i < KEY_COUNT; i++) {
         lv_label_set_text(captions[i], state.keys[i].text);
         lv_label_set_text(icons[i], state.keys[i].icon);
+        icon_colors[i] = state.keys[i].color;
         set_tile_pressed(i, highlighted[i]);
     }
 }
@@ -253,6 +262,11 @@ ZMK_SUBSCRIPTION(lumi_output, zmk_ble_active_profile_changed);
 
 static int position_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *event = as_zmk_position_state_changed(eh);
+
+    if (event && event->state) {
+        lumi_now_playing_user_activity();
+    }
+
     if (event && event->position < KEY_COUNT) {
         if (event->state) {
             atomic_set_bit(&held_keys, event->position);
@@ -287,6 +301,8 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
     if (!event || !event->state) {
         return ZMK_EV_EVENT_BUBBLE;
     }
+
+    lumi_now_playing_user_activity();
 
     if (keycode_matches(event, C_VOL_UP)) {
         atomic_set(&popup_action, POPUP_VOL_UP);
@@ -516,6 +532,7 @@ lv_obj_set_style_border_side(
     0
 );
         lv_obj_clear_flag(tiles[i], LV_OBJ_FLAG_SCROLLABLE);
+        icon_colors[i] = 0xFFFFFF;
         icons[i] = make_label(tiles[i], &lv_font_montserrat_20);
         captions[i] = make_label(tiles[i], &lv_font_montserrat_12);
         lv_obj_add_flag(
