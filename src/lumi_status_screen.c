@@ -1566,8 +1566,21 @@ if (disp) {
     lv_timer_t *refr_timer = _lv_disp_get_refr_timer(disp);
     if (refr_timer) {
         lv_timer_set_period(refr_timer, 40);
+
+        /* Software phase sync for panels without a TE pin:
+         * - prepare/invalidate the next GIF frame a few ms before scan start;
+         * - restart the panel scan;
+         * - start LVGL's 40 ms refresh cadence from that same scan anchor.
+         *
+         * The 3 ms lead is intentional: frame data is ready before LVGL begins
+         * the SPI flush, while DISPON and the refresh timer share the anchor.
+         */
+        lv_timer_pause(refr_timer);
         lv_timer_reset(saver_timer);
+        k_msleep(2);
+        (void)lumi_panel_resync_scan();
         lv_timer_reset(refr_timer);
+        lv_timer_resume(refr_timer);
     }
 }
 
