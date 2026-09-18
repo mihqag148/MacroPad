@@ -6,27 +6,48 @@ using System.Windows.Media.Imaging;
 
 namespace LumiPad.App;
 
+public sealed record RenderedTextBitmap(int Width, string Hex);
+
 public static class TextBitmapRenderer
 {
-    public static string RenderHex(
+    public static RenderedTextBitmap RenderScrollable(
         string text,
-        int width,
+        int visibleWidth,
+        int maxWidth,
         int height,
         double fontSize,
         bool bold)
     {
         text ??= "";
 
+        var typeface = new Typeface(
+            new System.Windows.Media.FontFamily("Segoe UI"),
+            FontStyles.Normal,
+            bold ? FontWeights.SemiBold : FontWeights.Normal,
+            FontStretches.Normal);
+
+        var measure = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            System.Windows.FlowDirection.LeftToRight,
+            typeface,
+            fontSize,
+            System.Windows.Media.Brushes.White,
+            1.0);
+
+        int measuredWidth = Math.Max(
+            visibleWidth,
+            (int)Math.Ceiling(measure.WidthIncludingTrailingWhitespace) + 6);
+
+        int width = Math.Min(maxWidth, measuredWidth);
+
         var visual = new DrawingVisual();
         using (DrawingContext dc = visual.RenderOpen())
         {
-            dc.DrawRectangle(System.Windows.Media.Brushes.Black, null, new System.Windows.Rect(0, 0, width, height));
-
-            var typeface = new Typeface(
-                new System.Windows.Media.FontFamily("Segoe UI"),
-                FontStyles.Normal,
-                bold ? FontWeights.SemiBold : FontWeights.Normal,
-                FontStretches.Normal);
+            dc.DrawRectangle(
+                System.Windows.Media.Brushes.Black,
+                null,
+                new System.Windows.Rect(0, 0, width, height));
 
             var ft = new FormattedText(
                 text,
@@ -39,10 +60,13 @@ public static class TextBitmapRenderer
             {
                 MaxTextWidth = width,
                 MaxTextHeight = height,
-                Trimming = TextTrimming.CharacterEllipsis
+                Trimming = measuredWidth > maxWidth
+                    ? TextTrimming.CharacterEllipsis
+                    : TextTrimming.None
             };
 
-            dc.DrawText(ft, new System.Windows.Point(0, 0));
+            double y = Math.Min(0, (height - ft.Height) / 2.0);
+            dc.DrawText(ft, new System.Windows.Point(0, y));
         }
 
         var bitmap = new RenderTargetBitmap(
@@ -75,6 +99,6 @@ public static class TextBitmapRenderer
         foreach (byte value in bits)
             sb.Append(value.ToString("X2"));
 
-        return sb.ToString();
+        return new RenderedTextBitmap(width, sb.ToString());
     }
 }
