@@ -200,13 +200,14 @@ public sealed class SerialLink : IDisposable
         await _mediaGate.WaitAsync();
         try
         {
+            var source = Uri.EscapeDataString(data.SourceName ?? "MUSIC");
             var title = Uri.EscapeDataString(data.Title ?? "");
             var artist = Uri.EscapeDataString(data.Artist ?? "");
 
             await SendLineAsync(
                 $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
                 $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
-                $"{(data.IsPlaying ? 1 : 0)}|{title}|{artist}");
+                $"{(data.IsPlaying ? 1 : 0)}|{source}|{title}|{artist}");
 
             string bitmapKey = $"{data.Title}\u001F{data.Artist}";
             if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
