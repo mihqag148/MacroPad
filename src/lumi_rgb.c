@@ -184,8 +184,16 @@ static void render_effect(uint8_t effect) {
     }
 }
 
+static void lumi_rgb_work_handler(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
+
+static void lumi_rgb_refresh_now(void) {
+    k_work_reschedule(&lumi_rgb_work, K_NO_WAIT);
+}
+
 void lumi_rgb_set_enabled(bool enabled) {
     led_enabled = enabled;
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_brightness_percent(uint8_t percent) {
@@ -196,6 +204,7 @@ void lumi_rgb_set_brightness_percent(uint8_t percent) {
     }
 
     user_brightness = (uint8_t)(((uint16_t)percent * 255U) / 100U);
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_speed_percent(uint8_t percent) {
@@ -206,6 +215,7 @@ void lumi_rgb_set_speed_percent(uint8_t percent) {
     }
 
     user_speed_percent = percent;
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_auto(bool enabled) {
@@ -213,6 +223,7 @@ void lumi_rgb_set_auto(bool enabled) {
     if (enabled) {
         led_enabled = true;
     }
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_effect(uint8_t effect) {
@@ -223,6 +234,7 @@ void lumi_rgb_set_effect(uint8_t effect) {
     manual_effect = effect;
     auto_by_layer = false;
     led_enabled = true;
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
@@ -230,6 +242,7 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
     manual_effect = LUMI_RGB_EFFECT_SOLID;
     auto_by_layer = false;
     led_enabled = true;
+    lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_suspended(bool suspended) {
@@ -238,11 +251,10 @@ void lumi_rgb_set_suspended(bool suspended) {
     if (suspended && device_is_ready(strip)) {
         fill((struct led_rgb){0});
         led_strip_update_rgb(strip, pixels, LED_COUNT);
+    } else if (!suspended) {
+        lumi_rgb_refresh_now();
     }
 }
-
-static void lumi_rgb_work_handler(struct k_work *work);
-K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
 
 static void lumi_rgb_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
