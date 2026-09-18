@@ -1,3 +1,4 @@
+using System.IO;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 using Drawing = System.Drawing;
@@ -157,7 +158,7 @@ public sealed class NowPlayingService : IDisposable
     }
 
     private static async Task<byte[]?> LoadArtworkAsync(
-        RandomAccessStreamReference? thumbnail)
+        IRandomAccessStreamReference? thumbnail)
     {
         if (thumbnail is null)
             return null;
