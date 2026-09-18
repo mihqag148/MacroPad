@@ -698,7 +698,7 @@ public partial class MainWindow : Window
 
     private void RgbSwatch_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button ||
+        if (sender is not System.Windows.Controls.Button button ||
             button.Tag is not string hex ||
             System.Windows.Media.ColorConverter.ConvertFromString(hex)
                 is not MediaColor color)
@@ -712,7 +712,7 @@ public partial class MainWindow : Window
 
     private void RgbMode_Click(object sender, RoutedEventArgs e)
     {
-        string mode = (sender as Button)?.Tag?.ToString() ?? "Static";
+        string mode = (sender as System.Windows.Controls.Button)?.Tag?.ToString() ?? "Static";
 
         RgbStaticPresets.Visibility =
             mode == "Static" ? Visibility.Visible : Visibility.Collapsed;
