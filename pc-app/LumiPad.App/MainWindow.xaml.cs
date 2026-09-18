@@ -1024,7 +1024,7 @@ public partial class MainWindow : Window
 
         _rgbEnabled = LedEnabled.IsChecked == true;
         SaveAppSettings();
-        SendAllRgb();
+        _serial.SetEnabled(_rgbEnabled);
     }
 
     private void BrightnessSlider_ValueChanged(
@@ -1041,7 +1041,7 @@ public partial class MainWindow : Window
         {
             _rgbBrightness = value;
             SaveAppSettings();
-            SendAllRgb();
+            _serial.SetBrightness(value);
         }
     }
 
@@ -1142,7 +1142,7 @@ public partial class MainWindow : Window
             _rgbAuto = false;
             _rgbEffect = 3;
             SaveAppSettings();
-            SendAllRgb();
+            _serial.SetSolid(_r, _g, _b);
         }
     }
 
@@ -1178,13 +1178,13 @@ public partial class MainWindow : Window
         {
             _rgbAuto = false;
             _rgbEffect = 3;
-            SendAllRgb();
+            _serial.SetSolid(_r, _g, _b);
         }
         else if (mode == "Reactive")
         {
             _rgbAuto = false;
             _rgbEffect = 4;
-            SendAllRgb();
+            _serial.SetEffect(4);
         }
 
         SaveAppSettings();
@@ -1198,7 +1198,7 @@ public partial class MainWindow : Window
         {
             _rgbAuto = true;
             SaveAppSettings();
-            SendAllRgb();
+            _serial.SetAutoLayer();
             return;
         }
 
@@ -1209,7 +1209,11 @@ public partial class MainWindow : Window
         _rgbEffect = effect;
 
         SaveAppSettings();
-        SendAllRgb();
+
+        if (effect == 3)
+            _serial.SetSolid(_r, _g, _b);
+        else
+            _serial.SetEffect(effect);
     }
 
     private void RgbSpeedSlider_ValueChanged(
@@ -1225,7 +1229,7 @@ public partial class MainWindow : Window
         {
             _rgbSpeed = value;
             SaveAppSettings();
-            SendAllRgb();
+            _serial.SetSpeed(value);
         }
     }
 
@@ -1238,13 +1242,18 @@ public partial class MainWindow : Window
         _rgbBrightness = (int)Math.Round(BrightnessSlider.Value);
         _rgbSpeed = (int)Math.Round(RgbSpeedSlider.Value);
 
-        _serial.SetRgbState(
-            _rgbEnabled,
-            _rgbBrightness,
-            _rgbSpeed,
-            _rgbAuto,
-            _rgbEffect,
-            _r, _g, _b);
+        // Preserve the known-working pre-redesign protocol: individual
+        // commands are sent in a deterministic order instead of RGB|STATE.
+        _serial.SetEnabled(_rgbEnabled);
+        _serial.SetBrightness(_rgbBrightness);
+        _serial.SetSpeed(_rgbSpeed);
+
+        if (_rgbAuto)
+            _serial.SetAutoLayer();
+        else if (_rgbEffect == 3)
+            _serial.SetSolid(_r, _g, _b);
+        else
+            _serial.SetEffect(_rgbEffect);
     }
 
     private void SetScreensaverUploadState(
