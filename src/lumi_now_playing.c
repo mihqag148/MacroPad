@@ -5,7 +5,9 @@
 
 #include <lvgl.h>
 #include <zephyr/kernel.h>
+#include <zmk/battery.h>
 #include <zmk/display.h>
+#include <zmk/keymap.h>
 
 #include "lumi_now_playing.h"
 
@@ -51,6 +53,8 @@ static struct music_state state = {
 K_MUTEX_DEFINE(state_lock);
 
 static lv_obj_t *page;
+static lv_obj_t *profile_label;
+static lv_obj_t *battery_label;
 static lv_obj_t *album_card;
 static lv_obj_t *album_icon;
 static lv_obj_t *album_canvas;
@@ -68,6 +72,8 @@ static lv_color_t artist_canvas_buf[LUMI_TEXT_W * LUMI_ARTIST_H];
 static lv_color_t album_canvas_buf[LUMI_ARTWORK_BYTES];
 
 static bool ui_ready;
+static bool page_visible;
+static uint32_t last_header_ms;
 
 static bool time_before(uint32_t now, uint32_t target) {
     return (int32_t)(now - target) < 0;
@@ -122,6 +128,82 @@ static void draw_artwork_locked(void) {
     lv_obj_add_flag(album_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(album_canvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(album_canvas);
+}
+
+static void page_anim_x_cb(void *obj, int32_t value) {
+    lv_obj_set_x((lv_obj_t *)obj, value);
+}
+
+static void page_anim_opa_cb(void *obj, int32_t value) {
+    lv_obj_set_style_opa((lv_obj_t *)obj, value, 0);
+}
+
+static void hide_music_page(void) {
+    if (!page_visible) {
+        return;
+    }
+
+    page_visible = false;
+    lv_anim_del(page, page_anim_x_cb);
+    lv_anim_del(page, page_anim_opa_cb);
+    lv_obj_set_x(page, 0);
+    lv_obj_set_style_opa(page, LV_OPA_COVER, 0);
+    lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_music_page_animated(void) {
+    if (page_visible) {
+        return;
+    }
+
+    page_visible = true;
+
+    lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(page);
+    lv_obj_set_x(page, 18);
+    lv_obj_set_style_opa(page, 0, 0);
+
+    lv_anim_t a;
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, page);
+    lv_anim_set_exec_cb(&a, page_anim_x_cb);
+    lv_anim_set_values(&a, 18, 0);
+    lv_anim_set_time(&a, 280);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, page);
+    lv_anim_set_exec_cb(&a, page_anim_opa_cb);
+    lv_anim_set_values(&a, 0, 255);
+    lv_anim_set_time(&a, 220);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
+static void update_header_status(void) {
+    if (!profile_label || !battery_label) {
+        return;
+    }
+
+    zmk_keymap_layer_index_t index = zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(index);
+    const char *name = zmk_keymap_layer_name(id);
+
+    char profile[28];
+    if (name && name[0]) {
+        snprintf(profile, sizeof(profile), "%s", name);
+    } else {
+        snprintf(profile, sizeof(profile), "LAYER %u", (unsigned int)index + 1U);
+    }
+
+    char battery[12];
+    snprintf(battery, sizeof(battery), "%u%%",
+             (unsigned int)zmk_battery_state_of_charge());
+
+    lv_label_set_text(profile_label, profile);
+    lv_label_set_text(battery_label, battery);
 }
 
 static bool should_show_locked(uint32_t now) {
@@ -187,7 +269,7 @@ static void apply_music_state(struct k_work *work) {
 
     if (!should_show_locked(now)) {
         k_mutex_unlock(&state_lock);
-        lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+        hide_music_page();
         return;
     }
 
@@ -209,8 +291,8 @@ static void apply_music_state(struct k_work *work) {
     lv_label_set_text(remain_label, b);
     lv_label_set_text(play_label, "PLAYING");
 
-    lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(page);
+    update_header_status();
+    show_music_page_animated();
 }
 
 void lumi_now_playing_update(const char *title, const char *artist,
@@ -404,11 +486,15 @@ static void music_visibility_timer(lv_timer_t *timer) {
 
     k_mutex_unlock(&state_lock);
 
+    if ((uint32_t)(now - last_header_ms) >= 500U) {
+        last_header_ms = now;
+        update_header_status();
+    }
+
     if (!show) {
-        lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+        hide_music_page();
     } else {
-        lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(page);
+        show_music_page_animated();
     }
 }
 
@@ -433,6 +519,20 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     lv_obj_t *header = make_text(page, &lv_font_montserrat_12, 0xA8A8AD);
     lv_label_set_text(header, "NOW PLAYING");
     lv_obj_set_pos(header, 12, 8);
+    lv_obj_set_width(header, 92);
+
+    profile_label = make_text(page, &lv_font_montserrat_12, 0xFFFFFF);
+    lv_obj_set_pos(profile_label, 104, 8);
+    lv_obj_set_width(profile_label, 112);
+    lv_obj_set_style_text_align(profile_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(profile_label, LV_LABEL_LONG_DOT);
+    lv_label_set_text(profile_label, "OFFICE");
+
+    battery_label = make_text(page, &lv_font_montserrat_12, 0xA8A8AD);
+    lv_obj_set_pos(battery_label, 238, 8);
+    lv_obj_set_width(battery_label, 70);
+    lv_obj_set_style_text_align(battery_label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text(battery_label, "100%");
 
     album_card = lv_obj_create(page);
     lv_obj_remove_style_all(album_card);
@@ -516,5 +616,7 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     lv_obj_set_pos(play_label, 12, 126);
 
     ui_ready = true;
+    page_visible = false;
+    update_header_status();
     lv_timer_create(music_visibility_timer, 75, NULL);
 }
