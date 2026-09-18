@@ -8,7 +8,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>LumiPad</AssemblyName>
     <RootNamespace>LumiPad.App</RootNamespace>
+    <Product>LumiPad</Product>
+    <AssemblyTitle>LumiPad</AssemblyTitle>
+    <Description>LumiPad wireless macropad companion</Description>
+    <ApplicationIcon>Assets\LumiPad.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\LumiPadLogo.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
