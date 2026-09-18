@@ -49,6 +49,7 @@ BUILD_ASSERT(LED_COUNT == 4, "Lumi RGB effects expect exactly 4 WS2812B LEDs");
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[LED_COUNT];
+K_MUTEX_DEFINE(lumi_rgb_lock);
 
 static uint8_t rainbow_step;
 static uint8_t media_tick;
@@ -187,8 +188,32 @@ static void render_effect(uint8_t effect) {
 static void lumi_rgb_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
 
-static void lumi_rgb_refresh_now(void) {
+static int lumi_rgb_push_now(void) {
+    if (!device_is_ready(strip)) {
+        k_work_reschedule(&lumi_rgb_work, K_MSEC(100));
+        return -ENODEV;
+    }
+
+    k_mutex_lock(&lumi_rgb_lock, K_FOREVER);
+
+    if (!led_enabled || led_suspended) {
+        fill((struct led_rgb){0});
+    } else {
+        render_effect(auto_by_layer ? layer_effect() : manual_effect);
+    }
+
+    int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
+    k_mutex_unlock(&lumi_rgb_lock);
+
     k_work_reschedule(&lumi_rgb_work, K_NO_WAIT);
+    return err;
+}
+
+static void lumi_rgb_refresh_now(void) {
+    int err = lumi_rgb_push_now();
+    if (err < 0 && err != -ENODEV) {
+        LOG_ERR("Immediate WS2812B update failed: %d", err);
+    }
 }
 
 void lumi_rgb_set_enabled(bool enabled) {
@@ -247,13 +272,7 @@ void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
 
 void lumi_rgb_set_suspended(bool suspended) {
     led_suspended = suspended;
-
-    if (suspended && device_is_ready(strip)) {
-        fill((struct led_rgb){0});
-        led_strip_update_rgb(strip, pixels, LED_COUNT);
-    } else if (!suspended) {
-        lumi_rgb_refresh_now();
-    }
+    lumi_rgb_refresh_now();
 }
 
 static void lumi_rgb_work_handler(struct k_work *work) {
@@ -264,6 +283,8 @@ static void lumi_rgb_work_handler(struct k_work *work) {
         return;
     }
 
+    k_mutex_lock(&lumi_rgb_lock, K_FOREVER);
+
     if (!led_enabled || led_suspended) {
         fill((struct led_rgb){0});
     } else {
@@ -271,6 +292,8 @@ static void lumi_rgb_work_handler(struct k_work *work) {
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
+    k_mutex_unlock(&lumi_rgb_lock);
+
     if (err < 0) {
         LOG_ERR("WS2812B update failed: %d", err);
     }
@@ -306,11 +329,7 @@ static int lumi_rgb_activity_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    if (device_is_ready(strip)) {
-        fill((struct led_rgb){0});
-        led_strip_update_rgb(strip, pixels, LED_COUNT);
-    }
-
+    lumi_rgb_set_suspended(true);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -324,7 +343,11 @@ static int lumi_rgb_init(void) {
     }
 
     fill((struct led_rgb){0});
-    led_strip_update_rgb(strip, pixels, LED_COUNT);
+    int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
+    if (err < 0) {
+        LOG_ERR("Initial WS2812B update failed: %d", err);
+    }
+
     k_work_schedule(&lumi_rgb_work, K_MSEC(250));
     return 0;
 }
