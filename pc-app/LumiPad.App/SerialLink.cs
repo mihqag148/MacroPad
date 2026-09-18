@@ -222,17 +222,23 @@ public sealed class SerialLink : IDisposable
     {
         try
         {
-            string titleHex = TextBitmapRenderer.RenderHex(
-                title, 206, 24, 16, true);
-            string artistHex = TextBitmapRenderer.RenderHex(
-                artist, 206, 20, 13, false);
+            var titleBitmap = TextBitmapRenderer.RenderScrollable(
+                title, 206, 480, 24, 16, true);
+            var artistBitmap = TextBitmapRenderer.RenderScrollable(
+                artist, 206, 360, 20, 13, false);
 
-            await SendLineAsync($"TXT|T|206|24|{titleHex}");
-            await SendLineAsync($"TXT|A|206|20|{artistHex}");
+            await SendLineAsync($"TXT|T|{titleBitmap.Width}|24|{titleBitmap.Hex}");
+            await SendLineAsync($"TXT|A|{artistBitmap.Width}|20|{artistBitmap.Hex}");
         }
         catch
         {
         }
+    }
+
+    public void ClearNowPlaying()
+    {
+        _lastBitmapKey = "";
+        _ = SendLineAsync("CLEAR");
     }
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
