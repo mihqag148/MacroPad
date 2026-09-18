@@ -75,7 +75,17 @@ public static class ScreensaverMediaService
 
             image.SelectActiveFrame(dimension, srcIndex);
 
-            using var bitmap = new Drawing.Bitmap(image);
+            using var bitmap = new Drawing.Bitmap(
+                image.Width,
+                image.Height,
+                PixelFormat.Format32bppArgb);
+
+            using (var frameGraphics = Drawing.Graphics.FromImage(bitmap))
+            {
+                frameGraphics.Clear(Drawing.Color.Transparent);
+                frameGraphics.DrawImageUnscaled(image, 0, 0);
+            }
+
             frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
