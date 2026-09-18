@@ -733,7 +733,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
     bool should_show = enabled &&
                        !current_media_active &&
                        !current_soft_sleep &&
-                       style != LUMI_SAVER_OFF &&
+                       (saver_media_valid || style != LUMI_SAVER_OFF) &&
                        delay > 0U &&
                        (uint32_t)(now_uptime - ui_last_activity_ms) >= delay;
 
@@ -893,7 +893,6 @@ void lumi_ui_saver_anim_end(void) {
         saver_media_valid = true;
         saver_media_index = 0U;
         saver_media_last_ms = 0U;
-        draw_custom_saver_frame(0U);
     }
 
     lumi_ui_note_activity();
