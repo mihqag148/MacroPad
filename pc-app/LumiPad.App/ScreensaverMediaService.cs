@@ -1,3 +1,4 @@
+using System.IO;
 using System.Drawing.Imaging;
 using Windows.Media.Editing;
 using Windows.Storage;
@@ -76,6 +77,8 @@ public static class ScreensaverMediaService
     {
         StorageFile file = await StorageFile.GetFileFromPathAsync(path);
         MediaClip clip = await MediaClip.CreateFromFileAsync(file);
+        var composition = new MediaComposition();
+        composition.Clips.Add(clip);
 
         TimeSpan duration = clip.OriginalDuration;
         if (duration <= TimeSpan.Zero)
@@ -96,7 +99,7 @@ public static class ScreensaverMediaService
                 : (spanMs * i / count);
 
             using IRandomAccessStreamWithContentType thumb =
-                await clip.GetThumbnailAsync(
+                await composition.GetThumbnailAsync(
                     TimeSpan.FromMilliseconds(t),
                     Width,
                     Height,
