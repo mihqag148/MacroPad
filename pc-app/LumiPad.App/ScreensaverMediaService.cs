@@ -25,8 +25,8 @@ public sealed record ScreensaverAnimation(
 
 public static class ScreensaverMediaService
 {
-    public const int Width = 64;
-    public const int Height = 36;
+    public const int Width = 80;
+    public const int Height = 43;
     public const int MaxFrames = 8;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
@@ -58,7 +58,7 @@ public static class ScreensaverMediaService
             {
                 int firstDelayCs = BitConverter.ToInt32(item.Value, 0);
                 if (firstDelayCs > 0)
-                    delayMs = Math.Clamp(firstDelayCs * 10, 80, 700);
+                    delayMs = Math.Clamp(firstDelayCs * 10, 150, 700);
             }
         }
         catch
@@ -126,7 +126,7 @@ public static class ScreensaverMediaService
 
         int intervalMs = Math.Clamp(
             (int)Math.Round(spanMs / count),
-            100,
+            150,
             700);
 
         return new ScreensaverAnimation(
@@ -157,7 +157,7 @@ public static class ScreensaverMediaService
         using (var g = Drawing.Graphics.FromImage(resized))
         {
             g.Clear(Drawing.Color.Black);
-            g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBilinear;
+            g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality;
             g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality;
             g.SmoothingMode = Drawing2D.SmoothingMode.HighQuality;
