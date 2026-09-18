@@ -8,6 +8,16 @@ using Drawing2D = System.Drawing.Drawing2D;
 
 namespace LumiPad.App;
 
+public enum ScreensaverScaleMode
+{
+    Fill = 0,
+    Fit = 1,
+    Stretch = 2,
+    Tile = 3,
+    Center = 4,
+    Span = 5,
+}
+
 public sealed record ScreensaverAnimation(
     string FileName,
     int FrameIntervalMs,
@@ -19,19 +29,21 @@ public static class ScreensaverMediaService
     public const int Height = 36;
     public const int MaxFrames = 8;
 
-    public static async Task<ScreensaverAnimation> LoadAsync(string path)
+    public static async Task<ScreensaverAnimation> LoadAsync(
+        string path,
+        ScreensaverScaleMode scaleMode)
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
 
         return ext switch
         {
-            ".gif" => await Task.Run(() => LoadGif(path)),
-            ".mp4" or ".m4v" or ".mov" => await LoadVideoAsync(path),
+            ".gif" => await Task.Run(() => LoadGif(path, scaleMode)),
+            ".mp4" or ".m4v" or ".mov" => await LoadVideoAsync(path, scaleMode),
             _ => throw new NotSupportedException("Choose a GIF or MP4/M4V/MOV file.")
         };
     }
 
-    private static ScreensaverAnimation LoadGif(string path)
+    private static ScreensaverAnimation LoadGif(string path, ScreensaverScaleMode scaleMode)
     {
         using var image = Drawing.Image.FromFile(path);
         var dimension = new FrameDimension(image.FrameDimensionsList[0]);
@@ -64,7 +76,7 @@ public static class ScreensaverMediaService
             image.SelectActiveFrame(dimension, srcIndex);
 
             using var bitmap = new Drawing.Bitmap(image);
-            frames.Add(ToRgb332(bitmap));
+            frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
         return new ScreensaverAnimation(
@@ -73,7 +85,7 @@ public static class ScreensaverMediaService
             frames);
     }
 
-    private static async Task<ScreensaverAnimation> LoadVideoAsync(string path)
+    private static async Task<ScreensaverAnimation> LoadVideoAsync(string path, ScreensaverScaleMode scaleMode)
     {
         StorageFile file = await StorageFile.GetFileFromPathAsync(path);
         MediaClip clip = await MediaClip.CreateFromFileAsync(file);
@@ -109,7 +121,7 @@ public static class ScreensaverMediaService
 
             using var ms = new MemoryStream(encoded);
             using var bitmap = new Drawing.Bitmap(ms);
-            frames.Add(ToRgb332(bitmap));
+            frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
         int intervalMs = Math.Clamp(
@@ -133,7 +145,9 @@ public static class ScreensaverMediaService
         return bytes;
     }
 
-    private static byte[] ToRgb332(Drawing.Bitmap source)
+    private static byte[] ToRgb332(
+        Drawing.Bitmap source,
+        ScreensaverScaleMode scaleMode)
     {
         using var resized = new Drawing.Bitmap(
             Width,
@@ -148,16 +162,84 @@ public static class ScreensaverMediaService
             g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality;
             g.SmoothingMode = Drawing2D.SmoothingMode.HighQuality;
 
-            double scale = Math.Max(
-                Width / (double)source.Width,
-                Height / (double)source.Height);
+            switch (scaleMode)
+            {
+                case ScreensaverScaleMode.Stretch:
+                    g.DrawImage(source, 0, 0, Width, Height);
+                    break;
 
-            int drawW = (int)Math.Ceiling(source.Width * scale);
-            int drawH = (int)Math.Ceiling(source.Height * scale);
-            int dx = (Width - drawW) / 2;
-            int dy = (Height - drawH) / 2;
+                case ScreensaverScaleMode.Fit:
+                {
+                    double scale = Math.Min(
+                        Width / (double)source.Width,
+                        Height / (double)source.Height);
+                    int drawW = Math.Max(1, (int)Math.Round(source.Width * scale));
+                    int drawH = Math.Max(1, (int)Math.Round(source.Height * scale));
+                    int dx = (Width - drawW) / 2;
+                    int dy = (Height - drawH) / 2;
+                    g.DrawImage(source, dx, dy, drawW, drawH);
+                    break;
+                }
 
-            g.DrawImage(source, dx, dy, drawW, drawH);
+                case ScreensaverScaleMode.Center:
+                {
+                    int drawW = Math.Min(source.Width, Width);
+                    int drawH = Math.Min(source.Height, Height);
+                    int sx = Math.Max(0, (source.Width - drawW) / 2);
+                    int sy = Math.Max(0, (source.Height - drawH) / 2);
+                    int dx = (Width - drawW) / 2;
+                    int dy = (Height - drawH) / 2;
+                    g.DrawImage(
+                        source,
+                        new Drawing.Rectangle(dx, dy, drawW, drawH),
+                        new Drawing.Rectangle(sx, sy, drawW, drawH),
+                        Drawing.GraphicsUnit.Pixel);
+                    break;
+                }
+
+                case ScreensaverScaleMode.Tile:
+                {
+                    double scale = Math.Min(
+                        0.5,
+                        Math.Min(
+                            Width / (double)source.Width,
+                            Height / (double)source.Height));
+                    int tileW = Math.Max(8, (int)Math.Round(source.Width * scale));
+                    int tileH = Math.Max(8, (int)Math.Round(source.Height * scale));
+
+                    using var tile = new Drawing.Bitmap(tileW, tileH);
+                    using (var tg = Drawing.Graphics.FromImage(tile))
+                    {
+                        tg.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBilinear;
+                        tg.DrawImage(source, 0, 0, tileW, tileH);
+                    }
+
+                    using var brush = new Drawing.TextureBrush(tile, Drawing2D.WrapMode.Tile);
+                    g.FillRectangle(brush, 0, 0, Width, Height);
+                    break;
+                }
+
+                case ScreensaverScaleMode.Span:
+                case ScreensaverScaleMode.Fill:
+                default:
+                {
+                    double scale = Math.Max(
+                        Width / (double)source.Width,
+                        Height / (double)source.Height);
+
+                    if (scaleMode == ScreensaverScaleMode.Span)
+                    {
+                        scale *= 1.08;
+                    }
+
+                    int drawW = Math.Max(1, (int)Math.Ceiling(source.Width * scale));
+                    int drawH = Math.Max(1, (int)Math.Ceiling(source.Height * scale));
+                    int dx = (Width - drawW) / 2;
+                    int dy = (Height - drawH) / 2;
+                    g.DrawImage(source, dx, dy, drawW, drawH);
+                    break;
+                }
+            }
         }
 
         var output = new byte[Width * Height];
