@@ -11,6 +11,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
+#include <zephyr/linker/linker-defs.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/base64.h>
 #include <zephyr/sys/reboot.h>
@@ -366,6 +367,30 @@ static void handle_txt(char *save) {
     k_mutex_unlock(&bitmap_lock);
 }
 
+static void handle_mem(bool from_usb) {
+    size_t flash_used = (size_t)_flash_used;
+    size_t flash_total = DT_REG_SIZE(DT_NODELABEL(code_partition));
+    size_t ram_used = (size_t)(_image_ram_end - _image_ram_start);
+    size_t ram_total = DT_REG_SIZE(DT_NODELABEL(sram0));
+
+    char response[96];
+    snprintf(
+        response,
+        sizeof(response),
+        "MEM|%u|%u|%u|%u",
+        (unsigned int)flash_used,
+        (unsigned int)flash_total,
+        (unsigned int)ram_used,
+        (unsigned int)ram_total);
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_line(char *line, bool from_usb) {
     char *save = NULL;
     char *root = strtok_r(line, "|", &save);
@@ -375,6 +400,8 @@ static void handle_line(char *line, bool from_usb) {
         if (from_usb) {
             write_text_usb("LUMIPAD|2\r\n");
         }
+    } else if (strcmp(root, "MEM") == 0) {
+        handle_mem(from_usb);
     } else if (strcmp(root, "NP") == 0) {
         handle_np(save);
     } else if (strcmp(root, "RGB") == 0) {
