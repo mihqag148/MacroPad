@@ -1185,9 +1185,27 @@ void lumi_ui_saver_anim_clear(void) {
     lumi_ui_note_activity();
 }
 
+static void lumi_panel_refresh_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    /* The ST7789 keeps GRAM across soft sleep, but an input/media update can
+     * arrive while SLPOUT is still waiting its required 120 ms. Force one
+     * complete LVGL redraw after DISPON so encoder activity and Now Playing
+     * are visible immediately after wake.
+     */
+    if (root_screen) {
+        lv_obj_invalidate(root_screen);
+    }
+}
+
+K_WORK_DEFINE(lumi_panel_refresh_work, lumi_panel_refresh_work_handler);
+
 static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
-    (void)lumi_panel_set_sleep(false);
+
+    if (lumi_panel_set_sleep(false) == 0) {
+        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_refresh_work);
+    }
 }
 
 K_WORK_DEFINE(lumi_panel_wake_work, lumi_panel_wake_work_handler);
