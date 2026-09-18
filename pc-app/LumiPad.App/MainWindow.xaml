@@ -275,7 +275,7 @@
                                     Background="{DynamicResource Line}"
                                     Margin="0,14,0,12"/>
 
-                            <Grid>
+                            <Grid x:Name="DeviceTimingPanel" IsEnabled="False">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition/>
                                     <ColumnDefinition Width="14"/>
@@ -355,12 +355,18 @@
                                 <Button x:Name="DetectButton"
                                         Content="Connect"
                                         Click="DetectButton_Click"/>
-                                <Button Content="Disconnect"
-                                        Click="DisconnectButton_Click"/>
-                                <Button Content="Khởi động lại bàn phím"
-                                        Click="RestartKeyboard_Click"/>
-                                <Button Content="Bàn phím DFU"
+                                <Button x:Name="DisconnectButton"
+                                        Content="Disconnect"
+                                        Click="DisconnectButton_Click"
+                                        IsEnabled="False"/>
+                                <Button x:Name="RestartKeyboardButton"
+                                        Content="Khởi động lại bàn phím"
+                                        Click="RestartKeyboard_Click"
+                                        IsEnabled="False"/>
+                                <Button x:Name="KeyboardDfuButton"
+                                        Content="Bàn phím DFU"
                                         Click="KeyboardDfu_Click"
+                                        IsEnabled="False"
                                         Margin="0"/>
                             </StackPanel>
                         </Grid>
@@ -371,11 +377,13 @@
 
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
-                    <Border Background="{DynamicResource Card}"
+                    <Border x:Name="RgbDevicePanel"
+                            Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
                             CornerRadius="28"
-                            Padding="28">
+                            Padding="28"
+                            IsEnabled="False">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="260"/>
