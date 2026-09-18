@@ -17,6 +17,11 @@ struct music_state {
     uint32_t duration_ms;
     bool playing;
     uint32_t last_rx_ms;
+
+    uint8_t title_bitmap[LUMI_TITLE_BITMAP_BYTES];
+    uint8_t artist_bitmap[LUMI_ARTIST_BITMAP_BYTES];
+    bool title_bitmap_valid;
+    bool artist_bitmap_valid;
 };
 
 static struct music_state state;
@@ -27,15 +32,38 @@ static lv_obj_t *album_card;
 static lv_obj_t *album_icon;
 static lv_obj_t *title_label;
 static lv_obj_t *artist_label;
+static lv_obj_t *title_canvas;
+static lv_obj_t *artist_canvas;
 static lv_obj_t *progress;
 static lv_obj_t *elapsed_label;
 static lv_obj_t *remain_label;
 static lv_obj_t *play_label;
+
+static lv_color_t title_canvas_buf[LUMI_TEXT_W * LUMI_TITLE_H];
+static lv_color_t artist_canvas_buf[LUMI_TEXT_W * LUMI_ARTIST_H];
+
 static bool ui_ready;
 
 static void fmt_time(char *out, size_t len, uint32_t ms) {
     uint32_t s = ms / 1000U;
     snprintf(out, len, "%u:%02u", (unsigned)(s / 60U), (unsigned)(s % 60U));
+}
+
+static void draw_1bit(lv_obj_t *canvas, lv_color_t *dst,
+                      const uint8_t *bits, size_t bit_len,
+                      int width, int height, uint32_t fg_hex) {
+    lv_color_t fg = lv_color_hex(fg_hex);
+    lv_color_t bg = lv_color_hex(0x000000);
+    size_t px_count = (size_t)width * height;
+
+    for (size_t i = 0; i < px_count; i++) {
+        size_t byte_i = i >> 3;
+        uint8_t mask = (uint8_t)(0x80U >> (i & 7U));
+        bool on = byte_i < bit_len && (bits[byte_i] & mask);
+        dst[i] = on ? fg : bg;
+    }
+
+    lv_obj_invalidate(canvas);
 }
 
 static void apply_music_state(struct k_work *work);
@@ -48,16 +76,38 @@ static void apply_music_state(struct k_work *work) {
         return;
     }
 
-    struct music_state copy;
     k_mutex_lock(&state_lock, K_FOREVER);
-    copy = state;
+
+    if (state.title_bitmap_valid) {
+        draw_1bit(title_canvas, title_canvas_buf,
+                  state.title_bitmap, sizeof(state.title_bitmap),
+                  LUMI_TEXT_W, LUMI_TITLE_H, 0xFFFFFF);
+        lv_obj_add_flag(title_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(title_canvas, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_label_set_text(title_label, state.title[0] ? state.title : "Nothing Playing");
+        lv_obj_clear_flag(title_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(title_canvas, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (state.artist_bitmap_valid) {
+        draw_1bit(artist_canvas, artist_canvas_buf,
+                  state.artist_bitmap, sizeof(state.artist_bitmap),
+                  LUMI_TEXT_W, LUMI_ARTIST_H, 0xA8A8AD);
+        lv_obj_add_flag(artist_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(artist_canvas, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_label_set_text(artist_label, state.artist[0] ? state.artist : "Lumi MacroPad");
+        lv_obj_clear_flag(artist_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(artist_canvas, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    uint32_t max = state.duration_ms ? state.duration_ms : 1U;
+    uint32_t pos = state.position_ms > max ? max : state.position_ms;
+    bool playing = state.playing;
+
     k_mutex_unlock(&state_lock);
 
-    lv_label_set_text(title_label, copy.title[0] ? copy.title : "Nothing Playing");
-    lv_label_set_text(artist_label, copy.artist[0] ? copy.artist : "Lumi MacroPad");
-
-    uint32_t max = copy.duration_ms ? copy.duration_ms : 1U;
-    uint32_t pos = copy.position_ms > max ? max : copy.position_ms;
     lv_bar_set_range(progress, 0, 1000);
     lv_bar_set_value(progress, (int32_t)((pos * 1000ULL) / max), LV_ANIM_OFF);
 
@@ -66,7 +116,7 @@ static void apply_music_state(struct k_work *work) {
     fmt_time(b, sizeof(b), max);
     lv_label_set_text(elapsed_label, a);
     lv_label_set_text(remain_label, b);
-    lv_label_set_text(play_label, copy.playing ? "PLAYING" : "PAUSED");
+    lv_label_set_text(play_label, playing ? "PLAYING" : "PAUSED");
 
     lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(page);
@@ -76,11 +126,51 @@ void lumi_now_playing_update(const char *title, const char *artist,
                              uint32_t position_ms, uint32_t duration_ms,
                              bool playing) {
     k_mutex_lock(&state_lock, K_FOREVER);
+
+    bool title_changed = strncmp(state.title, title ? title : "", sizeof(state.title)) != 0;
+    bool artist_changed = strncmp(state.artist, artist ? artist : "", sizeof(state.artist)) != 0;
+
     snprintf(state.title, sizeof(state.title), "%s", title ? title : "");
     snprintf(state.artist, sizeof(state.artist), "%s", artist ? artist : "");
     state.position_ms = position_ms;
     state.duration_ms = duration_ms;
     state.playing = playing;
+    state.last_rx_ms = k_uptime_get_32();
+
+    if (title_changed) {
+        state.title_bitmap_valid = false;
+    }
+    if (artist_changed) {
+        state.artist_bitmap_valid = false;
+    }
+
+    k_mutex_unlock(&state_lock);
+
+    if (ui_ready) {
+        k_work_submit_to_queue(zmk_display_work_q(), &music_work);
+    }
+}
+
+void lumi_now_playing_set_bitmap(bool title_bitmap,
+                                 const uint8_t *data, size_t len) {
+    if (!data) {
+        return;
+    }
+
+    k_mutex_lock(&state_lock, K_FOREVER);
+
+    if (title_bitmap) {
+        size_t copy = MIN(len, sizeof(state.title_bitmap));
+        memset(state.title_bitmap, 0, sizeof(state.title_bitmap));
+        memcpy(state.title_bitmap, data, copy);
+        state.title_bitmap_valid = true;
+    } else {
+        size_t copy = MIN(len, sizeof(state.artist_bitmap));
+        memset(state.artist_bitmap, 0, sizeof(state.artist_bitmap));
+        memcpy(state.artist_bitmap, data, copy);
+        state.artist_bitmap_valid = true;
+    }
+
     state.last_rx_ms = k_uptime_get_32();
     k_mutex_unlock(&state_lock);
 
@@ -139,15 +229,27 @@ void lumi_now_playing_init(lv_obj_t *screen) {
 
     title_label = make_text(page, &lv_font_montserrat_16, 0xFFFFFF);
     lv_obj_set_pos(title_label, 102, 34);
-    lv_obj_set_width(title_label, 206);
+    lv_obj_set_width(title_label, LUMI_TEXT_W);
     lv_label_set_long_mode(title_label, LV_LABEL_LONG_DOT);
     lv_label_set_text(title_label, "Nothing Playing");
 
+    title_canvas = lv_canvas_create(page);
+    lv_canvas_set_buffer(title_canvas, title_canvas_buf,
+                         LUMI_TEXT_W, LUMI_TITLE_H, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_pos(title_canvas, 102, 32);
+    lv_obj_add_flag(title_canvas, LV_OBJ_FLAG_HIDDEN);
+
     artist_label = make_text(page, &lv_font_montserrat_14, 0xA8A8AD);
     lv_obj_set_pos(artist_label, 102, 58);
-    lv_obj_set_width(artist_label, 206);
+    lv_obj_set_width(artist_label, LUMI_TEXT_W);
     lv_label_set_long_mode(artist_label, LV_LABEL_LONG_DOT);
     lv_label_set_text(artist_label, "Lumi MacroPad");
+
+    artist_canvas = lv_canvas_create(page);
+    lv_canvas_set_buffer(artist_canvas, artist_canvas_buf,
+                         LUMI_TEXT_W, LUMI_ARTIST_H, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_pos(artist_canvas, 102, 57);
+    lv_obj_add_flag(artist_canvas, LV_OBJ_FLAG_HIDDEN);
 
     progress = lv_bar_create(page);
     lv_obj_set_pos(progress, 102, 87);
