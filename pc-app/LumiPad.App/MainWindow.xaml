@@ -310,6 +310,7 @@
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,0,0,6"/>
                                     <ComboBox x:Name="ScreensaverDelayCombo"
+                                              Style="{x:Null}"
                                               SelectedValuePath="Tag"
                                               SelectionChanged="ScreensaverDelayCombo_SelectionChanged">
                                         <ComboBoxItem Content="15 seconds" Tag="15"/>
@@ -327,6 +328,7 @@
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,0,0,6"/>
                                     <ComboBox x:Name="SleepDelayCombo"
+                                              Style="{x:Null}"
                                               SelectedValuePath="Tag"
                                               SelectionChanged="SleepDelayCombo_SelectionChanged">
                                         <ComboBoxItem Content="1 minute" Tag="60"/>
