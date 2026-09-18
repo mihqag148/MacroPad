@@ -165,7 +165,7 @@ static void draw_text_bitmaps_locked(void) {
         lv_obj_clear_flag(artist_canvas, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_label_set_text(artist_label,
-                          state.artist[0] ? state.artist : "Lumi MacroPad");
+                          state.artist[0] ? state.artist : "LumiPad");
         lv_obj_clear_flag(artist_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(artist_canvas, LV_OBJ_FLAG_HIDDEN);
     }
@@ -471,7 +471,7 @@ void lumi_now_playing_init(lv_obj_t *screen) {
     lv_obj_set_pos(artist_label, 102, 58);
     lv_obj_set_width(artist_label, LUMI_TEXT_W);
     lv_label_set_long_mode(artist_label, LV_LABEL_LONG_DOT);
-    lv_label_set_text(artist_label, "Lumi MacroPad");
+    lv_label_set_text(artist_label, "LumiPad");
 
     artist_canvas = lv_canvas_create(page);
     lv_canvas_set_buffer(artist_canvas, artist_canvas_buf,
