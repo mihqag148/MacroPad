@@ -19,7 +19,7 @@ public sealed record NowPlayingData(
 public sealed class NowPlayingService : IDisposable
 {
     private const int ArtworkSize = 76;
-    private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
 
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private CancellationTokenSource? _cts;
