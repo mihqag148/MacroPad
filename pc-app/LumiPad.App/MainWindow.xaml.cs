@@ -915,6 +915,8 @@ public partial class MainWindow : Window
         if (_uiReady)
         {
             SaveAppSettings();
+            Dispatcher.BeginInvoke(new Action(() =>
+                SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString())));
         }
 
         if (_uiReady && _serial.IsConnected)
@@ -936,6 +938,8 @@ public partial class MainWindow : Window
         if (_uiReady)
         {
             SaveAppSettings();
+            Dispatcher.BeginInvoke(new Action(() =>
+                SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString())));
         }
 
         if (_uiReady && _serial.IsConnected)
@@ -1031,7 +1035,7 @@ public partial class MainWindow : Window
 
         _rgbEnabled = LedEnabled.IsChecked == true;
         SaveAppSettings();
-        _serial.SetEnabled(_rgbEnabled);
+        SendAllRgb();
     }
 
     private void BrightnessSlider_ValueChanged(
@@ -1048,7 +1052,7 @@ public partial class MainWindow : Window
         {
             _rgbBrightness = value;
             SaveAppSettings();
-            _serial.SetBrightness(value);
+            SendAllRgb();
         }
     }
 
@@ -1149,7 +1153,7 @@ public partial class MainWindow : Window
             _rgbAuto = false;
             _rgbEffect = 3;
             SaveAppSettings();
-            _serial.SetSolid(_r, _g, _b);
+            SendAllRgb();
         }
     }
 
@@ -1185,13 +1189,13 @@ public partial class MainWindow : Window
         {
             _rgbAuto = false;
             _rgbEffect = 3;
-            _serial.SetSolid(_r, _g, _b);
+            SendAllRgb();
         }
         else if (mode == "Reactive")
         {
             _rgbAuto = false;
             _rgbEffect = 4;
-            _serial.SetEffect(4);
+            SendAllRgb();
         }
 
         SaveAppSettings();
@@ -1205,7 +1209,7 @@ public partial class MainWindow : Window
         {
             _rgbAuto = true;
             SaveAppSettings();
-            _serial.SetAutoLayer();
+            SendAllRgb();
             return;
         }
 
@@ -1216,11 +1220,7 @@ public partial class MainWindow : Window
         _rgbEffect = effect;
 
         SaveAppSettings();
-
-        if (effect == 3)
-            _serial.SetSolid(_r, _g, _b);
-        else
-            _serial.SetEffect(effect);
+        SendAllRgb();
     }
 
     private void RgbSpeedSlider_ValueChanged(
@@ -1236,28 +1236,26 @@ public partial class MainWindow : Window
         {
             _rgbSpeed = value;
             SaveAppSettings();
-            _serial.SetSpeed(value);
+            SendAllRgb();
         }
     }
 
     private void SendAllRgb()
     {
-        _serial.SetEnabled(LedEnabled.IsChecked == true);
-        _serial.SetBrightness((int)Math.Round(BrightnessSlider.Value));
-        _serial.SetSpeed((int)Math.Round(RgbSpeedSlider.Value));
+        if (!_serial.IsConnected)
+            return;
 
-        if (_rgbAuto)
-        {
-            _serial.SetAutoLayer();
-        }
-        else if (_rgbEffect == 3)
-        {
-            _serial.SetSolid(_r, _g, _b);
-        }
-        else
-        {
-            _serial.SetEffect(_rgbEffect);
-        }
+        _rgbEnabled = LedEnabled.IsChecked == true;
+        _rgbBrightness = (int)Math.Round(BrightnessSlider.Value);
+        _rgbSpeed = (int)Math.Round(RgbSpeedSlider.Value);
+
+        _serial.SetRgbState(
+            _rgbEnabled,
+            _rgbBrightness,
+            _rgbSpeed,
+            _rgbAuto,
+            _rgbEffect,
+            _r, _g, _b);
     }
 
     private void SetScreensaverUploadState(
