@@ -125,6 +125,21 @@ static void handle_rgb(char *save) {
     } else if (strcmp(cmd, "FX") == 0) {
         char *v = strtok_r(NULL, "|", &save);
         if (v) lumi_rgb_set_effect((uint8_t)atoi(v));
+    } else if (strcmp(cmd, "PROFILE") == 0) {
+        char *index = strtok_r(NULL, "|", &save);
+        char *effect = strtok_r(NULL, "|", &save);
+        char *r = strtok_r(NULL, "|", &save);
+        char *g = strtok_r(NULL, "|", &save);
+        char *b = strtok_r(NULL, "|", &save);
+
+        if (index && effect && r && g && b) {
+            lumi_rgb_set_profile(
+                (uint8_t)atoi(index),
+                (uint8_t)atoi(effect),
+                (uint8_t)atoi(r),
+                (uint8_t)atoi(g),
+                (uint8_t)atoi(b));
+        }
     } else if (strcmp(cmd, "STATE") == 0) {
         char *enabled = strtok_r(NULL, "|", &save);
         char *brightness = strtok_r(NULL, "|", &save);
