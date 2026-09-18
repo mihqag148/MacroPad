@@ -4,6 +4,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/kernel.h>
+#include <lvgl.h>
 #include "lumi_panel.h"
 
 LOG_MODULE_REGISTER(lumi_panel, CONFIG_ZMK_LOG_LEVEL);
@@ -199,8 +201,29 @@ int lumi_panel_init(void) {
         return err;
     }
 
-    /* FRCTRL2 (C6h), RTNA=0x1F. With the enlarged porch timing in
-     * devicetree this targets approximately 25 Hz panel refresh.
+    /* Program PORCTRL explicitly as well as through devicetree so the
+     * runtime timing does not depend on the display driver's init sequence.
+     * FPA=BPA=0x6C; remaining porch bytes match the panel baseline.
+     */
+    command = 0xB2;
+    err = gpio_pin_set_dt(&dc, 1);
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+    if (err != 0) {
+        LOG_ERR("Panel PORCTRL command failed: %d", err);
+        return err;
+    }
+
+    const uint8_t porch[5] = {0x6C, 0x6C, 0x00, 0x33, 0x33};
+    err = lumi_panel_write_data(porch, sizeof(porch));
+    if (err != 0) {
+        LOG_ERR("Panel PORCTRL data failed: %d", err);
+        return err;
+    }
+
+    /* FRCTRL2 (C6h), RTNA=0x1F. Datasheet nominal timing is about 25 Hz
+     * with FPA=BPA=0x6C and a 10 MHz internal oscillator.
      */
     command = 0xC6;
     err = gpio_pin_set_dt(&dc, 1);
