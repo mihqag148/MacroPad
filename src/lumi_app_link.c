@@ -980,6 +980,23 @@ static void handle_pc_config(char *save) {
     }
 
     lumi_ui_pc_monitor_set_config_name(name);
+
+    uint8_t slots[6];
+    bool have_layout = true;
+
+    for (uint8_t i = 0U; i < 6U; i++) {
+        char *slot = strtok_r(NULL, "|", &save);
+        if (!slot) {
+            have_layout = false;
+            break;
+        }
+
+        slots[i] = (uint8_t)CLAMP(atoi(slot), 0, 11);
+    }
+
+    if (have_layout) {
+        lumi_ui_pc_monitor_set_layout(slots);
+    }
 }
 
 static void handle_pc_monitor(char *save) {
