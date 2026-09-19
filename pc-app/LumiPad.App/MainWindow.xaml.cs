@@ -1706,6 +1706,679 @@ public partial class MainWindow : Window
     private async void NextButton_Click(object sender, RoutedEventArgs e) =>
         await _nowPlaying.NextAsync();
 
+    private static string ProfileName(int index) =>
+        index switch
+        {
+            0 => "OFFICE",
+            1 => "MEDIA",
+            2 => "FUSION 360",
+            3 => "CUSTOM 4",
+            4 => "CUSTOM 5",
+            _ => $"PROFILE {index + 1}"
+        };
+
+    private void ApplyAutoProfileUiState()
+    {
+        if (AutoProfileEnabledCheckBox is not null)
+            AutoProfileEnabledCheckBox.IsChecked = _autoProfileSettings.Enabled;
+
+        if (AutoProfileDefaultCombo is not null)
+            AutoProfileDefaultCombo.SelectedValue =
+                Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4).ToString();
+
+        RefreshAutoProfileMappingsUi();
+    }
+
+    private void AutoProfileEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_uiReady)
+            return;
+
+        _autoProfileSettings.Enabled =
+            AutoProfileEnabledCheckBox.IsChecked == true;
+        AutoProfileService.Save(_autoProfileSettings);
+        _lastAppliedAutoProfile = -1;
+        _lastForegroundAppPath = null;
+        PollAutoProfile(force: true);
+    }
+
+    private void AutoProfileDefaultCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (AutoProfileDefaultCombo?.SelectedItem is not ComboBoxItem item ||
+            !int.TryParse(item.Tag?.ToString(), out int profile))
+        {
+            return;
+        }
+
+        _autoProfileSettings.DefaultProfile = Math.Clamp(profile, 0, 4);
+
+        if (_uiReady)
+        {
+            AutoProfileService.Save(_autoProfileSettings);
+            _lastAppliedAutoProfile = -1;
+            PollAutoProfile(force: true);
+        }
+    }
+
+    private void SelectAutoProfileApplication_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = L("Select Application", "Chọn ứng dụng"),
+            Filter = "Applications (*.exe)|*.exe|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() == true)
+            AddAutoProfileMapping(dialog.FileName);
+    }
+
+    private async void RefreshRunningApps_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await RefreshRunningAppsAsync();
+
+    private async Task RefreshRunningAppsAsync()
+    {
+        try
+        {
+            _runningApps =
+                await Task.Run(AutoProfileService.ScanRunningApplications);
+            RefreshRunningAppsUi();
+        }
+        catch (Exception ex)
+        {
+            AddLog("WARN", "AUTO", $"Running app scan failed: {ex.Message}");
+        }
+    }
+
+    private void AddAutoProfileMapping(string executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return;
+
+        string path;
+        try
+        {
+            path = System.IO.Path.GetFullPath(executablePath);
+        }
+        catch
+        {
+            path = executablePath;
+        }
+
+        var existing = _autoProfileSettings.Mappings.FirstOrDefault(
+            m => AutoProfileService.PathsEqual(m.ExecutablePath, path));
+
+        if (existing is null)
+        {
+            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+
+            try
+            {
+                var info = FileVersionInfo.GetVersionInfo(path);
+                if (!string.IsNullOrWhiteSpace(info.FileDescription))
+                    name = info.FileDescription.Trim();
+            }
+            catch
+            {
+            }
+
+            _autoProfileSettings.Mappings.Add(new AutoProfileMapping
+            {
+                Name = string.IsNullOrWhiteSpace(name) ? "Application" : name,
+                ExecutablePath = path,
+                ProfileIndex = Math.Clamp(_rgbProfileIndex, 0, 4)
+            });
+
+            AutoProfileService.Save(_autoProfileSettings);
+            AddLog("INFO", "AUTO", $"Added app mapping: {path}");
+        }
+
+        RefreshAutoProfileMappingsUi();
+        RefreshRunningAppsUi();
+        _lastAppliedAutoProfile = -1;
+        PollAutoProfile(force: true);
+    }
+
+    private ComboBox CreateProfileSelector(int selectedProfile)
+    {
+        var combo = new ComboBox
+        {
+            Width = 160,
+            SelectedValuePath = "Tag",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        for (int i = 0; i < 5; i++)
+        {
+            combo.Items.Add(new ComboBoxItem
+            {
+                Content = ProfileName(i),
+                Tag = i.ToString()
+            });
+        }
+
+        combo.SelectedValue = Math.Clamp(selectedProfile, 0, 4).ToString();
+        return combo;
+    }
+
+    private void RefreshAutoProfileMappingsUi()
+    {
+        if (AutoProfileMappingsPanel is null)
+            return;
+
+        AutoProfileMappingsPanel.Children.Clear();
+
+        if (_autoProfileSettings.Mappings.Count == 0)
+        {
+            AutoProfileMappingsPanel.Children.Add(new TextBlock
+            {
+                Text = L(
+                    "No application mappings yet. Select an EXE or add a running app.",
+                    "Chưa có ứng dụng được gán. Chọn file EXE hoặc thêm ứng dụng đang chạy."),
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 8, 0, 0)
+            });
+            return;
+        }
+
+        foreach (AutoProfileMapping mapping in _autoProfileSettings.Mappings.ToArray())
+        {
+            var row = new Border
+            {
+                Background =
+                    TryFindResource("Card2") as System.Windows.Media.Brush,
+                BorderBrush =
+                    TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(12),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = GridLength.Auto
+            });
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = GridLength.Auto
+            });
+
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock
+            {
+                Text = mapping.Name,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 15
+            });
+            text.Children.Add(new TextBlock
+            {
+                Text = mapping.ExecutablePath,
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 520,
+                Margin = new Thickness(0, 3, 14, 0)
+            });
+            grid.Children.Add(text);
+
+            ComboBox profile = CreateProfileSelector(mapping.ProfileIndex);
+            profile.Tag = mapping;
+            profile.Margin = new Thickness(8, 0, 8, 0);
+            profile.SelectionChanged += (_, _) =>
+            {
+                if (profile.Tag is not AutoProfileMapping current ||
+                    profile.SelectedItem is not ComboBoxItem selected ||
+                    !int.TryParse(selected.Tag?.ToString(), out int index))
+                {
+                    return;
+                }
+
+                current.ProfileIndex = Math.Clamp(index, 0, 4);
+                AutoProfileService.Save(_autoProfileSettings);
+                _lastAppliedAutoProfile = -1;
+                PollAutoProfile(force: true);
+            };
+            Grid.SetColumn(profile, 1);
+            grid.Children.Add(profile);
+
+            var remove = new Button
+            {
+                Content = "×",
+                Width = 38,
+                Height = 38,
+                Padding = new Thickness(0),
+                Tag = mapping,
+                ToolTip = L("Delete", "Xóa"),
+                Margin = new Thickness(0)
+            };
+            remove.Click += (_, _) =>
+            {
+                if (remove.Tag is not AutoProfileMapping current)
+                    return;
+
+                _autoProfileSettings.Mappings.Remove(current);
+                AutoProfileService.Save(_autoProfileSettings);
+                RefreshAutoProfileMappingsUi();
+                RefreshRunningAppsUi();
+                _lastAppliedAutoProfile = -1;
+                PollAutoProfile(force: true);
+            };
+            Grid.SetColumn(remove, 2);
+            grid.Children.Add(remove);
+
+            row.Child = grid;
+            AutoProfileMappingsPanel.Children.Add(row);
+        }
+    }
+
+    private void RefreshRunningAppsUi()
+    {
+        if (RunningAppsPanel is null)
+            return;
+
+        RunningAppsPanel.Children.Clear();
+
+        foreach (RunningAppInfo app in _runningApps)
+        {
+            bool added = _autoProfileSettings.Mappings.Any(
+                m => AutoProfileService.PathsEqual(
+                    m.ExecutablePath,
+                    app.ExecutablePath));
+
+            var row = new Border
+            {
+                Background =
+                    TryFindResource("Card2") as System.Windows.Media.Brush,
+                BorderBrush =
+                    TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(11),
+                Margin = new Thickness(0, 0, 0, 9)
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = GridLength.Auto
+            });
+
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock
+            {
+                Text = app.Name,
+                FontWeight = FontWeights.SemiBold
+            });
+            text.Children.Add(new TextBlock
+            {
+                Text = app.ExecutablePath,
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 390,
+                Margin = new Thickness(0, 3, 12, 0)
+            });
+            grid.Children.Add(text);
+
+            var add = new Button
+            {
+                Content = added ? L("Added", "Đã thêm") : L("Add", "Thêm"),
+                IsEnabled = !added,
+                Tag = app.ExecutablePath,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0)
+            };
+            add.Click += (_, _) =>
+            {
+                if (add.Tag is string path)
+                    AddAutoProfileMapping(path);
+            };
+            Grid.SetColumn(add, 1);
+            grid.Children.Add(add);
+
+            row.Child = grid;
+            RunningAppsPanel.Children.Add(row);
+        }
+
+        if (_runningApps.Count == 0)
+        {
+            RunningAppsPanel.Children.Add(new TextBlock
+            {
+                Text = L(
+                    "No foreground-capable apps found.",
+                    "Không tìm thấy ứng dụng có cửa sổ đang chạy."),
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush
+            });
+        }
+    }
+
+    private void PollAutoProfile(bool force = false)
+    {
+        if (!_uiReady || AutoProfileStatusText is null)
+            return;
+
+        if (!_autoProfileSettings.Enabled)
+        {
+            AutoProfileStatusText.Text =
+                L("Auto Profile is disabled", "Auto Profile đang tắt");
+            return;
+        }
+
+        RunningAppInfo? app = AutoProfileService.GetForegroundApplication();
+
+        if (app is not null &&
+            AutoProfileService.PathsEqual(
+                app.ExecutablePath,
+                Environment.ProcessPath))
+        {
+            AutoProfileStatusText.Text =
+                L(
+                    "LumiPad is active · keeping current profile",
+                    "LumiPad đang được chọn · giữ nguyên profile");
+            return;
+        }
+
+        AutoProfileMapping? mapping = app is null
+            ? null
+            : _autoProfileSettings.Mappings.FirstOrDefault(
+                m => AutoProfileService.PathsEqual(
+                    m.ExecutablePath,
+                    app.ExecutablePath));
+
+        int target = mapping?.ProfileIndex ??
+                     Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4);
+
+        string appName = app?.Name ??
+                         L("Desktop", "Màn hình chính");
+        string profileName = ProfileName(target);
+
+        AutoProfileStatusText.Text =
+            mapping is null
+                ? $"{appName} → Default · {profileName}"
+                : $"{appName} → {profileName}";
+
+        string? foregroundPath = app?.ExecutablePath;
+
+        bool changed =
+            force ||
+            target != _lastAppliedAutoProfile ||
+            !AutoProfileService.PathsEqual(
+                foregroundPath,
+                _lastForegroundAppPath);
+
+        if (!changed || !_serial.IsConnected)
+            return;
+
+        _serial.SetActiveProfile(target);
+        _lastAppliedAutoProfile = target;
+        _lastForegroundAppPath = foregroundPath;
+
+        AddLog(
+            "INFO",
+            "AUTO",
+            $"Profile {target + 1} ({profileName}) for {appName}");
+    }
+
+    private ActionScriptDefinition? SelectedActionScript =>
+        ActionScriptsList?.SelectedItem as ActionScriptDefinition;
+
+    private void RefreshActionScriptsUi(string? selectId = null)
+    {
+        if (ActionScriptsList is null)
+            return;
+
+        string? desired =
+            selectId ??
+            (ActionScriptsList.SelectedItem as ActionScriptDefinition)?.Id;
+
+        _loadingActionScriptUi = true;
+        try
+        {
+            ActionScriptsList.ItemsSource = null;
+            ActionScriptsList.ItemsSource = _actionScripts;
+
+            ActionScriptDefinition? selected =
+                _actionScripts.FirstOrDefault(s => s.Id == desired) ??
+                _actionScripts.FirstOrDefault();
+
+            ActionScriptsList.SelectedItem = selected;
+            LoadSelectedActionScriptUi(selected);
+        }
+        finally
+        {
+            _loadingActionScriptUi = false;
+        }
+    }
+
+    private void LoadSelectedActionScriptUi(ActionScriptDefinition? script)
+    {
+        if (ActionScriptNameText is null ||
+            ActionStepsList is null ||
+            ActionEditorTitle is null)
+        {
+            return;
+        }
+
+        _loadingActionScriptUi = true;
+        try
+        {
+            ActionScriptNameText.Text = script?.Name ?? "";
+            ActionEditorTitle.Text =
+                script?.Name ??
+                L(
+                    "Select or create a script",
+                    "Chọn hoặc tạo một script");
+
+            ActionStepsList.ItemsSource = null;
+            ActionStepsList.ItemsSource = script?.Steps;
+            ActionScriptStatusText.Text =
+                script is null
+                    ? L("Ready", "Sẵn sàng")
+                    : $"{script.Steps.Count} step(s)";
+        }
+        finally
+        {
+            _loadingActionScriptUi = false;
+        }
+    }
+
+    private void ActionScriptsList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_loadingActionScriptUi)
+            return;
+
+        LoadSelectedActionScriptUi(SelectedActionScript);
+    }
+
+    private void NewActionScript_Click(object sender, RoutedEventArgs e)
+    {
+        var script = new ActionScriptDefinition
+        {
+            Name = $"Script {_actionScripts.Count + 1}"
+        };
+
+        _actionScripts.Add(script);
+        ActionScriptStore.Save(_actionScripts);
+        RefreshActionScriptsUi(script.Id);
+        ActionScriptNameText.Focus();
+        ActionScriptNameText.SelectAll();
+    }
+
+    private void DeleteActionScript_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null)
+            return;
+
+        _actionScripts.Remove(script);
+        ActionScriptStore.Save(_actionScripts);
+        RefreshActionScriptsUi();
+    }
+
+    private void ActionScriptNameText_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        if (_loadingActionScriptUi)
+            return;
+
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null)
+            return;
+
+        script.Name = string.IsNullOrWhiteSpace(ActionScriptNameText.Text)
+            ? "Untitled Script"
+            : ActionScriptNameText.Text.Trim();
+
+        ActionEditorTitle.Text = script.Name;
+    }
+
+    private void AddActionStep_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null)
+        {
+            NewActionScript_Click(sender, e);
+            script = SelectedActionScript;
+        }
+
+        if (script is null ||
+            ActionStepTypeCombo.SelectedItem is not ComboBoxItem item)
+        {
+            return;
+        }
+
+        string type = item.Tag?.ToString() ?? "Delay";
+        string value = ActionStepValueText.Text.Trim();
+
+        script.Steps.Add(new ActionScriptStep
+        {
+            Type = type,
+            Value = value
+        });
+
+        ActionStepValueText.Clear();
+        ActionScriptStore.Save(_actionScripts);
+        LoadSelectedActionScriptUi(script);
+        ActionStepsList.SelectedIndex = script.Steps.Count - 1;
+    }
+
+    private void RemoveActionStep_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null ||
+            ActionStepsList.SelectedIndex < 0 ||
+            ActionStepsList.SelectedIndex >= script.Steps.Count)
+        {
+            return;
+        }
+
+        int index = ActionStepsList.SelectedIndex;
+        script.Steps.RemoveAt(index);
+        ActionScriptStore.Save(_actionScripts);
+        LoadSelectedActionScriptUi(script);
+        ActionStepsList.SelectedIndex =
+            Math.Min(index, script.Steps.Count - 1);
+    }
+
+    private void MoveActionStepUp_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        int index = ActionStepsList.SelectedIndex;
+
+        if (script is null || index <= 0 || index >= script.Steps.Count)
+            return;
+
+        (script.Steps[index - 1], script.Steps[index]) =
+            (script.Steps[index], script.Steps[index - 1]);
+
+        ActionScriptStore.Save(_actionScripts);
+        LoadSelectedActionScriptUi(script);
+        ActionStepsList.SelectedIndex = index - 1;
+    }
+
+    private void MoveActionStepDown_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        int index = ActionStepsList.SelectedIndex;
+
+        if (script is null ||
+            index < 0 ||
+            index >= script.Steps.Count - 1)
+        {
+            return;
+        }
+
+        (script.Steps[index + 1], script.Steps[index]) =
+            (script.Steps[index], script.Steps[index + 1]);
+
+        ActionScriptStore.Save(_actionScripts);
+        LoadSelectedActionScriptUi(script);
+        ActionStepsList.SelectedIndex = index + 1;
+    }
+
+    private void SaveActionScript_Click(object sender, RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null)
+            return;
+
+        script.Name = string.IsNullOrWhiteSpace(ActionScriptNameText.Text)
+            ? "Untitled Script"
+            : ActionScriptNameText.Text.Trim();
+
+        ActionScriptStore.Save(_actionScripts);
+        RefreshActionScriptsUi(script.Id);
+        ActionScriptStatusText.Text =
+            L("Saved", "Đã lưu");
+    }
+
+    private async void RunActionScript_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null)
+            return;
+
+        try
+        {
+            ActionScriptStatusText.Text =
+                L("Running…", "Đang chạy…");
+
+            await ActionScriptEngine.ExecuteAsync(
+                script,
+                step => Dispatcher.Invoke(() =>
+                    ActionScriptStatusText.Text = step));
+
+            ActionScriptStatusText.Text =
+                L("Completed", "Hoàn tất");
+        }
+        catch (Exception ex)
+        {
+            ActionScriptStatusText.Text =
+                L($"Failed: {ex.Message}", $"Lỗi: {ex.Message}");
+            AddLog("ERROR", "SCRIPT", ex.Message);
+        }
+    }
+
     private void RgbProfileCombo_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
