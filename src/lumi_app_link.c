@@ -351,11 +351,19 @@ static void handle_cfg(char *save) {
         if (profile_s) {
             int profile = atoi(profile_s);
             if (profile >= 0 && profile < 5) {
-                int rc = zmk_keymap_layer_to((zmk_keymap_layer_id_t)profile);
+                zmk_keymap_layer_id_t layer_id =
+                    zmk_keymap_layer_index_to_id(
+                        (zmk_keymap_layer_index_t)profile);
+
+                int rc = layer_id == ZMK_KEYMAP_LAYER_ID_INVAL
+                    ? -EINVAL
+                    : zmk_keymap_layer_to(layer_id);
+
                 lumi_diag_report(
                     rc == 0 ? 'I' : 'E',
-                    "Auto profile layer=%d rc=%d",
+                    "Auto profile index=%d id=%u rc=%d",
                     profile,
+                    (unsigned int)layer_id,
                     rc);
             }
         }
