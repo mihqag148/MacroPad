@@ -110,3 +110,18 @@ bấm **Key Map**. Cửa sổ ZMK Studio riêng sẽ mở ngay trong app; chọn
 chọn behavior **Lumi Action**, chọn đúng **Action N** của script rồi Save. Nếu Studio
 yêu cầu unlock, giữ đồng thời phím vật lý 1 + 12. Việc gán được lưu qua ZMK Studio,
 không phải một key map giả chỉ lưu trên PC.
+
+
+## Lumi Macropad Product Hub
+
+Ứng dụng desktop hiện có tên **Lumi Macropad** và được tổ chức theo kiến trúc
+multi-product. Khi mở app, Product Hub xuất hiện trước. Sản phẩm hiện tại là
+**DIAL DESK**; card thiết bị hiển thị kết nối USB/Bluetooth và phần trăm pin thật
+từ ZMK thông qua command `BAT`.
+
+Danh sách sản phẩm nằm trong `pc-app/LumiPad.App/ProductCatalog.cs`, nên các
+sản phẩm Lumi tiếp theo có thể thêm vào Product Hub mà không phải thay cấu trúc
+giao diện điều khiển DIAL DESK.
+
+Firmware DIAL DESK hiển thị splash **LUMI3D / DIAL DESK** cùng thanh loading
+khoảng 2 giây khi màn hình khởi động, sau đó mới chuyển sang giao diện phím.
