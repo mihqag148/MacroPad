@@ -1,16 +1,16 @@
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
 using Microsoft.Web.WebView2.Wpf;
+using Wpf = System.Windows;
+using Controls = System.Windows.Controls;
+using Media = System.Windows.Media;
 
 namespace LumiPad.App;
 
-public sealed class ActionKeymapWindow : Window
+public sealed class ActionKeymapWindow : Wpf.Window
 {
-    private readonly TextBlock _titleText = new();
-    private readonly TextBlock _helpText = new();
-    private readonly TextBlock _statusText = new();
+    private readonly Controls.TextBlock _titleText = new();
+    private readonly Controls.TextBlock _helpText = new();
+    private readonly Controls.TextBlock _statusText = new();
     private readonly WebView2 _studio = new();
     private int _actionId;
     private string _actionName = "";
@@ -27,13 +27,13 @@ public sealed class ActionKeymapWindow : Window
         Height = 860;
         MinWidth = 980;
         MinHeight = 680;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowStartupLocation = Wpf.WindowStartupLocation.CenterOwner;
         Background =
-            Application.Current.TryFindResource("Bg") as Brush ??
-            Brushes.Black;
+            Wpf.Application.Current.TryFindResource("Bg") as Media.Brush ??
+            Media.Brushes.Black;
         Foreground =
-            Application.Current.TryFindResource("TextPrimary") as Brush ??
-            Brushes.White;
+            Wpf.Application.Current.TryFindResource("TextPrimary") as Media.Brush ??
+            Media.Brushes.White;
 
         Content = BuildUi();
         SetAction(actionId, actionName, language);
@@ -62,67 +62,67 @@ public sealed class ActionKeymapWindow : Window
                 : $"In the key map below: select a key → Behavior “Lumi Action” → choose “Action {_actionId}” → Save. If ZMK Studio asks to unlock, hold key 1 + key 12.";
     }
 
-    private UIElement BuildUi()
+    private Wpf.UIElement BuildUi()
     {
-        var root = new Grid
+        var root = new Controls.Grid
         {
-            Margin = new Thickness(18)
+            Margin = new Wpf.Thickness(18)
         };
-        root.RowDefinitions.Add(new RowDefinition
+        root.RowDefinitions.Add(new Controls.RowDefinition
         {
-            Height = GridLength.Auto
+            Height = Wpf.GridLength.Auto
         });
-        root.RowDefinitions.Add(new RowDefinition
+        root.RowDefinitions.Add(new Controls.RowDefinition
         {
-            Height = new GridLength(14)
+            Height = new Wpf.GridLength(14)
         });
-        root.RowDefinitions.Add(new RowDefinition());
+        root.RowDefinitions.Add(new Controls.RowDefinition());
 
-        var header = new Border
+        var header = new Controls.Border
         {
             Background =
-                Application.Current.TryFindResource("Card") as Brush,
+                Wpf.Application.Current.TryFindResource("Card") as Media.Brush,
             BorderBrush =
-                Application.Current.TryFindResource("Line") as Brush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(16),
-            Padding = new Thickness(16)
+                Wpf.Application.Current.TryFindResource("Line") as Media.Brush,
+            BorderThickness = new Wpf.Thickness(1),
+            CornerRadius = new Wpf.CornerRadius(16),
+            Padding = new Wpf.Thickness(16)
         };
 
-        var headerGrid = new Grid();
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition
+        var headerGrid = new Controls.Grid();
+        headerGrid.ColumnDefinitions.Add(new Controls.ColumnDefinition());
+        headerGrid.ColumnDefinitions.Add(new Controls.ColumnDefinition
         {
-            Width = GridLength.Auto
+            Width = Wpf.GridLength.Auto
         });
 
-        var text = new StackPanel();
+        var text = new Controls.StackPanel();
         text.Children.Add(_titleText);
         _titleText.FontSize = 20;
-        _titleText.FontWeight = FontWeights.SemiBold;
+        _titleText.FontWeight = Wpf.FontWeights.SemiBold;
 
-        _helpText.Margin = new Thickness(0, 5, 18, 0);
-        _helpText.TextWrapping = TextWrapping.Wrap;
+        _helpText.Margin = new Wpf.Thickness(0, 5, 18, 0);
+        _helpText.TextWrapping = Wpf.TextWrapping.Wrap;
         _helpText.Foreground =
-            Application.Current.TryFindResource("Muted") as Brush;
+            Wpf.Application.Current.TryFindResource("Muted") as Media.Brush;
         text.Children.Add(_helpText);
 
         _statusText.Text = "https://zmk.studio/";
-        _statusText.Margin = new Thickness(0, 5, 0, 0);
+        _statusText.Margin = new Wpf.Thickness(0, 5, 0, 0);
         _statusText.FontSize = 11;
         _statusText.Foreground =
-            Application.Current.TryFindResource("Accent") as Brush;
+            Wpf.Application.Current.TryFindResource("Accent") as Media.Brush;
         text.Children.Add(_statusText);
 
         headerGrid.Children.Add(text);
 
-        var buttons = new StackPanel
+        var buttons = new Controls.StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center
+            Orientation = Controls.Orientation.Horizontal,
+            VerticalAlignment = Wpf.VerticalAlignment.Center
         };
 
-        var reload = new Button
+        var reload = new Controls.Button
         {
             Content = "Reload"
         };
@@ -133,10 +133,10 @@ public sealed class ActionKeymapWindow : Window
         };
         buttons.Children.Add(reload);
 
-        var external = new Button
+        var external = new Controls.Button
         {
             Content = "Open in Edge",
-            Margin = new Thickness(0)
+            Margin = new Wpf.Thickness(0)
         };
         external.Click += (_, _) =>
         {
@@ -154,21 +154,21 @@ public sealed class ActionKeymapWindow : Window
         };
         buttons.Children.Add(external);
 
-        Grid.SetColumn(buttons, 1);
+        Controls.Grid.SetColumn(buttons, 1);
         headerGrid.Children.Add(buttons);
         header.Child = headerGrid;
         root.Children.Add(header);
 
-        var webBorder = new Border
+        var webBorder = new Controls.Border
         {
-            Background = Brushes.White,
+            Background = Media.Brushes.White,
             BorderBrush =
-                Application.Current.TryFindResource("Line") as Brush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(16),
+                Wpf.Application.Current.TryFindResource("Line") as Media.Brush,
+            BorderThickness = new Wpf.Thickness(1),
+            CornerRadius = new Wpf.CornerRadius(16),
             ClipToBounds = true
         };
-        Grid.SetRow(webBorder, 2);
+        Controls.Grid.SetRow(webBorder, 2);
         webBorder.Child = _studio;
         root.Children.Add(webBorder);
 
