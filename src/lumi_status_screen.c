@@ -1834,10 +1834,10 @@ static void refresh_screensaver(lv_timer_t *timer) {
     k_mutex_unlock(&lumi_ui_config_lock);
 
     bool idle_trigger =
-        enabled &&
         !current_soft_sleep &&
         (force_show ||
-         (!current_media_active &&
+         (enabled &&
+          !current_media_active &&
           !pc_monitor_selected &&
           delay > 0U &&
           (uint32_t)(now_uptime - ui_last_activity_ms) >= delay));
@@ -2238,14 +2238,19 @@ void lumi_ui_show_screensaver_now(void) {
 }
 
 void lumi_ui_set_media_active(bool active) {
+    bool changed;
+
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    changed = media_active != active;
     media_active = active;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    /* Starting music wakes immediately. Clearing media also resets the
-     * inactivity clock so the main menu is shown before the saver returns.
+    /* Repeated paused/playing telemetry must not continuously reset the idle
+     * timer. Only the actual state transition counts as user/media activity.
      */
-    lumi_ui_note_activity();
+    if (changed) {
+        lumi_ui_note_activity();
+    }
 }
 
 void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
