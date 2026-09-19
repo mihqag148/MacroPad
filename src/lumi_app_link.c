@@ -366,6 +366,9 @@ static void handle_sys(char *save) {
     } else if (strcmp(cmd, "SLEEP") == 0) {
         lumi_diag_report('I', "Manual sleep requested");
         lumi_ui_sleep_now();
+    } else if (strcmp(cmd, "WAKE") == 0) {
+        lumi_diag_report('I', "Manual wake requested");
+        lumi_ui_wake_now();
     }
 }
 
