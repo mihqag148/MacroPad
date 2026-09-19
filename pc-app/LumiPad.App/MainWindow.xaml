@@ -722,6 +722,50 @@
                 </Grid>
             </TabItem>
 
+
+
+            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
+                <Grid Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="10"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Background="{DynamicResource Card2}"
+                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                            CornerRadius="18" Padding="12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ZMK Studio"
+                                           FontWeight="SemiBold" FontSize="16"/>
+                                <TextBlock x:Name="ZmkStatus"
+                                           Text="Embedded zmk.studio"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="12"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="Reload" Click="ReloadZmk_Click"/>
+                                <Button Content="Open in Edge"
+                                        Click="OpenZmkExternal_Click" Margin="0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2"
+                            Background="White"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1" CornerRadius="18"
+                            ClipToBounds="True">
+                        <wv2:WebView2 x:Name="ZmkWebView"/>
+                    </Border>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="Settings">
                 <Grid Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>
@@ -864,48 +908,6 @@
                                      BorderThickness="1"
                                      Padding="12"/>
                         </Grid>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
-                <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="10"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <Border Background="{DynamicResource Card2}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="18" Padding="12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="ZMK Studio"
-                                           FontWeight="SemiBold" FontSize="16"/>
-                                <TextBlock x:Name="ZmkStatus"
-                                           Text="Embedded zmk.studio"
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="12"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <Button Content="Reload" Click="ReloadZmk_Click"/>
-                                <Button Content="Open in Edge"
-                                        Click="OpenZmkExternal_Click" Margin="0"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Row="2"
-                            Background="White"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1" CornerRadius="18"
-                            ClipToBounds="True">
-                        <wv2:WebView2 x:Name="ZmkWebView"/>
                     </Border>
                 </Grid>
             </TabItem>

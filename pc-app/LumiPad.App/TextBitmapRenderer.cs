@@ -19,9 +19,14 @@ public static class TextBitmapRenderer
         bool bold)
     {
         text ??= "";
+        text = text.Normalize(NormalizationForm.FormC);
 
+        // Segoe UI is a composite Windows UI font family and WPF will fall
+        // back to installed CJK/Unicode fonts for glyphs it does not contain.
+        // NFC normalization also fixes Vietnamese titles delivered as
+        // combining-mark sequences by some media apps.
         var typeface = new Typeface(
-            new System.Windows.Media.FontFamily("Segoe UI"),
+            SystemFonts.MessageFontFamily,
             FontStyles.Normal,
             bold ? FontWeights.SemiBold : FontWeights.Normal,
             FontStretches.Normal);

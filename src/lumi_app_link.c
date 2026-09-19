@@ -41,6 +41,15 @@ static size_t ble_len;
 static uint8_t bitmap_tmp[BITMAP_TMP_MAX];
 static uint8_t artwork_tmp[LUMI_ARTWORK_BYTES];
 static uint8_t saver_chunk_tmp[256];
+
+static char text_upload_kind;
+static uint16_t text_upload_width;
+static uint16_t text_upload_height;
+static size_t text_upload_total;
+static size_t text_upload_received;
+
+static size_t artwork_upload_total;
+static size_t artwork_upload_received;
 static char lumi_status[96] = "LUMIPAD|2|SAVER:EMPTY";
 K_MUTEX_DEFINE(bitmap_lock);
 
@@ -426,6 +435,192 @@ static void handle_savchunk(char *save) {
 }
 
 
+static void handle_txtbegin(char *save) {
+    char *kind_s = strtok_r(NULL, "|", &save);
+    char *width_s = strtok_r(NULL, "|", &save);
+    char *height_s = strtok_r(NULL, "|", &save);
+    char *total_s = strtok_r(NULL, "|", &save);
+
+    if (!kind_s || !width_s || !height_s || !total_s) {
+        lumi_diag_report('E', "TXTBEGIN missing field");
+        return;
+    }
+
+    bool is_title = kind_s[0] == 'T';
+    int width = atoi(width_s);
+    int height = atoi(height_s);
+    size_t total = (size_t)strtoul(total_s, NULL, 10);
+    int max_width = is_title
+        ? LUMI_TITLE_BITMAP_MAX_W
+        : LUMI_ARTIST_BITMAP_MAX_W;
+    int expected_height = is_title ? LUMI_TITLE_H : LUMI_ARTIST_H;
+    size_t expected =
+        (((size_t)width * (size_t)expected_height) + 7U) / 8U;
+
+    if ((kind_s[0] != 'T' && kind_s[0] != 'A') ||
+        width < LUMI_TEXT_W ||
+        width > max_width ||
+        height != expected_height ||
+        total != expected ||
+        total > sizeof(bitmap_tmp)) {
+        lumi_diag_report('E', "TXTBEGIN invalid kind=%c w=%d h=%d total=%u",
+                         kind_s[0], width, height, (unsigned int)total);
+        text_upload_kind = 0;
+        text_upload_received = 0U;
+        return;
+    }
+
+    k_mutex_lock(&bitmap_lock, K_FOREVER);
+    memset(bitmap_tmp, 0, sizeof(bitmap_tmp));
+    text_upload_kind = kind_s[0];
+    text_upload_width = (uint16_t)width;
+    text_upload_height = (uint16_t)height;
+    text_upload_total = total;
+    text_upload_received = 0U;
+    k_mutex_unlock(&bitmap_lock);
+}
+
+static void handle_txtchunk(char *save) {
+    char *kind_s = strtok_r(NULL, "|", &save);
+    char *offset_s = strtok_r(NULL, "|", &save);
+    char *hex = strtok_r(NULL, "|", &save);
+
+    if (!kind_s || !offset_s || !hex || text_upload_kind == 0) {
+        lumi_diag_report('E', "TXTCHUNK invalid state");
+        return;
+    }
+
+    size_t offset = (size_t)strtoul(offset_s, NULL, 10);
+    size_t hex_len = strlen(hex);
+    size_t bytes = hex_len / 2U;
+
+    if (kind_s[0] != text_upload_kind ||
+        (hex_len & 1U) != 0U ||
+        offset != text_upload_received ||
+        offset + bytes > text_upload_total) {
+        lumi_diag_report('E', "TXTCHUNK mismatch kind=%c off=%u len=%u",
+                         kind_s[0], (unsigned int)offset,
+                         (unsigned int)bytes);
+        return;
+    }
+
+    k_mutex_lock(&bitmap_lock, K_FOREVER);
+    for (size_t i = 0; i < bytes; i++) {
+        int hi = hex_nibble(hex[i * 2U]);
+        int lo = hex_nibble(hex[i * 2U + 1U]);
+        if (hi < 0 || lo < 0) {
+            k_mutex_unlock(&bitmap_lock);
+            lumi_diag_report('E', "TXTCHUNK bad hex off=%u",
+                             (unsigned int)offset);
+            return;
+        }
+        bitmap_tmp[offset + i] = (uint8_t)((hi << 4) | lo);
+    }
+    text_upload_received += bytes;
+    k_mutex_unlock(&bitmap_lock);
+}
+
+static void handle_txtend(char *save) {
+    char *kind_s = strtok_r(NULL, "|", &save);
+
+    if (!kind_s ||
+        text_upload_kind == 0 ||
+        kind_s[0] != text_upload_kind ||
+        text_upload_received != text_upload_total) {
+        lumi_diag_report('E', "TXTEND incomplete kind=%c got=%u need=%u",
+                         kind_s ? kind_s[0] : '?',
+                         (unsigned int)text_upload_received,
+                         (unsigned int)text_upload_total);
+        text_upload_kind = 0;
+        return;
+    }
+
+    bool is_title = text_upload_kind == 'T';
+
+    k_mutex_lock(&bitmap_lock, K_FOREVER);
+    lumi_now_playing_set_bitmap(
+        is_title,
+        text_upload_width,
+        bitmap_tmp,
+        text_upload_total);
+    k_mutex_unlock(&bitmap_lock);
+
+    lumi_diag_report('I', "Text bitmap %c ready w=%u bytes=%u",
+                     text_upload_kind,
+                     (unsigned int)text_upload_width,
+                     (unsigned int)text_upload_total);
+
+    text_upload_kind = 0;
+    text_upload_received = 0U;
+    text_upload_total = 0U;
+}
+
+static void handle_artbegin(char *save) {
+    char *total_s = strtok_r(NULL, "|", &save);
+    size_t total = total_s ? (size_t)strtoul(total_s, NULL, 10) : 0U;
+
+    if (total != LUMI_ARTWORK_BYTES) {
+        lumi_diag_report('E', "ARTBEGIN invalid total=%u",
+                         (unsigned int)total);
+        artwork_upload_total = 0U;
+        artwork_upload_received = 0U;
+        return;
+    }
+
+    memset(artwork_tmp, 0, sizeof(artwork_tmp));
+    artwork_upload_total = total;
+    artwork_upload_received = 0U;
+}
+
+static void handle_artchunk(char *save) {
+    char *offset_s = strtok_r(NULL, "|", &save);
+    char *base64 = strtok_r(NULL, "|", &save);
+
+    if (!offset_s || !base64 ||
+        artwork_upload_total != LUMI_ARTWORK_BYTES) {
+        lumi_diag_report('E', "ARTCHUNK invalid state");
+        return;
+    }
+
+    size_t offset = (size_t)strtoul(offset_s, NULL, 10);
+    uint8_t chunk[192];
+    size_t decoded_len = 0U;
+    int rc = base64_decode(
+        chunk, sizeof(chunk), &decoded_len,
+        (const uint8_t *)base64, strlen(base64));
+
+    if (rc != 0 ||
+        offset != artwork_upload_received ||
+        offset + decoded_len > artwork_upload_total) {
+        lumi_diag_report('E', "ARTCHUNK rc=%d off=%u got=%u",
+                         rc, (unsigned int)offset,
+                         (unsigned int)decoded_len);
+        return;
+    }
+
+    memcpy(&artwork_tmp[offset], chunk, decoded_len);
+    artwork_upload_received += decoded_len;
+}
+
+static void handle_artend(void) {
+    if (artwork_upload_total != LUMI_ARTWORK_BYTES ||
+        artwork_upload_received != artwork_upload_total) {
+        lumi_diag_report('E', "ARTEND incomplete got=%u need=%u",
+                         (unsigned int)artwork_upload_received,
+                         (unsigned int)artwork_upload_total);
+        artwork_upload_total = 0U;
+        artwork_upload_received = 0U;
+        return;
+    }
+
+    lumi_now_playing_set_artwork(artwork_tmp, artwork_upload_total);
+    lumi_diag_report('I', "Artwork ready bytes=%u",
+                     (unsigned int)artwork_upload_total);
+
+    artwork_upload_total = 0U;
+    artwork_upload_received = 0U;
+}
+
 static void handle_txt(char *save) {
     char *kind = strtok_r(NULL, "|", &save);
     char *width_s = strtok_r(NULL, "|", &save);
@@ -517,9 +712,23 @@ static void handle_line(char *line, bool from_usb) {
         handle_cfg(save);
     } else if (strcmp(root, "SYS") == 0) {
         handle_sys(save);
+    } else if (strcmp(root, "TXTBEGIN") == 0) {
+        handle_txtbegin(save);
+    } else if (strcmp(root, "TXTCHUNK") == 0) {
+        handle_txtchunk(save);
+    } else if (strcmp(root, "TXTEND") == 0) {
+        handle_txtend(save);
     } else if (strcmp(root, "TXT") == 0) {
+        /* Legacy single-line format kept for older apps. */
         handle_txt(save);
+    } else if (strcmp(root, "ARTBEGIN") == 0) {
+        handle_artbegin(save);
+    } else if (strcmp(root, "ARTCHUNK") == 0) {
+        handle_artchunk(save);
+    } else if (strcmp(root, "ARTEND") == 0) {
+        handle_artend();
     } else if (strcmp(root, "ART") == 0) {
+        /* Legacy single-line format kept for older apps. */
         handle_art(save);
     } else if (strcmp(root, "SAVBEGIN") == 0) {
         handle_savbegin(save);

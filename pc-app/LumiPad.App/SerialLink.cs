@@ -407,23 +407,59 @@ public sealed class SerialLink : IDisposable
             var artistBitmap = TextBitmapRenderer.RenderScrollable(
                 artist, 206, 360, 20, 13, false);
 
-            await SendLineAsync($"TXT|T|{titleBitmap.Width}|24|{titleBitmap.Hex}");
-            await SendLineAsync($"TXT|A|{artistBitmap.Width}|20|{artistBitmap.Hex}");
+            await SendTextBitmapAsync("T", titleBitmap, 24);
+            await SendTextBitmapAsync("A", artistBitmap, 20);
+
+            Log("INFO",
+                $"Now Playing text sent: title={titleBitmap.Width}px, artist={artistBitmap.Width}px");
         }
-        catch
+        catch (Exception ex)
         {
+            Log("ERROR", $"Now Playing text transfer failed: {ex.Message}");
         }
+    }
+
+    private async Task SendTextBitmapAsync(
+        string kind,
+        RenderedTextBitmap bitmap,
+        int height)
+    {
+        byte[] packed = Convert.FromHexString(bitmap.Hex);
+        const int rawChunk = 200;
+
+        await SendLineAsync(
+            $"TXTBEGIN|{kind}|{bitmap.Width}|{height}|{packed.Length}");
+
+        for (int offset = 0; offset < packed.Length; offset += rawChunk)
+        {
+            int len = Math.Min(rawChunk, packed.Length - offset);
+            string hex = Convert.ToHexString(packed, offset, len);
+            await SendLineAsync($"TXTCHUNK|{kind}|{offset}|{hex}");
+        }
+
+        await SendLineAsync($"TXTEND|{kind}");
     }
 
     private async Task SendArtworkAsync(byte[] artwork)
     {
         try
         {
-            string base64 = Convert.ToBase64String(artwork);
-            await SendLineAsync($"ART|{base64}");
+            const int rawChunk = 180;
+            await SendLineAsync($"ARTBEGIN|{artwork.Length}");
+
+            for (int offset = 0; offset < artwork.Length; offset += rawChunk)
+            {
+                int len = Math.Min(rawChunk, artwork.Length - offset);
+                string base64 = Convert.ToBase64String(artwork, offset, len);
+                await SendLineAsync($"ARTCHUNK|{offset}|{base64}");
+            }
+
+            await SendLineAsync("ARTEND");
+            Log("INFO", $"Now Playing artwork sent: {artwork.Length} bytes");
         }
-        catch
+        catch (Exception ex)
         {
+            Log("ERROR", $"Now Playing artwork transfer failed: {ex.Message}");
         }
     }
 
@@ -809,6 +845,7 @@ public sealed class SerialLink : IDisposable
         }
         catch (Exception ex)
         {
+            Log("ERROR", $"Link write failed: {ex.Message}");
             LinkError?.Invoke(ex.Message);
             Disconnect();
         }
