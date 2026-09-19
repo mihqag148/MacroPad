@@ -40,7 +40,15 @@ public partial class MainWindow : Window
     private readonly Stopwatch _screensaverPreviewClock = new();
     private readonly DispatcherTimer _memoryUsageTimer = new();
     private readonly DispatcherTimer _diagnosticTimer = new();
+    private readonly DispatcherTimer _autoProfileTimer = new();
+    private readonly DispatcherTimer _runningAppsTimer = new();
     private readonly List<string> _logLines = new();
+    private AutoProfileSettings _autoProfileSettings = new();
+    private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
+    private string? _lastForegroundAppPath;
+    private int _lastAppliedAutoProfile = -1;
+    private List<ActionScriptDefinition> _actionScripts = [];
+    private bool _loadingActionScriptUi;
     private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
@@ -142,6 +150,12 @@ public partial class MainWindow : Window
         _diagnosticTimer.Tick += async (_, _) => await PollFirmwareDiagnosticsAsync();
         _diagnosticTimer.Start();
 
+        _autoProfileTimer.Interval = TimeSpan.FromMilliseconds(700);
+        _autoProfileTimer.Tick += (_, _) => PollAutoProfile();
+
+        _runningAppsTimer.Interval = TimeSpan.FromSeconds(4);
+        _runningAppsTimer.Tick += async (_, _) => await RefreshRunningAppsAsync();
+
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
@@ -166,8 +180,12 @@ public partial class MainWindow : Window
             LoadTheme();
             LoadLanguage();
             LoadAppSettings();
+            _autoProfileSettings = AutoProfileService.Load();
+            _actionScripts = ActionScriptStore.Load();
             ApplyLanguage();
             ApplyStoredControlValues();
+            ApplyAutoProfileUiState();
+            RefreshActionScriptsUi();
             _uiReady = true;
             UpdateSettingsInfo();
             AddLog("INFO", "APP", "LumiPad started");
@@ -213,6 +231,10 @@ public partial class MainWindow : Window
             AddLog("INFO", "APP", "Auto-connect enabled by default (USB first, Bluetooth fallback)");
             await DetectAsync();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
+            _autoProfileTimer.Start();
+            _runningAppsTimer.Start();
+            await RefreshRunningAppsAsync();
+            PollAutoProfile(force: true);
         };
 
         Closing += MainWindow_Closing;
@@ -321,6 +343,31 @@ public partial class MainWindow : Window
         ["RAM usage"] = "Sử dụng RAM",
         ["Sleep keyboard"] = "Ngủ bàn phím",
         ["Wake keyboard"] = "Đánh thức bàn phím",
+        ["Auto Profile"] = "Auto Profile",
+        ["AUTO PROFILE"] = "AUTO PROFILE",
+        ["Link Game/App"] = "Liên kết Game/App",
+        ["Watching active application"] = "Theo dõi ứng dụng đang hoạt động",
+        ["Enabled"] = "Bật",
+        ["Default"] = "Mặc định",
+        ["Select Application"] = "Chọn ứng dụng",
+        ["RUNNING APPS"] = "ỨNG DỤNG ĐANG CHẠY",
+        ["Suggestions"] = "Gợi ý",
+        ["Refresh"] = "Làm mới",
+        ["Actions"] = "Actions",
+        ["ACTION / SCRIPT ENGINE"] = "ACTION / SCRIPT ENGINE",
+        ["Scripts"] = "Script",
+        ["New"] = "Mới",
+        ["Delete"] = "Xóa",
+        ["SCRIPT EDITOR"] = "TRÌNH SỬA SCRIPT",
+        ["Select or create a script"] = "Chọn hoặc tạo một script",
+        ["Name"] = "Tên",
+        ["Add Step"] = "Thêm bước",
+        ["Remove Step"] = "Xóa bước",
+        ["Move Up"] = "Lên",
+        ["Move Down"] = "Xuống",
+        ["Save"] = "Lưu",
+        ["Run Test"] = "Chạy thử",
+        ["Ready"] = "Sẵn sàng",
     };
 
     private string L(string en, string vi) => _language == "vi" ? vi : en;
