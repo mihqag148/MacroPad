@@ -52,6 +52,8 @@ static size_t text_upload_received;
 
 static size_t artwork_upload_total;
 static size_t artwork_upload_received;
+static uint16_t artwork_upload_width = LUMI_ARTWORK_W;
+static uint16_t artwork_upload_height = LUMI_ARTWORK_H;
 static char lumi_status[96] = "LUMIPAD|3|SAVER:EMPTY";
 K_MUTEX_DEFINE(bitmap_lock);
 
@@ -191,7 +193,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION";
+        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR";
 
     if (from_usb) {
         write_text_usb(response);
@@ -782,11 +784,31 @@ static void handle_txtend(char *save) {
 
 static void handle_artbegin(char *save) {
     char *total_s = strtok_r(NULL, "|", &save);
-    size_t total = total_s ? (size_t)strtoul(total_s, NULL, 10) : 0U;
+    char *width_s = strtok_r(NULL, "|", &save);
+    char *height_s = strtok_r(NULL, "|", &save);
 
-    if (total != LUMI_ARTWORK_BYTES) {
-        lumi_diag_report('E', "ARTBEGIN invalid total=%u",
-                         (unsigned int)total);
+    size_t total =
+        total_s ? (size_t)strtoul(total_s, NULL, 10) : 0U;
+    uint16_t width =
+        width_s ? (uint16_t)atoi(width_s) : LUMI_ARTWORK_W;
+    uint16_t height =
+        height_s ? (uint16_t)atoi(height_s) : LUMI_ARTWORK_H;
+
+    size_t expected = (size_t)width * height;
+
+    if (width == 0U ||
+        height == 0U ||
+        width > LUMI_ARTWORK_W ||
+        height > LUMI_ARTWORK_H ||
+        total == 0U ||
+        total > sizeof(artwork_tmp) ||
+        total != expected) {
+        lumi_diag_report(
+            'E',
+            "ARTBEGIN invalid total=%u size=%ux%u",
+            (unsigned int)total,
+            (unsigned int)width,
+            (unsigned int)height);
         artwork_upload_total = 0U;
         artwork_upload_received = 0U;
         return;
@@ -795,6 +817,8 @@ static void handle_artbegin(char *save) {
     memset(artwork_tmp, 0, sizeof(artwork_tmp));
     artwork_upload_total = total;
     artwork_upload_received = 0U;
+    artwork_upload_width = width;
+    artwork_upload_height = height;
 }
 
 static void handle_artchunk(char *save) {
@@ -802,7 +826,8 @@ static void handle_artchunk(char *save) {
     char *base64 = strtok_r(NULL, "|", &save);
 
     if (!offset_s || !base64 ||
-        artwork_upload_total != LUMI_ARTWORK_BYTES) {
+        artwork_upload_total == 0U ||
+        artwork_upload_total > sizeof(artwork_tmp)) {
         lumi_diag_report('E', "ARTCHUNK invalid state");
         return;
     }
@@ -828,7 +853,7 @@ static void handle_artchunk(char *save) {
 }
 
 static void handle_artend(void) {
-    if (artwork_upload_total != LUMI_ARTWORK_BYTES ||
+    if (artwork_upload_total == 0U ||
         artwork_upload_received != artwork_upload_total) {
         lumi_diag_report('E', "ARTEND incomplete got=%u need=%u",
                          (unsigned int)artwork_upload_received,
@@ -838,9 +863,18 @@ static void handle_artend(void) {
         return;
     }
 
-    lumi_now_playing_set_artwork(artwork_tmp, artwork_upload_total);
-    lumi_diag_report('I', "Artwork ready bytes=%u",
-                     (unsigned int)artwork_upload_total);
+    lumi_now_playing_set_artwork_scaled(
+        artwork_tmp,
+        artwork_upload_total,
+        artwork_upload_width,
+        artwork_upload_height);
+
+    lumi_diag_report(
+        'I',
+        "Artwork ready bytes=%u size=%ux%u",
+        (unsigned int)artwork_upload_total,
+        (unsigned int)artwork_upload_width,
+        (unsigned int)artwork_upload_height);
 
     artwork_upload_total = 0U;
     artwork_upload_received = 0U;
@@ -954,7 +988,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION\r\n");
+                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
