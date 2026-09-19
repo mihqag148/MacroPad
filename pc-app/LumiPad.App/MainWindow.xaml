@@ -2,9 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="LumiPad" Width="1440" Height="900"
+        Title="LumiPad" Width="1280" Height="800"
         MinWidth="1080" MinHeight="720"
-        WindowState="Maximized"
         Background="{DynamicResource Bg}"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
@@ -101,13 +100,6 @@
                                    Foreground="{DynamicResource Muted}"/>
                         <TextBlock x:Name="RamUsageText"
                                    Text="RAM --"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource Muted}"/>
-                        <TextBlock Text="  ·  "
-                                   FontSize="11"
-                                   Foreground="{DynamicResource Muted}"/>
-                        <TextBlock x:Name="PanelInfoText"
-                                   Text="ST7789 ~60 Hz · SPI 32 MHz · GIF ≤25 FPS"
                                    FontSize="11"
                                    Foreground="{DynamicResource Muted}"/>
                     </StackPanel>
@@ -399,6 +391,12 @@
                                            Text="Auto connect · USB first · Bluetooth fallback"
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="11"
+                                           Margin="17,3,0,0"/>
+                                <TextBlock x:Name="PanelInfoText"
+                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
                                            Margin="17,3,0,0"/>
                             </StackPanel>
 
