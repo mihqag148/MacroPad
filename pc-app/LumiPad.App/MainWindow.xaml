@@ -168,46 +168,11 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Text="NOW PLAYING" FontSize="12"
+                            <TextBlock Text="MEDIA" FontSize="12"
                                        Foreground="{DynamicResource Muted}"
                                        FontWeight="SemiBold"/>
 
                             <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="220"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Preset"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,12,0"/>
-                                <ComboBox x:Name="AutoProfilePresetCombo"
-                                          Grid.Column="1"
-                                          DisplayMemberPath="Name"
-                                          SelectionChanged="AutoProfilePresetCombo_SelectionChanged"/>
-                                <Button Grid.Column="2"
-                                        Content="New"
-                                        Click="NewAutoProfilePreset_Click"
-                                        Margin="10,0,0,0"/>
-                                <Button Grid.Column="3"
-                                        Content="Rename"
-                                        Click="RenameAutoProfilePreset_Click"/>
-                                <Button Grid.Column="4"
-                                        Content="Delete"
-                                        Click="DeleteAutoProfilePreset_Click"
-                                        Margin="0"/>
-                                <TextBlock x:Name="AutoProfilePresetCountText"
-                                           Grid.Column="5"
-                                           HorizontalAlignment="Right"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Muted}"
-                                           Text="1 / 10"/>
-                            </Grid>
-
-                            <Grid Grid.Row="4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="180"/>
                                     <ColumnDefinition Width="26"/>
@@ -723,8 +688,6 @@
                                 <RowDefinition Height="18"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="14"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
@@ -776,10 +739,10 @@
                                     <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
                                     <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
                                 </ComboBox>
-                                <TextBlock Grid.Column="3"
-                                           Text="Choose an EXE or add one from the running-app suggestions."
+                                <TextBlock x:Name="AutoProfileMappingCountText"
+                                           Grid.Column="3"
+                                           Text="0 / 10 app profiles"
                                            Foreground="{DynamicResource Muted}"
-                                           TextWrapping="Wrap"
                                            VerticalAlignment="Center"/>
                                 <Button Grid.Column="4"
                                         Content="Select Application"
@@ -787,7 +750,7 @@
                                         Margin="12,0,0,0"/>
                             </Grid>
 
-                            <ScrollViewer Grid.Row="6"
+                            <ScrollViewer Grid.Row="4"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel x:Name="AutoProfileMappingsPanel"/>
