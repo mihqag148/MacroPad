@@ -1,5 +1,5 @@
 ---
-# Lumi Macropad v1.4.0 multi-product verification 4
+# Lumi Macropad v1.4.0 multi-product verification 5
 # LumiPad v1.3.3 app integration verification 2 (no firmware setting change)
 include:
   - board: nice_nano_v2

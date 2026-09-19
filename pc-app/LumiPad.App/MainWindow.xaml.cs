@@ -383,7 +383,7 @@ public partial class MainWindow : Window
 
             var left = new StackPanel
             {
-                Orientation = Orientation.Horizontal,
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center
             };
 
