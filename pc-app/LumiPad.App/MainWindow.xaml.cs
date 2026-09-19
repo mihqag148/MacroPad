@@ -1087,6 +1087,13 @@ public partial class MainWindow : Window
                 string.IsNullOrWhiteSpace(settings.PcMonitorConfigName)
                     ? "MY PC"
                     : settings.PcMonitorConfigName.Trim();
+            _pcMonitorEnabled = settings.PcMonitorEnabled;
+            _pcMonitorIntervalMs =
+                settings.PcMonitorIntervalMs is 500 or 1000 or 2000
+                    ? settings.PcMonitorIntervalMs
+                    : 1000;
+            _pcMonitorTimer.Interval =
+                TimeSpan.FromMilliseconds(_pcMonitorIntervalMs);
         }
         catch
         {
@@ -1793,7 +1800,12 @@ public partial class MainWindow : Window
         if (SendScreensaverButton is not null)
         {
             SendScreensaverButton.IsEnabled =
-                connected && _screensaverAnimation is not null;
+                connected &&
+                _screensaverAnimation is not null &&
+                !string.Equals(
+                    _screensaverSource,
+                    "PcMonitor",
+                    StringComparison.Ordinal);
         }
 
         if (ShowScreensaverNowButton is not null)
@@ -1814,6 +1826,7 @@ public partial class MainWindow : Window
         UpdateSettingsInfo();
         UpdateTransportIndicators();
         UpdateSleepButtonUi();
+        UpdateScreensaverSourceUi();
     }
 
     private void UpdateSettingsInfo()
@@ -4183,7 +4196,12 @@ public partial class MainWindow : Window
             SetScreensaverUploadState(
                 L("Ready to upload", "Sẵn sàng tải lên"),
                 MediaColor.FromRgb(255, 159, 10));
-            SendScreensaverButton.IsEnabled = _serial.IsConnected;
+            SendScreensaverButton.IsEnabled =
+                _serial.IsConnected &&
+                !string.Equals(
+                    _screensaverSource,
+                    "PcMonitor",
+                    StringComparison.Ordinal);
         }
         catch (Exception ex)
         {
@@ -4268,7 +4286,12 @@ public partial class MainWindow : Window
         finally
         {
             SendScreensaverButton.IsEnabled =
-                _serial.IsConnected && _screensaverAnimation is not null;
+                _serial.IsConnected &&
+                _screensaverAnimation is not null &&
+                !string.Equals(
+                    _screensaverSource,
+                    "PcMonitor",
+                    StringComparison.Ordinal);
         }
     }
 
@@ -4319,6 +4342,14 @@ public partial class MainWindow : Window
 
     private async Task RestoreScreensaverAfterReconnectAsync()
     {
+        if (string.Equals(
+                _screensaverSource,
+                "PcMonitor",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
         if (_screensaverAnimation is null || !_serial.IsConnected)
             return;
 
