@@ -6,7 +6,7 @@ namespace LumiPad.App;
 
 public sealed class DiagnosticLogWindow : Window
 {
-    private readonly TextBox _logBox;
+    private readonly System.Windows.Controls.TextBox _logBox;
 
     public DiagnosticLogWindow(string logText, string titleText)
     {
@@ -18,7 +18,7 @@ public sealed class DiagnosticLogWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
         Background =
-            Application.Current.TryFindResource("Bg") as Brush ??
+            System.Windows.Application.Current.TryFindResource("Bg") as Brush ??
             new SolidColorBrush(Color.FromRgb(8, 8, 8));
 
         var outer = new Border
@@ -60,7 +60,7 @@ public sealed class DiagnosticLogWindow : Window
         });
         grid.Children.Add(heading);
 
-        _logBox = new TextBox
+        _logBox = new System.Windows.Controls.TextBox
         {
             Text = logText,
             IsReadOnly = true,
@@ -82,19 +82,19 @@ public sealed class DiagnosticLogWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
-        var copy = new Button { Content = "Copy log" };
+        var copy = new System.Windows.Controls.Button { Content = "Copy log" };
         copy.Click += (_, _) =>
         {
             try
             {
-                Clipboard.SetText(_logBox.Text ?? "");
+                System.Windows.Clipboard.SetText(_logBox.Text ?? "");
             }
             catch
             {
             }
         };
 
-        var close = new Button
+        var close = new System.Windows.Controls.Button
         {
             Content = "Close",
             Margin = new Thickness(0)
