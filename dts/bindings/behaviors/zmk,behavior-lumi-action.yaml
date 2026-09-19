@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT
+
+description: Lumi companion action trigger
+compatible: "zmk,behavior-lumi-action"
+include: one_param.yaml
