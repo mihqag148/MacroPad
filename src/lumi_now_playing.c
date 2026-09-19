@@ -31,6 +31,7 @@ struct music_state {
     bool active;
     uint32_t last_rx_ms;
     uint32_t suppress_until_ms;
+    uint32_t paused_since_ms;
 
     uint8_t title_bitmap[LUMI_TITLE_BITMAP_MAX_BYTES];
     uint8_t artist_bitmap[LUMI_ARTIST_BITMAP_MAX_BYTES];
@@ -254,6 +255,12 @@ static bool should_show_locked(uint32_t now) {
         return false;
     }
 
+    if (!state.playing &&
+        state.paused_since_ms != 0U &&
+        (uint32_t)(now - state.paused_since_ms) >= USER_ACTIVITY_HIDE_MS) {
+        return false;
+    }
+
     if (state.suppress_until_ms != 0U &&
         time_before(now, state.suppress_until_ms)) {
         return false;
@@ -370,15 +377,27 @@ void lumi_now_playing_update(const char *source,
         state.artist_scroll = 0;
     }
 
+    uint32_t now = k_uptime_get_32();
+
     state.position_ms = position_ms;
     state.duration_ms = duration_ms;
+
+    if (playing) {
+        state.paused_since_ms = 0U;
+    } else if (state.playing || state.paused_since_ms == 0U) {
+        state.paused_since_ms = now;
+    }
+
     state.playing = playing;
     state.active = true;
-    state.last_rx_ms = k_uptime_get_32();
+    state.last_rx_ms = now;
 
     k_mutex_unlock(&state_lock);
 
-    lumi_ui_set_media_active(true);
+    /* A paused session may keep sending metadata forever. Treat only actual
+     * playback as a media lock so Main/screensaver can return after idle.
+     */
+    lumi_ui_set_media_active(playing);
 
     if (ui_ready) {
         k_work_submit_to_queue(zmk_display_work_q(), &music_work);
@@ -520,6 +539,7 @@ void lumi_now_playing_clear(void) {
     state.playing = false;
     state.active = false;
     state.last_rx_ms = 0U;
+    state.paused_since_ms = 0U;
     state.title_bitmap_valid = false;
     state.artist_bitmap_valid = false;
     state.artwork_valid = false;
