@@ -1315,6 +1315,89 @@ public sealed class SerialLink : IDisposable
         return (flashUsed, flashTotal, ramUsed, ramTotal);
     }
 
+    public async Task<(uint Seq, int ActionId, int Position)?>
+        ReadActionEventAsync(uint afterSeq)
+    {
+        if (!SupportsActions || !IsConnected)
+            return null;
+
+        string? response = null;
+
+        await _writeGate.WaitAsync();
+        try
+        {
+            string command = $"ACTION|{afterSeq}\n";
+            byte[] data = Encoding.UTF8.GetBytes(command);
+
+            if (_port?.IsOpen == true)
+            {
+                try
+                {
+                    _port.ReadTimeout = 300;
+                    _port.Write(data, 0, data.Length);
+                    response = await Task.Run(() => _port.ReadLine().Trim());
+                    RecordLinkSuccess();
+                }
+                catch (TimeoutException)
+                {
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    RecordLinkFailure("Action poll", ex);
+                    return null;
+                }
+            }
+            else if (_bleCharacteristic is not null)
+            {
+                try
+                {
+                    var characteristic = _bleCharacteristic;
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data);
+
+                    var status = await characteristic.WriteValueAsync(
+                        writer.DetachBuffer(),
+                        GattWriteOption.WriteWithResponse);
+
+                    if (status != GattCommunicationStatus.Success)
+                        return null;
+
+                    await Task.Delay(25);
+                    response = await ReadBleStatusAsync();
+                    RecordLinkSuccess();
+                }
+                catch (Exception ex)
+                {
+                    RecordLinkFailure("BLE action poll", ex);
+                    return null;
+                }
+            }
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+
+        if (string.IsNullOrWhiteSpace(response) ||
+            response.StartsWith("ACTION|NONE|", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 4 ||
+            !string.Equals(parts[0], "ACTION", StringComparison.Ordinal) ||
+            !uint.TryParse(parts[1], out uint seq) ||
+            !int.TryParse(parts[2], out int actionId) ||
+            !int.TryParse(parts[3], out int position))
+        {
+            return null;
+        }
+
+        return (seq, actionId, position);
+    }
+
     public void ClearScreensaverAnimation() =>
         _ = SendLineAsync("SAVCLEAR");
 
