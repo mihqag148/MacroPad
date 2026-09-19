@@ -20,6 +20,7 @@ public sealed class SerialLink : IDisposable
     private BluetoothLEDevice? _bleDevice;
     private GattDeviceService? _bleService;
     private GattCharacteristic? _bleCharacteristic;
+    private int _blePayloadSize = 20;
 
     private string _connectionName = "";
     private string _lastBitmapKey = "";
@@ -187,6 +188,19 @@ public sealed class SerialLink : IDisposable
                         _bleDevice = candidate;
                         _bleService = service;
                         _bleCharacteristic = characteristic;
+
+                        try
+                        {
+                            _blePayloadSize = Math.Clamp(
+                                (int)service.Session.MaxPduSize - 3,
+                                20,
+                                244);
+                        }
+                        catch
+                        {
+                            _blePayloadSize = 20;
+                        }
+
                         candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
 
                         FirmwareHello = hello;
@@ -196,7 +210,8 @@ public sealed class SerialLink : IDisposable
                         if (string.IsNullOrWhiteSpace(_connectionName.TrimEnd()))
                             _connectionName = "Bluetooth · Lumi MacroPad";
 
-                        Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
+                        Log("INFO",
+                            $"Connected {_connectionName}; {FirmwareHello}; BLE payload={_blePayloadSize} bytes");
                         return _connectionName;
                     }
                     catch (Exception ex)
@@ -384,6 +399,7 @@ public sealed class SerialLink : IDisposable
         }
 
         _bleCharacteristic = null;
+        _blePayloadSize = 20;
 
         if (_bleDevice is not null)
             _bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
@@ -438,10 +454,12 @@ public sealed class SerialLink : IDisposable
             var title = Uri.EscapeDataString(data.Title ?? "");
             var artist = Uri.EscapeDataString(data.Artist ?? "");
 
-            await SendLineAsync(
+            string nowPlayingLine =
                 $"NP|{Math.Max(0, (long)data.Position.TotalMilliseconds)}|" +
                 $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
-                $"{(data.IsPlaying ? 1 : 0)}|{source}|{title}|{artist}");
+                $"{(data.IsPlaying ? 1 : 0)}|{source}|{title}|{artist}";
+
+            await SendRealtimeLineAsync(nowPlayingLine);
 
             _lastNowPlayingKey = key;
             _lastNowPlayingPlaying = data.IsPlaying;
@@ -460,6 +478,11 @@ public sealed class SerialLink : IDisposable
                 _lastArtworkKey = bitmapKey;
                 await SendArtworkAsync(artwork);
             }
+
+            // Refresh the state after the heavier title/artwork transfer so
+            // the firmware never ages out of the music page during a track
+            // transition on a busy Bluetooth link.
+            await SendRealtimeLineAsync(nowPlayingLine);
         }
         finally
         {
@@ -494,36 +517,36 @@ public sealed class SerialLink : IDisposable
         int height)
     {
         byte[] packed = Convert.FromHexString(bitmap.Hex);
-        const int rawChunk = 200;
+        const int rawChunk = 360;
 
-        await SendLineAsync(
+        await SendRealtimeLineAsync(
             $"TXTBEGIN|{kind}|{bitmap.Width}|{height}|{packed.Length}");
 
         for (int offset = 0; offset < packed.Length; offset += rawChunk)
         {
             int len = Math.Min(rawChunk, packed.Length - offset);
             string hex = Convert.ToHexString(packed, offset, len);
-            await SendLineAsync($"TXTCHUNK|{kind}|{offset}|{hex}");
+            await SendRealtimeLineAsync($"TXTCHUNK|{kind}|{offset}|{hex}");
         }
 
-        await SendLineAsync($"TXTEND|{kind}");
+        await SendRealtimeLineAsync($"TXTEND|{kind}");
     }
 
     private async Task SendArtworkAsync(byte[] artwork)
     {
         try
         {
-            const int rawChunk = 180;
-            await SendLineAsync($"ARTBEGIN|{artwork.Length}");
+            const int rawChunk = 540;
+            await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}");
 
             for (int offset = 0; offset < artwork.Length; offset += rawChunk)
             {
                 int len = Math.Min(rawChunk, artwork.Length - offset);
                 string base64 = Convert.ToBase64String(artwork, offset, len);
-                await SendLineAsync($"ARTCHUNK|{offset}|{base64}");
+                await SendRealtimeLineAsync($"ARTCHUNK|{offset}|{base64}");
             }
 
-            await SendLineAsync("ARTEND");
+            await SendRealtimeLineAsync("ARTEND");
             Log("INFO", $"Now Playing artwork sent: {artwork.Length} bytes");
         }
         catch (Exception ex)
@@ -905,7 +928,7 @@ public sealed class SerialLink : IDisposable
                 // overrun the Windows/BLE transmit queue during a long GIF
                 // upload and still report success to the app. Use acknowledged
                 // ATT writes so every fragment reaches the nRF52840 in order.
-                const int chunkSize = 20;
+                int chunkSize = _blePayloadSize;
 
                 for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
@@ -933,6 +956,67 @@ public sealed class SerialLink : IDisposable
             LinkError?.Invoke(ex.Message);
             Disconnect();
             throw;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    private async Task SendRealtimeLineAsync(string line)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+
+            if (_bleCharacteristic is not null)
+            {
+                var characteristic = _bleCharacteristic;
+                bool fastWrite =
+                    (characteristic.CharacteristicProperties &
+                     GattCharacteristicProperties.WriteWithoutResponse) != 0;
+
+                GattWriteOption option = fastWrite
+                    ? GattWriteOption.WriteWithoutResponse
+                    : GattWriteOption.WriteWithResponse;
+
+                int chunkSize = _blePayloadSize;
+                int packet = 0;
+
+                for (int offset = 0; offset < data.Length; offset += chunkSize)
+                {
+                    int len = Math.Min(chunkSize, data.Length - offset);
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data.AsSpan(offset, len).ToArray());
+
+                    var status = await characteristic.WriteValueAsync(
+                        writer.DetachBuffer(),
+                        option);
+
+                    if (status != GattCommunicationStatus.Success)
+                        throw new IOException(
+                            $"Bluetooth realtime write failed: {status}");
+
+                    // WriteWithoutResponse is much faster, but Windows can queue
+                    // commands faster than the nRF52840 consumes them. A tiny
+                    // yield every few ATT packets keeps order without adding the
+                    // per-packet round-trip latency of acknowledged writes.
+                    if (fastWrite && (++packet % 6) == 0)
+                        await Task.Delay(1);
+                }
+
+                return;
+            }
+
+            if (_port?.IsOpen == true)
+                _port.Write(data, 0, data.Length);
+        }
+        catch (Exception ex)
+        {
+            Log("ERROR", $"Realtime link write failed: {ex.Message}");
+            LinkError?.Invoke(ex.Message);
+            Disconnect();
         }
         finally
         {
