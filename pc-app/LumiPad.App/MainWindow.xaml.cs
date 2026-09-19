@@ -1051,10 +1051,10 @@ public partial class MainWindow : Window
         var active = new SolidColorBrush(
             MediaColor.FromRgb(48, 209, 88));
         var inactive =
-            TryFindResource("Muted") as Brush ??
+            TryFindResource("Muted") as System.Windows.Media.Brush ??
             new SolidColorBrush(MediaColor.FromRgb(154, 154, 160));
         var normalBorder =
-            TryFindResource("Line") as Brush ??
+            TryFindResource("Line") as System.Windows.Media.Brush ??
             new SolidColorBrush(MediaColor.FromRgb(58, 58, 60));
 
         bool usb = _serial.IsUsbConnected;
@@ -1085,14 +1085,14 @@ public partial class MainWindow : Window
         }
 
         var active =
-            TryFindResource("Accent") as Brush ??
+            TryFindResource("Accent") as System.Windows.Media.Brush ??
             new SolidColorBrush(MediaColor.FromRgb(255, 122, 0));
         var normal =
-            TryFindResource("ControlBg") as Brush ??
+            TryFindResource("ControlBg") as System.Windows.Media.Brush ??
             new SolidColorBrush(MediaColor.FromRgb(39, 39, 42));
         var text =
-            TryFindResource("TextPrimary") as Brush ??
-            Brushes.White;
+            TryFindResource("TextPrimary") as System.Windows.Media.Brush ??
+            System.Windows.Media.Brushes.White;
 
         SleepKeyboardButton.Background =
             _keyboardSleeping ? active : normal;
