@@ -369,15 +369,37 @@ static void handle_sys(char *save) {
 static void handle_savbegin(char *save) {
     char *count_s = strtok_r(NULL, "|", &save);
     char *interval_s = strtok_r(NULL, "|", &save);
+    char *timing_s = strtok_r(NULL, "|", &save);
 
     if (!count_s || !interval_s) {
         return;
     }
 
     uint8_t count = (uint8_t)atoi(count_s);
-    bool ok = lumi_ui_saver_anim_begin(
-        count,
-        (uint16_t)atoi(interval_s));
+    uint16_t fallback_interval = (uint16_t)atoi(interval_s);
+    bool ok = lumi_ui_saver_anim_begin(count, fallback_interval);
+
+    if (ok && timing_s && timing_s[0] != '\0') {
+        char *timing_save = NULL;
+        char *token = strtok_r(timing_s, ",", &timing_save);
+        uint8_t index = 0U;
+
+        while (token && index < count) {
+            (void)lumi_ui_saver_anim_set_frame_interval(
+                index,
+                (uint16_t)atoi(token));
+            index++;
+            token = strtok_r(NULL, ",", &timing_save);
+        }
+
+        if (index != count) {
+            lumi_diag_report(
+                'W',
+                "SAVBEGIN timing count=%u expected=%u",
+                (unsigned int)index,
+                (unsigned int)count);
+        }
+    }
 
     snprintf(lumi_status, sizeof(lumi_status),
              ok
@@ -385,7 +407,7 @@ static void handle_savbegin(char *save) {
                  : "LUMIPAD|2|SAVER:ERROR",
              (unsigned int)count);
     lumi_diag_report(ok ? 'I' : 'E', "SAVBEGIN frames=%u interval=%u %s",
-              (unsigned int)count, (unsigned int)atoi(interval_s),
+              (unsigned int)count, (unsigned int)fallback_interval,
               ok ? "OK" : "ERROR");
 }
 
