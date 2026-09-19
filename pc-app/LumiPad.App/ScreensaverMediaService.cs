@@ -41,9 +41,27 @@ public static class ScreensaverMediaService
         return ext switch
         {
             ".gif" => await Task.Run(() => LoadGif(path, scaleMode)),
-            ".mp4" or ".m4v" or ".mov" => await LoadVideoAsync(path, scaleMode),
-            _ => throw new NotSupportedException("Choose a GIF or MP4/M4V/MOV file.")
+            ".png" or ".jpg" or ".jpeg" or ".bmp" =>
+                await Task.Run(() => LoadStaticImage(path, scaleMode)),
+            _ => throw new NotSupportedException(
+                "Choose a GIF or static PNG/JPG/BMP image.")
         };
+    }
+
+    private static ScreensaverAnimation LoadStaticImage(
+        string path,
+        ScreensaverScaleMode scaleMode)
+    {
+        using var bitmap = new Drawing.Bitmap(path);
+        byte[] frame = ToRgb332(bitmap, scaleMode);
+
+        // A static image is stored as one frame. The interval is irrelevant
+        // visually, but keep it valid for the common firmware timing format.
+        return new ScreensaverAnimation(
+            Path.GetFileName(path),
+            1000,
+            new[] { 1000 },
+            new[] { frame });
     }
 
     private static ScreensaverAnimation LoadGif(string path, ScreensaverScaleMode scaleMode)
