@@ -27,6 +27,7 @@ public sealed class NowPlayingService : IDisposable
     private bool _wasActive;
     private DateTimeOffset? _inactiveSince;
     private NowPlayingData? _lastData;
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     private string _lastArtworkKey = "";
     private byte[]? _cachedArtwork;
@@ -109,90 +110,97 @@ public sealed class NowPlayingService : IDisposable
         Updated?.Invoke(_lastData with { IsPlaying = false });
     }
 
+    private async Task RefreshCurrentSessionAsync(
+        DateTimeOffset now)
+    {
+        await _refreshGate.WaitAsync();
+        try
+        {
+            var session = _manager?.GetCurrentSession();
+
+            if (session is null ||
+                !IsAllowedSource(session.SourceAppUserModelId))
+            {
+                _currentSession = null;
+                PublishInactiveGrace(now);
+                return;
+            }
+
+            _currentSession = session;
+
+            var media = await session.TryGetMediaPropertiesAsync();
+            var timeline = session.GetTimelineProperties();
+            var playback = session.GetPlaybackInfo();
+
+            bool playing =
+                playback.PlaybackStatus ==
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+
+            var duration = timeline.EndTime - timeline.StartTime;
+            if (duration < TimeSpan.Zero)
+                duration = TimeSpan.Zero;
+
+            var position = timeline.Position - timeline.StartTime;
+            if (position < TimeSpan.Zero)
+                position = TimeSpan.Zero;
+            if (duration > TimeSpan.Zero && position > duration)
+                position = duration;
+
+            string artworkKey =
+                $"{session.SourceAppUserModelId}\u001F{media.Title}\u001F" +
+                $"{media.Artist}\u001F{media.AlbumTitle}";
+
+            if (!string.Equals(
+                    artworkKey,
+                    _lastArtworkKey,
+                    StringComparison.Ordinal))
+            {
+                _lastArtworkKey = artworkKey;
+                _cachedArtwork =
+                    await LoadArtworkAsync(media.Thumbnail);
+            }
+
+            var data = new NowPlayingData(
+                SourceLabel(session.SourceAppUserModelId),
+                string.IsNullOrWhiteSpace(media.Title)
+                    ? "Now Playing"
+                    : media.Title,
+                string.IsNullOrWhiteSpace(media.Artist)
+                    ? media.AlbumArtist ?? ""
+                    : media.Artist,
+                position,
+                duration,
+                playing,
+                _cachedArtwork);
+
+            _lastData = data;
+
+            // A paused media session is still an active media session.
+            // Keep it on Home and publish the real playback state so the
+            // Play/Pause button follows changes made in Spotify/YouTube/etc.
+            _inactiveSince = null;
+            _wasActive = true;
+            Updated?.Invoke(data);
+        }
+        catch
+        {
+            PublishInactiveGrace(now);
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
     private async Task PollLoopAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
-            DateTimeOffset now = DateTimeOffset.UtcNow;
+            await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
 
             try
             {
-                var session = _manager?.GetCurrentSession();
-
-                if (session is null || !IsAllowedSource(session.SourceAppUserModelId))
-                {
-                    _currentSession = null;
-                    PublishInactiveGrace(now);
-                }
-                else
-                {
-                    _currentSession = session;
-
-                    var media = await session.TryGetMediaPropertiesAsync();
-                    var timeline = session.GetTimelineProperties();
-                    var playback = session.GetPlaybackInfo();
-
-                    bool playing = playback.PlaybackStatus ==
-                        GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-
-                    var duration = timeline.EndTime - timeline.StartTime;
-                    if (duration < TimeSpan.Zero)
-                        duration = TimeSpan.Zero;
-
-                    var position = timeline.Position - timeline.StartTime;
-                    if (position < TimeSpan.Zero)
-                        position = TimeSpan.Zero;
-                    if (duration > TimeSpan.Zero && position > duration)
-                        position = duration;
-
-                    string artworkKey =
-                        $"{session.SourceAppUserModelId}\u001F{media.Title}\u001F" +
-                        $"{media.Artist}\u001F{media.AlbumTitle}";
-
-                    if (!string.Equals(
-                            artworkKey,
-                            _lastArtworkKey,
-                            StringComparison.Ordinal))
-                    {
-                        _lastArtworkKey = artworkKey;
-                        _cachedArtwork = await LoadArtworkAsync(media.Thumbnail);
-                    }
-
-                    var data = new NowPlayingData(
-                        SourceLabel(session.SourceAppUserModelId),
-                        string.IsNullOrWhiteSpace(media.Title)
-                            ? "Now Playing"
-                            : media.Title,
-                        string.IsNullOrWhiteSpace(media.Artist)
-                            ? media.AlbumArtist ?? ""
-                            : media.Artist,
-                        position,
-                        duration,
-                        playing,
-                        _cachedArtwork);
-
-                    _lastData = data;
-
-                    if (playing)
-                    {
-                        _inactiveSince = null;
-                        _wasActive = true;
-                        Updated?.Invoke(data);
-                    }
-                    else if (_wasActive)
-                    {
-                        PublishInactiveGrace(now);
-                    }
-                }
-            }
-            catch
-            {
-                PublishInactiveGrace(now);
-            }
-
-            try
-            {
-                await Task.Delay(250, token);
+                await Task.Delay(200, token);
             }
             catch (TaskCanceledException)
             {
@@ -274,20 +282,32 @@ public sealed class NowPlayingService : IDisposable
 
     public async Task TogglePlayPauseAsync()
     {
-        if (_currentSession is not null)
-            await _currentSession.TryTogglePlayPauseAsync();
+        if (_currentSession is null)
+            return;
+
+        await _currentSession.TryTogglePlayPauseAsync();
+        await Task.Delay(70);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
     }
 
     public async Task PreviousAsync()
     {
-        if (_currentSession is not null)
-            await _currentSession.TrySkipPreviousAsync();
+        if (_currentSession is null)
+            return;
+
+        await _currentSession.TrySkipPreviousAsync();
+        await Task.Delay(120);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
     }
 
     public async Task NextAsync()
     {
-        if (_currentSession is not null)
-            await _currentSession.TrySkipNextAsync();
+        if (_currentSession is null)
+            return;
+
+        await _currentSession.TrySkipNextAsync();
+        await Task.Delay(120);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
     }
 
     public void Dispose()
