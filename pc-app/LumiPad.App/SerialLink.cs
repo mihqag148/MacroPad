@@ -31,9 +31,15 @@ public sealed class SerialLink : IDisposable
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
     public event Action<string>? LinkError;
+    public event Action<string, string>? Diagnostic;
+    public string FirmwareHello { get; private set; } = "";
+
+    private void Log(string level, string message) =>
+        Diagnostic?.Invoke(level, message);
 
     public async Task<string?> AutoDetectAsync(CancellationToken cancellationToken = default)
     {
+        Log("INFO", "Auto detect started");
         Disconnect();
 
         // Prefer the dedicated USB CDC link when the keyboard is physically
@@ -121,19 +127,24 @@ public sealed class SerialLink : IDisposable
                     _bleCharacteristic = characteristic;
                     candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
 
+                    FirmwareHello = hello;
                     _connectionName = $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : "LumiPad")}";
+                    Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
                     return _connectionName;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Log("WARN", $"BLE probe {info.Name}: {ex.Message}");
                     candidate?.Dispose();
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Log("ERROR", $"Bluetooth discovery failed: {ex.Message}");
         }
 
+        Log("WARN", "Bluetooth LumiPad service not found");
         return null;
     }
 
@@ -144,6 +155,7 @@ public sealed class SerialLink : IDisposable
         if (sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected)
             return;
 
+        Log("WARN", "Bluetooth disconnected");
         LinkError?.Invoke("Bluetooth disconnected");
         Disconnect();
     }
@@ -180,17 +192,21 @@ public sealed class SerialLink : IDisposable
                 if (response.StartsWith("LUMIPAD|", StringComparison.Ordinal))
                 {
                     _port = candidate;
+                    FirmwareHello = response;
                     _connectionName = $"USB · {name}";
+                    Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
                     return _connectionName;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log("WARN", $"USB probe {name}: {ex.Message}");
             }
 
             candidate?.Dispose();
         }
 
+        Log("WARN", "USB LumiPad CDC not found");
         return null;
     }
 
@@ -273,6 +289,8 @@ public sealed class SerialLink : IDisposable
             _port.Write(data, 0, data.Length);
 
             string ack = await Task.Run(() => _port.ReadLine().Trim());
+            Log(ack.EndsWith("|ERROR", StringComparison.Ordinal) ? "ERROR" : "FW",
+                $"USB <- {ack}");
             if (!ack.StartsWith("SAVACK|", StringComparison.Ordinal))
                 throw new IOException($"Unexpected LumiPad USB response: {ack}");
 
@@ -307,7 +325,11 @@ public sealed class SerialLink : IDisposable
         _bleDevice?.Dispose();
         _bleDevice = null;
 
+        if (!string.IsNullOrWhiteSpace(_connectionName))
+            Log("INFO", $"Disconnected {_connectionName}");
+
         _connectionName = "";
+        FirmwareHello = "";
         _lastBitmapKey = "";
         _lastArtworkKey = "";
         _lastNowPlayingKey = "";
@@ -426,6 +448,7 @@ public sealed class SerialLink : IDisposable
         // dedicated CDC port before a large upload. USB wins automatically
         // when present; Bluetooth remains the fallback.
         bool useUsb = await EnsureUsbForBulkAsync();
+        Log("INFO", $"Screensaver upload: {animation.Frames.Count} frames, {animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
 
         int rawChunkSize = useUsb ? 240 : 180;
         int frameBytes =
@@ -467,6 +490,8 @@ public sealed class SerialLink : IDisposable
                     await Task.Delay(2);
 
                 sentChunks++;
+                if ((offset + len) >= frame.Length)
+                    Log("INFO", $"Screensaver frame {i + 1}/{animation.Frames.Count} sent");
                 progress?.Report(
                     (int)Math.Round(sentChunks * 100.0 / totalChunks));
             }
@@ -475,8 +500,10 @@ public sealed class SerialLink : IDisposable
         if (useUsb)
         {
             string finalAck = await SendUsbSaverLineAsync("SAVEND");
-            if (!finalAck.EndsWith("|READY", StringComparison.Ordinal))
+            if (!finalAck.EndsWith("|READY", StringComparison.Ordinal)) {
+                Log("ERROR", $"Screensaver final ACK not READY: {finalAck}");
                 return false;
+            }
         }
         else
         {
@@ -488,7 +515,9 @@ public sealed class SerialLink : IDisposable
         if (!useUsb && _bleCharacteristic is not null)
         {
             string status = await ReadBleStatusAsync();
-            return status.Contains("SAVER:READY", StringComparison.Ordinal);
+            bool ready = status.Contains("SAVER:READY", StringComparison.Ordinal);
+            Log(ready ? "INFO" : "ERROR", $"BLE saver verify: {status}");
+            return ready;
         }
 
         // USB serial writes are lossless and the firmware only commits the
@@ -513,6 +542,60 @@ public sealed class SerialLink : IDisposable
 
         using var reader = DataReader.FromBuffer(read.Value);
         return reader.ReadString(reader.UnconsumedBufferLength);
+    }
+
+    public async Task<(uint Seq, string Level, string Message)?> ReadFirmwareLogAsync(
+        uint afterSeq)
+    {
+        string response;
+
+        try
+        {
+            if (_port?.IsOpen == true)
+            {
+                await _writeGate.WaitAsync();
+                try
+                {
+                    _port.ReadTimeout = 900;
+                    _port.DiscardInBuffer();
+                    byte[] data = Encoding.UTF8.GetBytes($"LOG|{afterSeq}\n");
+                    _port.Write(data, 0, data.Length);
+                    response = await Task.Run(() => _port.ReadLine().Trim());
+                }
+                finally
+                {
+                    _writeGate.Release();
+                }
+            }
+            else if (_bleCharacteristic is not null)
+            {
+                await SendLineAsync($"LOG|{afterSeq}");
+                await Task.Delay(35);
+                response = await ReadBleStatusAsync();
+            }
+            else
+            {
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("ERROR", $"Read firmware log failed: {ex.Message}");
+            return null;
+        }
+
+        if (response.StartsWith("LOG|NONE|", StringComparison.Ordinal))
+            return null;
+
+        string[] parts = response.Split('|', 4);
+        if (parts.Length != 4 ||
+            parts[0] != "LOG" ||
+            !uint.TryParse(parts[1], out uint seq))
+        {
+            return null;
+        }
+
+        return (seq, parts[2], parts[3]);
     }
 
     public async Task<bool> IsScreensaverReadyAsync()
@@ -677,6 +760,7 @@ public sealed class SerialLink : IDisposable
         }
         catch (Exception ex)
         {
+            Log("ERROR", ex.Message);
             LinkError?.Invoke(ex.Message);
             Disconnect();
             throw;

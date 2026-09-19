@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     private string? _screensaverMediaPath;
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
     private readonly DispatcherTimer _memoryUsageTimer = new();
+    private readonly DispatcherTimer _diagnosticTimer = new();
+    private readonly List<string> _logLines = new();
+    private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
@@ -78,6 +81,22 @@ public partial class MainWindow : Window
             await UpdateMemoryUsageAsync();
         _memoryUsageTimer.Start();
 
+        _diagnosticTimer.Interval = TimeSpan.FromSeconds(1);
+        _diagnosticTimer.Tick += async (_, _) => await PollFirmwareDiagnosticsAsync();
+        _diagnosticTimer.Start();
+
+        _serial.Diagnostic += (level, message) =>
+            Dispatcher.Invoke(() => AddLog(level, "APP", message));
+
+        DispatcherUnhandledException += (_, args) =>
+        {
+            AddLog("ERROR", "APP", $"Unhandled UI exception: {args.Exception}");
+            args.Handled = true;
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Dispatcher.Invoke(() => AddLog("FATAL", "APP", $"Unhandled: {args.ExceptionObject}"));
+
         Loaded += async (_, _) =>
         {
             LoadTheme();
@@ -86,6 +105,8 @@ public partial class MainWindow : Window
             ApplyLanguage();
             ApplyStoredControlValues();
             _uiReady = true;
+            UpdateSettingsInfo();
+            AddLog("INFO", "APP", "LumiPad started");
             BuildColorWheel();
             SetDeviceControlsEnabled(false);
 
@@ -98,6 +119,7 @@ public partial class MainWindow : Window
             _serial.LinkError += message =>
                 Dispatcher.Invoke(() =>
                 {
+                    AddLog("ERROR", "LINK", message);
                     DeviceStatus.Text = L("Bluetooth write error", "Lỗi ghi Bluetooth");
                     DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
                     BottomStatus.Text = message;
@@ -205,6 +227,19 @@ public partial class MainWindow : Window
         ["Prepare failed"] = "Xử lý thất bại",
         ["Light mode"] = "Chế độ sáng",
         ["Dark mode"] = "Chế độ tối",
+        ["Settings"] = "Cài đặt",
+        ["SETTINGS"] = "CÀI ĐẶT",
+        ["Appearance & device"] = "Giao diện & thiết bị",
+        ["Language"] = "Ngôn ngữ",
+        ["Appearance"] = "Giao diện",
+        ["VERSION"] = "PHIÊN BẢN",
+        ["Firmware"] = "Firmware",
+        ["Connection"] = "Kết nối",
+        ["Disconnected"] = "Đã ngắt kết nối",
+        ["DIAGNOSTIC LOG"] = "NHẬT KÝ CHẨN ĐOÁN",
+        ["App + firmware events and errors"] = "Sự kiện và lỗi của app + firmware",
+        ["Copy log"] = "Sao chép log",
+        ["Clear log"] = "Xóa log",
     };
 
     private string L(string en, string vi) => _language == "vi" ? vi : en;
@@ -849,6 +884,94 @@ public partial class MainWindow : Window
 
         if (KeyboardDfuButton is not null)
             KeyboardDfuButton.IsEnabled = connected;
+
+        UpdateSettingsInfo();
+    }
+
+    private void UpdateSettingsInfo()
+    {
+        if (AppVersionText is not null)
+        {
+            var version = System.Reflection.Assembly
+                .GetExecutingAssembly().GetName().Version;
+            AppVersionText.Text = version is null
+                ? "--"
+                : $"v{version.Major}.{version.Minor}.{version.Build}";
+        }
+
+        if (FirmwareVersionText is not null)
+        {
+            FirmwareVersionText.Text = string.IsNullOrWhiteSpace(_serial.FirmwareHello)
+                ? "--"
+                : _serial.FirmwareHello.Replace("LUMIPAD|", "Protocol v");
+        }
+
+        if (ConnectionInfoText is not null)
+        {
+            ConnectionInfoText.Text = _serial.IsConnected
+                ? _serial.ConnectionName
+                : L("Disconnected", "Đã ngắt kết nối");
+        }
+    }
+
+    private void AddLog(string level, string source, string message)
+    {
+        string line = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] [{source}] {message}";
+        _logLines.Add(line);
+
+        const int maxLines = 1500;
+        if (_logLines.Count > maxLines)
+            _logLines.RemoveRange(0, _logLines.Count - maxLines);
+
+        if (LogTextBox is not null)
+        {
+            LogTextBox.Text = string.Join(Environment.NewLine, _logLines);
+            LogTextBox.ScrollToEnd();
+        }
+    }
+
+    private async Task PollFirmwareDiagnosticsAsync()
+    {
+        if (!_serial.IsConnected)
+            return;
+
+        // Drain a few queued firmware entries per tick without monopolising the link.
+        for (int i = 0; i < 6; i++)
+        {
+            var entry = await _serial.ReadFirmwareLogAsync(_firmwareLogSeq);
+            if (entry is null)
+                break;
+
+            _firmwareLogSeq = entry.Value.Seq;
+            AddLog(
+                entry.Value.Level == "E" ? "ERROR" :
+                entry.Value.Level == "W" ? "WARN" : "INFO",
+                "FW",
+                $"#{entry.Value.Seq} {entry.Value.Message}");
+        }
+
+        UpdateSettingsInfo();
+    }
+
+    private void ClearLog_Click(object sender, RoutedEventArgs e)
+    {
+        _logLines.Clear();
+        if (LogTextBox is not null)
+            LogTextBox.Clear();
+        AddLog("INFO", "APP", "Log cleared");
+    }
+
+    private void CopyLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(string.Join(Environment.NewLine, _logLines));
+            AddLog("INFO", "APP", "Log copied to clipboard");
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", "APP", $"Copy log failed: {ex.Message}");
+        }
     }
 
     private async Task UpdateMemoryUsageAsync()
@@ -897,6 +1020,7 @@ public partial class MainWindow : Window
     private async Task DetectAsync()
     {
         DetectButton.IsEnabled = false;
+        AddLog("INFO", "APP", $"Connect requested ({_connectionPreference})");
         DeviceStatus.Text = L("Detecting…", "Đang tìm…");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
         BottomStatus.Text = _connectionPreference switch
@@ -932,6 +1056,8 @@ public partial class MainWindow : Window
                 : L("Connected over USB fallback. Now Playing and RGB are live.",
                     "Đã kết nối qua USB dự phòng. Now Playing và RGB đang hoạt động.");
 
+            _firmwareLogSeq = 0;
+            AddLog("INFO", "LINK", $"Connected: {connection}; {_serial.FirmwareHello}");
             SetDeviceControlsEnabled(true);
             SendAllRgb();
             SendPowerTiming();
@@ -944,6 +1070,7 @@ public partial class MainWindow : Window
     private void DisconnectButton_Click(object sender, RoutedEventArgs e)
     {
         _autoReconnectEnabled = false;
+        AddLog("INFO", "LINK", "Manual disconnect");
         _serial.Disconnect();
         DeviceStatus.Text = L("Not connected", "Chưa kết nối");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
@@ -1607,6 +1734,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            AddLog("ERROR", "APP", $"Screensaver upload failed: {ex}");
             SetScreensaverUploadState(
                 L("Upload failed", "Tải lên thất bại"),
                 MediaColor.FromRgb(255, 69, 58));
