@@ -1653,6 +1653,9 @@ public sealed class SerialLink : IDisposable
             $"CFG|SAVER|{(enabled ? 1 : 0)}|{style}|{delaySeconds}|" +
             $"{r1}|{g1}|{b1}|{r2}|{g2}|{b2}");
 
+    public void SetScreensaverSource(bool pcMonitor) =>
+        _ = SendLineAsync($"CFG|SAVERSRC|{(pcMonitor ? 1 : 0)}");
+
     public void SetScreensaverDelay(int seconds) =>
         _ = SendLineAsync($"CFG|SAVERDELAY|{Math.Max(0, seconds)}");
 
@@ -1723,6 +1726,23 @@ public sealed class SerialLink : IDisposable
         {
             _writeGate.Release();
         }
+    }
+
+    public Task<bool> SendPcMonitorConfigAsync(string name)
+    {
+        if (!IsConnected || !SupportsPcMonitor)
+            return Task.FromResult(false);
+
+        string safe = new string(
+            (name ?? "MY PC")
+                .Where(c => c >= ' ' && c <= '~' && c != '|')
+                .Take(18)
+                .ToArray());
+
+        if (string.IsNullOrWhiteSpace(safe))
+            safe = "MY PC";
+
+        return SendRealtimeLineAsync($"PCCFG|{safe}");
     }
 
     public async Task<bool> SendPcMonitorAsync(PcMonitorSnapshot data)
