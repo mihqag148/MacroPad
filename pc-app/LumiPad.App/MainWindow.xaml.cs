@@ -1958,7 +1958,7 @@ public partial class MainWindow : Window
             Grid.SetColumn(profile, 1);
             grid.Children.Add(profile);
 
-            var remove = new Button
+            var remove = new System.Windows.Controls.Button
             {
                 Content = "×",
                 Width = 38,
@@ -2039,7 +2039,7 @@ public partial class MainWindow : Window
             });
             grid.Children.Add(text);
 
-            var add = new Button
+            var add = new System.Windows.Controls.Button
             {
                 Content = added ? L("Added", "Đã thêm") : L("Add", "Thêm"),
                 IsEnabled = !added,
