@@ -940,7 +940,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem x:Name="ZmkTab" Header="ZMK Studio">            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
+            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
                 <Grid Margin="0,14,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

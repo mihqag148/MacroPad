@@ -10,25 +10,29 @@ public static class SystemVolumeService
 {
     public static bool TryGetState(out SystemVolumeState state)
     {
-        state = default;
+        SystemVolumeState localState = default;
 
         try
         {
-            return WithEndpoint(endpoint =>
+            bool ok = WithEndpoint(endpoint =>
             {
                 Marshal.ThrowExceptionForHR(
                     endpoint.GetMasterVolumeLevelScalar(out float scalar));
                 Marshal.ThrowExceptionForHR(
                     endpoint.GetMute(out bool muted));
 
-                state = new SystemVolumeState(
+                localState = new SystemVolumeState(
                     Math.Clamp(scalar * 100.0, 0.0, 100.0),
                     muted);
                 return true;
             });
+
+            state = localState;
+            return ok;
         }
         catch
         {
+            state = default;
             return false;
         }
     }
