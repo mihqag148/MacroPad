@@ -295,6 +295,10 @@ public partial class MainWindow : Window
         ["Save log"] = "Tải log",
         ["Copy log"] = "Sao chép log",
         ["Clear log"] = "Xóa log",
+        ["SYSTEM"] = "HỆ THỐNG",
+        ["Flash usage"] = "Sử dụng Flash",
+        ["RAM usage"] = "Sử dụng RAM",
+        ["Sleep keyboard"] = "Ngủ bàn phím",
     };
 
     private string L(string en, string vi) => _language == "vi" ? vi : en;
@@ -945,6 +949,9 @@ public partial class MainWindow : Window
         if (KeyboardDfuButton is not null)
             KeyboardDfuButton.IsEnabled = connected;
 
+        if (SleepKeyboardButton is not null)
+            SleepKeyboardButton.IsEnabled = connected;
+
         UpdateSettingsInfo();
     }
 
@@ -1300,6 +1307,30 @@ public partial class MainWindow : Window
             BottomStatus.Text = L(
                 _sleepDelaySeconds == 0 ? "Sleep: Never" : $"Sleep: {_sleepDelaySeconds}s",
                 _sleepDelaySeconds == 0 ? "Ngủ: Không bao giờ" : $"Ngủ: {_sleepDelaySeconds} giây");
+        }
+    }
+
+    private async void SleepKeyboard_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_serial.IsConnected)
+        {
+            BottomStatus.Text =
+                L("Connect LumiPad before sleeping the keyboard.",
+                  "Hãy kết nối LumiPad trước khi cho bàn phím ngủ.");
+            return;
+        }
+
+        try
+        {
+            await _serial.SleepKeyboardAsync();
+            BottomStatus.Text =
+                L("Keyboard entered soft sleep. Press any key to wake.",
+                  "Bàn phím đã ngủ mềm. Nhấn phím bất kỳ để đánh thức.");
+        }
+        catch (Exception ex)
+        {
+            BottomStatus.Text =
+                L($"Sleep failed: {ex.Message}", $"Ngủ thất bại: {ex.Message}");
         }
     }
 
