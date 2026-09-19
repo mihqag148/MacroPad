@@ -1644,7 +1644,7 @@ public partial class MainWindow : Window
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = L("Choose LumiPad screensaver", "Chọn bảo vệ màn hình LumiPad"),
-            Filter = "GIF / Video|*.gif;*.mp4;*.m4v;*.mov|GIF|*.gif|Video|*.mp4;*.m4v;*.mov",
+            Filter = "GIF / Image|*.gif;*.png;*.jpg;*.jpeg;*.bmp|GIF|*.gif|Image|*.png;*.jpg;*.jpeg;*.bmp",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -1706,17 +1706,21 @@ public partial class MainWindow : Window
                     scaleMode);
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
-            int playbackAverageFps =
-                (int)Math.Round(
-                    1000.0 /
-                    Math.Max(1, _screensaverAnimation.FrameIntervalMs));
 
-            ScreensaverMediaInfo.Text =
-                $"{_screensaverAnimation.Frames.Count} stored frames · " +
-                $"{ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · " +
-                $"Playback avg {playbackAverageFps} FPS · " +
-                $"cap {ScreensaverMediaService.MaxPlaybackFps} FPS · " +
-                $"{_screensaverAnimation.FrameIntervalMs} ms/frame avg · {scaleMode}";
+            if (_screensaverAnimation.Frames.Count == 1)
+            {
+                ScreensaverMediaInfo.Text =
+                    L(
+                        $"Static image · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · {scaleMode}",
+                        $"Ảnh tĩnh · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · {scaleMode}");
+            }
+            else
+            {
+                ScreensaverMediaInfo.Text =
+                    L(
+                        $"{_screensaverAnimation.Frames.Count} GIF frames · source timing preserved · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                        $"{_screensaverAnimation.Frames.Count} khung GIF · giữ tốc độ gốc · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
+            }
 
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
                 _screensaverAnimation.Frames[0],
@@ -1871,8 +1875,8 @@ public partial class MainWindow : Window
             L("Not uploaded", "Chưa tải lên"),
             MediaColor.FromRgb(99, 99, 102));
         ScreensaverSendStatus.Text =
-            L("Custom screensaver cleared. No screensaver will be shown until another GIF is uploaded.",
-              "Đã xóa bảo vệ màn hình. Sẽ không hiện screensaver cho tới khi tải GIF mới.");
+            L("Custom screensaver cleared. No screensaver will be shown until another GIF or image is uploaded.",
+              "Đã xóa bảo vệ màn hình. Sẽ không hiện screensaver cho tới khi tải GIF hoặc ảnh mới.");
         SendScreensaverButton.IsEnabled = false;
     }
 
