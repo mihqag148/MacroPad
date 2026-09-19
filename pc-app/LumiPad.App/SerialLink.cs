@@ -35,6 +35,7 @@ public sealed class SerialLink : IDisposable
     private readonly HashSet<string> _capabilities =
         new(StringComparer.OrdinalIgnoreCase);
     private int _consecutiveLinkFailures;
+    private string _lastUsbPortSignature = "";
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public bool IsUsbConnected => _port?.IsOpen == true;
@@ -110,6 +111,12 @@ public sealed class SerialLink : IDisposable
             $"Firmware protocol v{_protocolVersion}; caps=" +
             string.Join(",", _capabilities));
     }
+
+    private static string CurrentUsbPortSignature() =>
+        string.Join(
+            ";",
+            SerialPort.GetPortNames()
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
 
     private void RecordLinkSuccess() =>
         _consecutiveLinkFailures = 0;
@@ -194,6 +201,17 @@ public sealed class SerialLink : IDisposable
                     Log("INFO", $"Promoted companion link to {usbName}");
                     return usbName;
                 }
+
+                string currentPorts = CurrentUsbPortSignature();
+                if (string.Equals(
+                        currentPorts,
+                        _lastUsbPortSignature,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                _lastUsbPortSignature = currentPorts;
 
                 string previousName = _connectionName;
                 string? usb = await TryUsbAsync(cancellationToken);
@@ -375,6 +393,7 @@ public sealed class SerialLink : IDisposable
 
                         SetFirmwareHello(hello);
                         RecordLinkSuccess();
+                        _lastUsbPortSignature = CurrentUsbPortSignature();
                         _connectionName =
                             $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : candidate.Name)}";
 
@@ -449,6 +468,7 @@ public sealed class SerialLink : IDisposable
                     _port = candidate;
                     SetFirmwareHello(response);
                     RecordLinkSuccess();
+                    _lastUsbPortSignature = CurrentUsbPortSignature();
                     _connectionName = $"USB · {name}";
                     Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
                     return _connectionName;
