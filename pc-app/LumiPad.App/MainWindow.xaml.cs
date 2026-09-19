@@ -1174,7 +1174,7 @@ public partial class MainWindow : Window
         // on SelectionChangedEventArgs.AddedItems. AddedItems can be stale or
         // empty after WPF style/language refreshes, which made the timing
         // controls appear stuck on the first selected value.
-        if (sender is ComboBox combo &&
+        if (sender is System.Windows.Controls.ComboBox combo &&
             int.TryParse(combo.SelectedValue?.ToString(), out int seconds))
         {
             return Math.Max(0, seconds);
