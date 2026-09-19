@@ -8,6 +8,16 @@
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
+    <Window.Resources>
+        <Style TargetType="{x:Type ToolTip}">
+            <Setter Property="Background" Value="#252527"/>
+            <Setter Property="Foreground" Value="#F5F5F7"/>
+            <Setter Property="BorderBrush" Value="#4A4A4D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="9,5"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </Window.Resources>
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

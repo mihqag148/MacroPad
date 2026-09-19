@@ -876,7 +876,7 @@ public partial class MainWindow : Window
             RgbDevicePanel.IsEnabled = connected;
 
         if (DeviceTimingPanel is not null)
-            DeviceTimingPanel.IsEnabled = connected;
+            DeviceTimingPanel.IsEnabled = true;
 
         if (SendScreensaverButton is not null)
         {
@@ -1126,11 +1126,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int ComboSeconds(SelectionChangedEventArgs e, int fallback)
+    private static int ComboSeconds(ComboBox combo, int fallback)
     {
-        if (e.AddedItems.Count > 0 &&
-            e.AddedItems[0] is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out int seconds))
+        if (combo.SelectedValue is not null &&
+            int.TryParse(combo.SelectedValue.ToString(), out int seconds))
+        {
+            return Math.Max(0, seconds);
+        }
+
+        if (combo.SelectedItem is ComboBoxItem item &&
+            int.TryParse(item.Tag?.ToString(), out seconds))
         {
             return Math.Max(0, seconds);
         }
@@ -1149,7 +1154,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _screensaverDelaySeconds =
-            ComboSeconds(e, _screensaverDelaySeconds);
+            ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
 
         if (_uiReady)
         {
@@ -1170,7 +1175,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _sleepDelaySeconds =
-            ComboSeconds(e, _sleepDelaySeconds);
+            ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
 
         if (_uiReady)
         {
