@@ -437,11 +437,13 @@ void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
 void lumi_now_playing_user_activity(void) {
     k_mutex_lock(&state_lock, K_FOREVER);
 
-    /* While music is actually playing, keyboard/encoder activity should not
-     * kick the user back to the main page. Only allow the temporary hide
-     * behavior while paused/stopped.
+    /* Keep the Now Playing page stable for the whole active media session.
+     * Next/Previous can briefly report PAUSED while Windows swaps tracks, and
+     * the encoder/key event arrives at exactly that moment. Hiding on that
+     * transient state caused a visible Main -> Music flash on every track
+     * change. Only suppress the page when there is no active media session.
      */
-    if (state.playing) {
+    if (state.active) {
         state.suppress_until_ms = 0U;
     } else {
         state.suppress_until_ms = k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
