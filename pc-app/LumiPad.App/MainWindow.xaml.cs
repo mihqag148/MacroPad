@@ -74,6 +74,16 @@ public partial class MainWindow : Window
                 _screensaverAnimation.Frames[_screensaverPreviewIndex],
                 ScreensaverMediaService.Width,
                 ScreensaverMediaService.Height);
+
+            int frameDelay =
+                _screensaverAnimation.FrameDurationsMs.Count >
+                _screensaverPreviewIndex
+                    ? _screensaverAnimation.FrameDurationsMs[
+                        _screensaverPreviewIndex]
+                    : _screensaverAnimation.FrameIntervalMs;
+
+            _screensaverPreviewTimer.Interval =
+                TimeSpan.FromMilliseconds(Math.Max(33, frameDelay));
         };
 
         _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
@@ -877,6 +887,10 @@ public partial class MainWindow : Window
 
         if (DeviceTimingPanel is not null)
             DeviceTimingPanel.IsEnabled = true;
+        if (ScreensaverDelayCombo is not null)
+            ScreensaverDelayCombo.IsEnabled = true;
+        if (SleepDelayCombo is not null)
+            SleepDelayCombo.IsEnabled = true;
 
         if (SendScreensaverButton is not null)
         {
@@ -1126,16 +1140,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int ComboSeconds(System.Windows.Controls.ComboBox combo, int fallback)
+    private static int ComboSeconds(
+        SelectionChangedEventArgs e,
+        int fallback)
     {
-        if (combo.SelectedValue is not null &&
-            int.TryParse(combo.SelectedValue.ToString(), out int seconds))
-        {
-            return Math.Max(0, seconds);
-        }
-
-        if (combo.SelectedItem is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out seconds))
+        if (e.AddedItems.Count > 0 &&
+            e.AddedItems[0] is ComboBoxItem item &&
+            int.TryParse(item.Tag?.ToString(), out int seconds))
         {
             return Math.Max(0, seconds);
         }
@@ -1154,7 +1165,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _screensaverDelaySeconds =
-            ComboSeconds(ScreensaverDelayCombo, _screensaverDelaySeconds);
+            ComboSeconds(e, _screensaverDelaySeconds);
 
         if (_uiReady)
         {
@@ -1175,7 +1186,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _sleepDelaySeconds =
-            ComboSeconds(SleepDelayCombo, _sleepDelaySeconds);
+            ComboSeconds(e, _sleepDelaySeconds);
 
         if (_uiReady)
         {
@@ -1656,9 +1667,13 @@ public partial class MainWindow : Window
 
             _screensaverPreviewIndex = 0;
             _screensaverPreviewTimer.Stop();
+            int firstFrameDelay =
+                _screensaverAnimation.FrameDurationsMs.Count > 0
+                    ? _screensaverAnimation.FrameDurationsMs[0]
+                    : _screensaverAnimation.FrameIntervalMs;
+
             _screensaverPreviewTimer.Interval =
-                TimeSpan.FromMilliseconds(
-                    Math.Max(33, _screensaverAnimation.FrameIntervalMs));
+                TimeSpan.FromMilliseconds(Math.Max(33, firstFrameDelay));
 
             if (_screensaverAnimation.Frames.Count > 1)
                 _screensaverPreviewTimer.Start();
