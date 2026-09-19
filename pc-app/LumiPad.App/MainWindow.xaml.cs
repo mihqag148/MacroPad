@@ -64,7 +64,11 @@ public partial class MainWindow : Window
         // Keep the preview on an absolute playback timeline, just like the
         // firmware. If the UI thread is briefly late, skip a stale frame
         // instead of stretching the whole GIF and drifting out of sync.
-        _screensaverPreviewTimer.Interval = TimeSpan.FromMilliseconds(10);
+        // Output cadence is fixed at 25 Hz (40 ms). The desired source frame
+        // is still selected from the GIF's original timeline, so low-FPS GIFs
+        // repeat frames and high-FPS GIFs drop frames instead of changing speed.
+        _screensaverPreviewTimer.Interval =
+            TimeSpan.FromMilliseconds(ScreensaverMediaService.MinFrameIntervalMs);
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
             if (_screensaverAnimation is null ||
@@ -282,8 +286,13 @@ public partial class MainWindow : Window
         ["Firmware"] = "Firmware",
         ["Connection"] = "Kết nối",
         ["Disconnected"] = "Đã ngắt kết nối",
+        ["DISPLAY"] = "MÀN HÌNH",
+        ["Panel timing"] = "Thông số màn hình",
         ["DIAGNOSTIC LOG"] = "NHẬT KÝ CHẨN ĐOÁN",
         ["App + firmware events and errors"] = "Sự kiện và lỗi của app + firmware",
+        ["View log"] = "Xem log",
+        ["Hide log"] = "Ẩn log",
+        ["Save log"] = "Lưu log",
         ["Copy log"] = "Sao chép log",
         ["Clear log"] = "Xóa log",
     };
@@ -1025,6 +1034,43 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ToggleLog_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = LogPanel.Visibility != Visibility.Visible;
+        LogPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ViewLogButton.Content = show
+            ? L("Hide log", "Ẩn log")
+            : L("View log", "Xem log");
+    }
+
+    private void SaveLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = L("Save LumiPad diagnostic log", "Lưu nhật ký chẩn đoán LumiPad"),
+                Filter = "Text log|*.txt|All files|*.*",
+                FileName = $"LumiPad-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+                AddExtension = true,
+                DefaultExt = ".txt"
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            System.IO.File.WriteAllText(
+                dialog.FileName,
+                string.Join(Environment.NewLine, _logLines));
+
+            AddLog("INFO", "APP", $"Log saved: {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", "APP", $"Save log failed: {ex.Message}");
+        }
+    }
+
     private async Task UpdateMemoryUsageAsync()
     {
         if (!_serial.IsConnected)
@@ -1711,15 +1757,20 @@ public partial class MainWindow : Window
             {
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"Static image · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · {scaleMode}",
-                        $"Ảnh tĩnh · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · {scaleMode}");
+                        $"Static image · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · output {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                        $"Ảnh tĩnh · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · đầu ra {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
             }
             else
             {
+                int playbackAverageFps =
+                    (int)Math.Round(
+                        1000.0 /
+                        Math.Max(1, _screensaverAnimation.FrameIntervalMs));
+
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"{_screensaverAnimation.Frames.Count} GIF frames · source timing preserved · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                        $"{_screensaverAnimation.Frames.Count} khung GIF · giữ tốc độ gốc · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
+                        $"{_screensaverAnimation.Frames.Count} GIF frames · Playback avg {playbackAverageFps} FPS · output {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                        $"{_screensaverAnimation.Frames.Count} khung GIF · Playback avg {playbackAverageFps} FPS · đầu ra {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
             }
 
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
