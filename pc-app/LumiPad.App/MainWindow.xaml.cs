@@ -1413,8 +1413,7 @@ public partial class MainWindow : Window
                     // over the Bluetooth companion link. Promote without
                     // clearing media state or re-uploading the screensaver.
                     if (_connectionPreference == "auto" &&
-                        _serial.IsBluetoothConnected &&
-                        !_serial.IsUsbConnected)
+                        _serial.IsBluetoothConnected)
                     {
                         var promoted =
                             await _serial.PromoteToUsbIfAvailableAsync(token);
