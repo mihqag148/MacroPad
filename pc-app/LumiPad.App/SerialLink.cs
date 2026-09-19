@@ -498,7 +498,10 @@ public sealed class SerialLink : IDisposable
         string timingCsv =
             animation.FrameDurationsMs.Count == animation.Frames.Count
                 ? string.Join(",", animation.FrameDurationsMs.Select(
-                    ms => Math.Clamp(ms, 33, 5000)))
+                    ms => Math.Clamp(
+                        ms,
+                        ScreensaverMediaService.MinFrameIntervalMs,
+                        5000)))
                 : string.Empty;
 
         string begin =
