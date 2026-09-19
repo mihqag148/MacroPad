@@ -78,6 +78,7 @@ public partial class MainWindow : Window
     private int _rgbProfileIndex;
     private RgbProfileSetting[] _rgbProfiles = CreateDefaultRgbProfiles();
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
+    private string _screensaverSource = "Media";
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
@@ -90,6 +91,9 @@ public partial class MainWindow : Window
     private int _pcMonitorIntervalMs = 1000;
     private bool _pcMonitorPolling;
     private PcMonitorSnapshot? _lastPcMonitorSnapshot;
+    private string _pcMonitorGpuId = "auto";
+    private string _pcMonitorConfigName = "MY PC";
+    private bool _syncingPcMonitorUi;
 
     public MainWindow()
     {
@@ -460,9 +464,9 @@ public partial class MainWindow : Window
 
         var body = new Border
         {
-            Width = 278,
-            Height = 220,
-            CornerRadius = new CornerRadius(26),
+            Width = 238,
+            Height = 232,
+            CornerRadius = new CornerRadius(24),
             Background = new SolidColorBrush(
                 MediaColor.FromRgb(12, 12, 14)),
             BorderBrush = new SolidColorBrush(
@@ -475,39 +479,42 @@ public partial class MainWindow : Window
 
         var device = new Grid
         {
-            Width = 222,
-            Height = 184,
+            Width = 184,
+            Height = 198,
             HorizontalAlignment =
                 System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
         device.RowDefinitions.Add(new RowDefinition
         {
-            Height = new GridLength(58)
+            Height = new GridLength(52)
         });
         device.RowDefinitions.Add(new RowDefinition
         {
-            Height = new GridLength(10)
+            Height = new GridLength(8)
         });
-        device.RowDefinitions.Add(new RowDefinition());
+        device.RowDefinitions.Add(new RowDefinition
+        {
+            Height = new GridLength(138)
+        });
 
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(154)
+            Width = new GridLength(126)
         });
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(10)
+            Width = new GridLength(8)
         });
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(58)
+            Width = new GridLength(50)
         });
 
         var display = new Border
         {
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(7),
             Background = new LinearGradientBrush(
                 MediaColor.FromRgb(25, 40, 75),
                 MediaColor.FromRgb(80, 42, 93),
@@ -517,7 +524,7 @@ public partial class MainWindow : Window
         {
             Text = "DIAL DESK",
             Foreground = System.Windows.Media.Brushes.White,
-            FontSize = 10,
+            FontSize = 9,
             FontWeight = FontWeights.SemiBold,
             HorizontalAlignment =
                 System.Windows.HorizontalAlignment.Center,
@@ -527,8 +534,8 @@ public partial class MainWindow : Window
 
         var dial = new Ellipse
         {
-            Width = 50,
-            Height = 50,
+            Width = 46,
+            Height = 46,
             Fill = new LinearGradientBrush(
                 MediaColor.FromRgb(95, 95, 102),
                 MediaColor.FromRgb(30, 30, 34),
@@ -547,21 +554,29 @@ public partial class MainWindow : Window
         var keys = new System.Windows.Controls.Primitives.UniformGrid
         {
             Rows = 3,
-            Columns = 4
+            Columns = 4,
+            Width = 184,
+            Height = 138
         };
+
         for (int i = 0; i < 12; i++)
         {
             keys.Children.Add(new Border
             {
+                Width = 38,
+                Height = 38,
+                HorizontalAlignment =
+                    System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
                 Background = new SolidColorBrush(
                     MediaColor.FromRgb(36, 36, 40)),
                 BorderBrush = new SolidColorBrush(
                     MediaColor.FromRgb(70, 70, 76)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(5),
-                Margin = new Thickness(3)
+                CornerRadius = new CornerRadius(5)
             });
         }
+
         Grid.SetRow(keys, 2);
         device.Children.Add(keys);
 
@@ -1015,6 +1030,9 @@ public partial class MainWindow : Window
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public bool PcMonitorEnabled { get; set; } = true;
         public int PcMonitorIntervalMs { get; set; } = 1000;
+        public string PcMonitorGpuId { get; set; } = "auto";
+        public string PcMonitorConfigName { get; set; } = "MY PC";
+        public string ScreensaverSource { get; set; } = "Media";
     }
 
     private void LoadAppSettings()
@@ -1057,6 +1075,18 @@ public partial class MainWindow : Window
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _screensaverMediaPath = settings.ScreensaverMediaPath;
             _screensaverScaleMode = settings.ScreensaverScaleMode;
+            _screensaverSource =
+                string.Equals(settings.ScreensaverSource, "PcMonitor", StringComparison.Ordinal)
+                    ? "PcMonitor"
+                    : "Media";
+            _pcMonitorGpuId =
+                string.IsNullOrWhiteSpace(settings.PcMonitorGpuId)
+                    ? "auto"
+                    : settings.PcMonitorGpuId;
+            _pcMonitorConfigName =
+                string.IsNullOrWhiteSpace(settings.PcMonitorConfigName)
+                    ? "MY PC"
+                    : settings.PcMonitorConfigName.Trim();
         }
         catch
         {
@@ -1095,7 +1125,10 @@ public partial class MainWindow : Window
                 ScreensaverMediaPath = _screensaverMediaPath,
                 ScreensaverScaleMode = SelectedScreensaverScaleMode(),
                 PcMonitorEnabled = _pcMonitorEnabled,
-                PcMonitorIntervalMs = _pcMonitorIntervalMs
+                PcMonitorIntervalMs = _pcMonitorIntervalMs,
+                PcMonitorGpuId = _pcMonitorGpuId,
+                PcMonitorConfigName = _pcMonitorConfigName,
+                ScreensaverSource = _screensaverSource
             };
 
             System.IO.File.WriteAllText(
@@ -1122,12 +1155,18 @@ public partial class MainWindow : Window
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
+        if (ScreensaverSourceCombo is not null)
+            SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
 
         if (PcMonitorEnabledCheckBox is not null)
             PcMonitorEnabledCheckBox.IsChecked = _pcMonitorEnabled;
         if (PcMonitorIntervalCombo is not null)
             SelectComboTag(PcMonitorIntervalCombo, _pcMonitorIntervalMs.ToString());
+        if (PcMonitorConfigNameText is not null)
+            PcMonitorConfigNameText.Text = _pcMonitorConfigName;
 
+        UpdateScreensaverSourceUi();
+        UpdatePcMonitorConfigSummary(_lastPcMonitorSnapshot);
         UpdateRgbReadout();
     }
 
@@ -2154,7 +2193,61 @@ public partial class MainWindow : Window
     private void SendPowerTiming()
     {
         _serial.SetScreensaverDelay(_screensaverDelaySeconds);
+        _serial.SetScreensaverSource(
+            string.Equals(
+                _screensaverSource,
+                "PcMonitor",
+                StringComparison.Ordinal));
         _serial.SetSleepTimeout(_sleepDelaySeconds);
+    }
+
+    private void ScreensaverSourceCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (ScreensaverSourceCombo?.SelectedItem is not ComboBoxItem item)
+            return;
+
+        _screensaverSource =
+            string.Equals(item.Tag?.ToString(), "PcMonitor", StringComparison.Ordinal)
+                ? "PcMonitor"
+                : "Media";
+
+        UpdateScreensaverSourceUi();
+
+        if (_uiReady)
+            SaveAppSettings();
+
+        if (_uiReady && _serial.IsConnected)
+        {
+            _serial.SetScreensaverSource(
+                string.Equals(
+                    _screensaverSource,
+                    "PcMonitor",
+                    StringComparison.Ordinal));
+        }
+    }
+
+    private void UpdateScreensaverSourceUi()
+    {
+        if (ScreensaverSourceHint is null)
+            return;
+
+        bool pc =
+            string.Equals(
+                _screensaverSource,
+                "PcMonitor",
+                StringComparison.Ordinal);
+
+        ScreensaverSourceHint.Text = pc
+            ? L("Live PC telemetry", "Thông số PC trực tiếp")
+            : L("Uploaded media", "GIF / ảnh đã tải lên");
+
+        if (SendScreensaverButton is not null)
+            SendScreensaverButton.IsEnabled =
+                !pc &&
+                _serial.IsConnected &&
+                _screensaverAnimation is not null;
     }
 
     private void ScreensaverDelayCombo_SelectionChanged(
@@ -2454,14 +2547,18 @@ public partial class MainWindow : Window
         try
         {
             PcMonitorSnapshot snapshot =
-                await Task.Run(_pcMonitorService.ReadSnapshot);
+                await Task.Run(() =>
+                    _pcMonitorService.ReadSnapshot(_pcMonitorGpuId));
             _lastPcMonitorSnapshot = snapshot;
+            RefreshPcGpuSelector(snapshot);
             ApplyPcMonitorUi(snapshot);
+            UpdatePcMonitorConfigSummary(snapshot);
 
             if (_pcMonitorEnabled &&
                 _serial.IsConnected &&
                 _serial.SupportsPcMonitor)
             {
+                await _serial.SendPcMonitorConfigAsync(_pcMonitorConfigName);
                 await _serial.SendPcMonitorAsync(snapshot);
                 PcMonitorLinkText.Text =
                     _serial.IsBluetoothConnected
@@ -2508,6 +2605,11 @@ public partial class MainWindow : Window
             ? $"{snapshot.CpuClockMHz.Value:0} MHz" : "-- MHz";
 
         PcGpuLoadText.Text = $"{snapshot.GpuLoad:0}%";
+        PcGpuNameText.Text = snapshot.GpuName;
+        PcGpuActiveText.Text =
+            string.Equals(_pcMonitorGpuId, "auto", StringComparison.OrdinalIgnoreCase)
+                ? $"Auto active: {snapshot.GpuName}"
+                : $"Pinned: {snapshot.GpuName}";
         PcGpuTempText.Text = snapshot.GpuTemperature.HasValue
             ? $"{snapshot.GpuTemperature.Value:0} °C" : "-- °C";
         PcGpuClockText.Text = snapshot.GpuClockMHz.HasValue
@@ -2520,6 +2622,113 @@ public partial class MainWindow : Window
         PcNetUpText.Text = $"{snapshot.NetworkUploadMbps:0.0} Mbps";
         PcFpsText.Text = snapshot.Fps.HasValue
             ? $"FPS {snapshot.Fps.Value}" : "FPS --";
+    }
+
+    private void RefreshPcGpuSelector(PcMonitorSnapshot snapshot)
+    {
+        if (PcGpuCombo is null)
+            return;
+
+        string desired = _pcMonitorGpuId;
+        string[] currentIds = PcGpuCombo.Items
+            .OfType<ComboBoxItem>()
+            .Select(i => i.Tag?.ToString() ?? "")
+            .ToArray();
+
+        string[] nextIds =
+            new[] { "auto" }
+                .Concat(snapshot.AvailableGpus.Select(g => g.Id))
+                .ToArray();
+
+        if (currentIds.SequenceEqual(nextIds, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        _syncingPcMonitorUi = true;
+        try
+        {
+            PcGpuCombo.Items.Clear();
+            PcGpuCombo.Items.Add(new ComboBoxItem
+            {
+                Content = "Auto · active GPU",
+                Tag = "auto"
+            });
+
+            foreach (PcGpuInfo gpu in snapshot.AvailableGpus)
+            {
+                PcGpuCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{gpu.Name} · {gpu.Load:0}%",
+                    Tag = gpu.Id
+                });
+            }
+
+            PcGpuCombo.SelectedValue =
+                nextIds.Contains(desired, StringComparer.OrdinalIgnoreCase)
+                    ? desired
+                    : "auto";
+
+            if (PcGpuCombo.SelectedValue?.ToString() is string selected)
+                _pcMonitorGpuId = selected;
+        }
+        finally
+        {
+            _syncingPcMonitorUi = false;
+        }
+    }
+
+    private async void PcGpuCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_syncingPcMonitorUi || !_uiReady)
+            return;
+
+        if (PcGpuCombo?.SelectedItem is not ComboBoxItem item)
+            return;
+
+        _pcMonitorGpuId =
+            string.IsNullOrWhiteSpace(item.Tag?.ToString())
+                ? "auto"
+                : item.Tag!.ToString()!;
+
+        SaveAppSettings();
+        await PollPcMonitorAsync(force: true);
+    }
+
+    private async void PcMonitorConfigNameText_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        if (!_uiReady || PcMonitorConfigNameText is null)
+            return;
+
+        string next = PcMonitorConfigNameText.Text.Trim();
+        _pcMonitorConfigName =
+            string.IsNullOrWhiteSpace(next)
+                ? "MY PC"
+                : next;
+
+        SaveAppSettings();
+        UpdatePcMonitorConfigSummary(_lastPcMonitorSnapshot);
+
+        if (_serial.IsConnected && _serial.SupportsPcMonitor)
+            await _serial.SendPcMonitorConfigAsync(_pcMonitorConfigName);
+    }
+
+    private void UpdatePcMonitorConfigSummary(PcMonitorSnapshot? snapshot)
+    {
+        if (PcMonitorConfigSummaryText is null)
+            return;
+
+        string gpu =
+            string.Equals(_pcMonitorGpuId, "auto", StringComparison.OrdinalIgnoreCase)
+                ? snapshot is null
+                    ? "Auto GPU"
+                    : $"Auto · {snapshot.GpuName}"
+                : snapshot?.GpuName ?? "Selected GPU";
+
+        PcMonitorConfigSummaryText.Text =
+            $"{_pcMonitorConfigName} · {gpu}";
     }
 
     private async void PcMonitorEnabled_Changed(
