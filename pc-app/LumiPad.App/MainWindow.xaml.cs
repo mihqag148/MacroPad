@@ -1417,6 +1417,8 @@ public partial class MainWindow : Window
             _firmwareLogSeq = 0;
             AddLog("INFO", "LINK", $"Connected: {connection}; {_serial.FirmwareHello}");
             SetDeviceControlsEnabled(true);
+            _lastAppliedAutoProfile = -1;
+            PollAutoProfile(force: true);
             SendAllRgb();
             SendPowerTiming();
             await UpdateMemoryUsageAsync();
@@ -1507,6 +1509,8 @@ public partial class MainWindow : Window
                     : L("Reconnected over USB.", "Đã kết nối lại qua USB.");
 
                 SetDeviceControlsEnabled(true);
+                _lastAppliedAutoProfile = -1;
+                PollAutoProfile(force: true);
                 SendAllRgb();
                 SendPowerTiming();
                 await UpdateMemoryUsageAsync();
