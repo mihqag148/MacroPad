@@ -1656,6 +1656,7 @@ bool lumi_ui_saver_image_chunk(
     if (!data ||
         saver_media_format != SAVER_FORMAT_RGB565_STATIC ||
         len == 0U ||
+        offset != saver_image_received_bytes ||
         offset >= LUMI_SAVER_IMAGE_BYTES ||
         (uint64_t)offset + len > LUMI_SAVER_IMAGE_BYTES) {
         return false;
