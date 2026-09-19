@@ -94,6 +94,24 @@ public partial class MainWindow : Window
     private string _pcMonitorGpuId = "auto";
     private string _pcMonitorConfigName = "MY PC";
     private bool _syncingPcMonitorUi;
+    private bool _syncingPcMetricUi;
+    private int[] _pcMonitorMetricSlots = [0, 3, 6, 9, 10, 11];
+
+    private static readonly (int Id, string Name)[] PcMonitorMetricChoices =
+    [
+        (0, "CPU usage"),
+        (1, "CPU temperature"),
+        (2, "CPU clock"),
+        (3, "GPU usage"),
+        (4, "GPU temperature"),
+        (5, "GPU clock"),
+        (6, "RAM usage"),
+        (7, "RAM used"),
+        (8, "RAM total"),
+        (9, "Network download"),
+        (10, "Network upload"),
+        (11, "FPS")
+    ];
 
     public MainWindow()
     {
@@ -224,6 +242,7 @@ public partial class MainWindow : Window
             _autoProfileSettings = AutoProfileService.Load();
             _actionScripts = ActionScriptStore.Load();
             ApplyLanguage();
+            InitializePcMetricSelectors();
             ApplyStoredControlValues();
             ApplyAutoProfileUiState();
             RefreshActionScriptsUi();
@@ -1032,6 +1051,7 @@ public partial class MainWindow : Window
         public int PcMonitorIntervalMs { get; set; } = 1000;
         public string PcMonitorGpuId { get; set; } = "auto";
         public string PcMonitorConfigName { get; set; } = "MY PC";
+        public int[]? PcMonitorMetricSlots { get; set; }
         public string ScreensaverSource { get; set; } = "Media";
     }
 
@@ -1087,6 +1107,13 @@ public partial class MainWindow : Window
                 string.IsNullOrWhiteSpace(settings.PcMonitorConfigName)
                     ? "MY PC"
                     : settings.PcMonitorConfigName.Trim();
+
+            if (settings.PcMonitorMetricSlots is { Length: 6 } savedSlots &&
+                savedSlots.All(id => id is >= 0 and <= 11))
+            {
+                _pcMonitorMetricSlots = savedSlots.ToArray();
+            }
+
             _pcMonitorEnabled = settings.PcMonitorEnabled;
             _pcMonitorIntervalMs =
                 settings.PcMonitorIntervalMs is 500 or 1000 or 2000
@@ -1135,6 +1162,7 @@ public partial class MainWindow : Window
                 PcMonitorIntervalMs = _pcMonitorIntervalMs,
                 PcMonitorGpuId = _pcMonitorGpuId,
                 PcMonitorConfigName = _pcMonitorConfigName,
+                PcMonitorMetricSlots = _pcMonitorMetricSlots.ToArray(),
                 ScreensaverSource = _screensaverSource
             };
 
@@ -1171,6 +1199,8 @@ public partial class MainWindow : Window
             SelectComboTag(PcMonitorIntervalCombo, _pcMonitorIntervalMs.ToString());
         if (PcMonitorConfigNameText is not null)
             PcMonitorConfigNameText.Text = _pcMonitorConfigName;
+
+        ApplyPcMetricSelections();
 
         UpdateScreensaverSourceUi();
         UpdatePcMonitorConfigSummary(_lastPcMonitorSnapshot);
@@ -2551,6 +2581,95 @@ public partial class MainWindow : Window
         }
     }
 
+    private System.Windows.Controls.ComboBox[] PcMetricCombos() =>
+    [
+        PcMetric1Combo,
+        PcMetric2Combo,
+        PcMetric3Combo,
+        PcMetric4Combo,
+        PcMetric5Combo,
+        PcMetric6Combo
+    ];
+
+    private void InitializePcMetricSelectors()
+    {
+        _syncingPcMetricUi = true;
+        try
+        {
+            foreach (System.Windows.Controls.ComboBox combo in PcMetricCombos())
+            {
+                combo.Items.Clear();
+
+                foreach ((int id, string name) in PcMonitorMetricChoices)
+                {
+                    combo.Items.Add(new ComboBoxItem
+                    {
+                        Content = name,
+                        Tag = id.ToString()
+                    });
+                }
+            }
+
+            ApplyPcMetricSelections();
+        }
+        finally
+        {
+            _syncingPcMetricUi = false;
+        }
+    }
+
+    private void ApplyPcMetricSelections()
+    {
+        if (PcMetric1Combo is null)
+            return;
+
+        _syncingPcMetricUi = true;
+        try
+        {
+            System.Windows.Controls.ComboBox[] combos = PcMetricCombos();
+
+            for (int i = 0; i < combos.Length; i++)
+            {
+                combos[i].SelectedValue =
+                    Math.Clamp(_pcMonitorMetricSlots[i], 0, 11).ToString();
+            }
+        }
+        finally
+        {
+            _syncingPcMetricUi = false;
+        }
+    }
+
+    private async void PcMetricSlot_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_syncingPcMetricUi || !_uiReady ||
+            sender is not System.Windows.Controls.ComboBox combo ||
+            combo.SelectedItem is not ComboBoxItem item ||
+            !int.TryParse(item.Tag?.ToString(), out int metricId))
+        {
+            return;
+        }
+
+        System.Windows.Controls.ComboBox[] combos = PcMetricCombos();
+        int slot = Array.IndexOf(combos, combo);
+
+        if (slot < 0)
+            return;
+
+        _pcMonitorMetricSlots[slot] =
+            Math.Clamp(metricId, 0, 11);
+        SaveAppSettings();
+
+        if (_serial.IsConnected && _serial.SupportsPcMonitor)
+        {
+            await _serial.SendPcMonitorConfigAsync(
+                _pcMonitorConfigName,
+                _pcMonitorMetricSlots);
+        }
+    }
+
     private async Task PollPcMonitorAsync(bool force = false)
     {
         if ((!_pcMonitorEnabled && !force) || _pcMonitorPolling)
@@ -2571,7 +2690,9 @@ public partial class MainWindow : Window
                 _serial.IsConnected &&
                 _serial.SupportsPcMonitor)
             {
-                await _serial.SendPcMonitorConfigAsync(_pcMonitorConfigName);
+                await _serial.SendPcMonitorConfigAsync(
+                    _pcMonitorConfigName,
+                    _pcMonitorMetricSlots);
                 await _serial.SendPcMonitorAsync(snapshot);
                 PcMonitorLinkText.Text =
                     _serial.IsBluetoothConnected
@@ -2725,7 +2846,9 @@ public partial class MainWindow : Window
         UpdatePcMonitorConfigSummary(_lastPcMonitorSnapshot);
 
         if (_serial.IsConnected && _serial.SupportsPcMonitor)
-            await _serial.SendPcMonitorConfigAsync(_pcMonitorConfigName);
+            await _serial.SendPcMonitorConfigAsync(
+                _pcMonitorConfigName,
+                _pcMonitorMetricSlots);
     }
 
     private void UpdatePcMonitorConfigSummary(PcMonitorSnapshot? snapshot)
