@@ -29,6 +29,8 @@ public static class ScreensaverMediaService
     public const int Width = 160;
     public const int Height = 86;
     public const int MaxFrames = 25;
+    public const int MaxPlaybackFps = 25;
+    public const int MinFrameIntervalMs = 1000 / MaxPlaybackFps;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
@@ -62,14 +64,14 @@ public static class ScreensaverMediaService
             for (int i = 0; i < total; i++)
             {
                 sourceIndices.Add(i);
-                frameDurations.Add(Math.Clamp(sourceDelaysMs[i], 33, 5000));
+                frameDurations.Add(Math.Clamp(sourceDelaysMs[i], MinFrameIntervalMs, 5000));
             }
         }
         else
         {
             // Reduce long GIFs on the time axis instead of raw frame index.
             // The reduced loop keeps the same overall duration as the source.
-            int outputLoopMs = Math.Max(sourceLoopMs, count * 33);
+            int outputLoopMs = Math.Max(sourceLoopMs, count * MinFrameIntervalMs);
             int baseDelay = outputLoopMs / count;
             int remainder = outputLoopMs % count;
 
@@ -115,7 +117,7 @@ public static class ScreensaverMediaService
         }
 
         int averageDelayMs = Math.Max(
-            33,
+            MinFrameIntervalMs,
             (int)Math.Round(frameDurations.Average()));
 
         return new ScreensaverAnimation(
@@ -148,7 +150,10 @@ public static class ScreensaverMediaService
                     // appears in Windows or a browser.
                     delays[i] = delayCs <= 1
                         ? 100
-                        : Math.Clamp(delayCs * 10, 20, 5000);
+                        : Math.Clamp(
+                            delayCs * 10,
+                            MinFrameIntervalMs,
+                            5000);
                 }
             }
         }
@@ -173,10 +178,10 @@ public static class ScreensaverMediaService
         int count = MaxFrames;
         double spanMs = Math.Min(
             duration.TotalMilliseconds,
-            MaxFrames * (1000.0 / 25.0));
+            MaxFrames * (1000.0 / MaxPlaybackFps));
 
         if (spanMs < 250.0)
-            count = Math.Max(2, (int)Math.Ceiling(spanMs / (1000.0 / 25.0)));
+            count = Math.Max(2, (int)Math.Ceiling(spanMs / (1000.0 / MaxPlaybackFps)));
 
         var frames = new List<byte[]>(count);
 
@@ -200,7 +205,7 @@ public static class ScreensaverMediaService
             frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
-        const int intervalMs = 40;
+        const int intervalMs = MinFrameIntervalMs;
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
