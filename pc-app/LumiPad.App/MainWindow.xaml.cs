@@ -2088,14 +2088,51 @@ public partial class MainWindow : Window
 
         try
         {
-            if (await _serial.IsScreensaverReadyAsync())
+            string? state = await _serial.GetScreensaverStateAsync();
+
+            if (string.Equals(state, "READY", StringComparison.Ordinal))
+            {
+                ScreensaverSendProgress.Value = 100;
+                SetScreensaverUploadState(
+                    L("Stored on keyboard", "Đã lưu trên bàn phím"),
+                    MediaColor.FromRgb(48, 209, 88));
+                ScreensaverSendStatus.Text =
+                    L("Screensaver is already stored in keyboard flash.",
+                      "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
+                AddLog(
+                    "INFO",
+                    "SAVER",
+                    "Persisted screensaver already READY; reconnect restore skipped");
                 return;
+            }
+
+            if (!string.Equals(state, "EMPTY", StringComparison.Ordinal) &&
+                !string.Equals(state, "ERROR", StringComparison.Ordinal))
+            {
+                // An unrelated GATT response or temporary read failure must
+                // never trigger a large automatic upload.
+                AddLog(
+                    "WARN",
+                    "SAVER",
+                    $"Saver state unavailable ({state ?? "unknown"}); automatic restore skipped");
+
+                ScreensaverSendStatus.Text =
+                    L("Could not verify keyboard screensaver; no restore was attempted.",
+                      "Không xác minh được bảo vệ màn hình trên bàn phím; không tự tải lại.");
+                return;
+            }
+
+            AddLog(
+                "INFO",
+                "SAVER",
+                $"Keyboard reported {state}; restoring local screensaver");
 
             var progress = new Progress<int>(value =>
             {
                 ScreensaverSendProgress.Value = value;
                 ScreensaverSendStatus.Text =
-                    L($"Restoring screensaver… {value}%", $"Đang khôi phục bảo vệ màn hình… {value}%");
+                    L($"Restoring screensaver… {value}%",
+                      $"Đang khôi phục bảo vệ màn hình… {value}%");
             });
 
             bool verified = await _serial.SendScreensaverAnimationAsync(
@@ -2109,13 +2146,17 @@ public partial class MainWindow : Window
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    L("Custom screensaver restored after reconnect.",
-                      "Đã khôi phục bảo vệ màn hình tùy chỉnh sau khi kết nối lại.");
+                    L("Custom screensaver restored because keyboard flash was empty.",
+                      "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep the keyboard connection alive even if automatic restore fails.
+            AddLog(
+                "WARN",
+                "SAVER",
+                $"Automatic screensaver state check failed: {ex.Message}");
+            // Keep the keyboard connection alive even if state verification fails.
         }
     }
 
