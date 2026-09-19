@@ -198,9 +198,11 @@ static void pc_metric_format(
     switch (metric) {
     case 0:
         snprintf(title, title_len, "CPU USE");
-        snprintf(value, value_len, stale ? "%s" : "%u%%",
-                 stale ? fallback : "",
-                 stale ? 0U : (unsigned int)state->cpu_load);
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%u%%", (unsigned int)state->cpu_load);
+        }
         break;
     case 1:
         snprintf(title, title_len, "CPU TEMP");
