@@ -1214,6 +1214,13 @@ static void refresh_screensaver(lv_timer_t *timer) {
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
 
+        /* The GIF path writes directly to the ST7789. While it is active,
+         * stop LVGL from scheduling unrelated UI flushes on the same SPI bus.
+         * Without this, a label/popup refresh can cut into a fast GIF frame
+         * and create an extra tear line even though the GIF pacing is correct.
+         */
+        lv_disp_enable_invalidation(NULL, false);
+
         saver_media_index = 0U;
         saver_prefetch_valid = false;
         (void)saver_flash_prefetch_frame(0U);
@@ -1221,6 +1228,11 @@ static void refresh_screensaver(lv_timer_t *timer) {
         draw_custom_saver_frame(0U);
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
+
+        /* Hand display ownership back to LVGL and force one clean redraw of
+         * the normal UI after direct GIF rendering stops.
+         */
+        lv_disp_enable_invalidation(NULL, true);
 
         if (root_screen) {
             lv_obj_invalidate(root_screen);
