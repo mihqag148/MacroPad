@@ -13,11 +13,83 @@ public sealed class AutoProfileMapping
     public int ProfileIndex { get; set; }
 }
 
+public sealed class AutoProfilePreset
+{
+    public string Name { get; set; } = "Profile";
+    public int DefaultProfile { get; set; }
+    public List<AutoProfileMapping> Mappings { get; set; } = [];
+}
+
 public sealed class AutoProfileSettings
 {
     public bool Enabled { get; set; }
+    public int ActivePresetIndex { get; set; }
+    public List<AutoProfilePreset> Presets { get; set; } = [];
+
+    // Legacy fields kept for backward-compatible JSON migration from v1.2.0.
     public int DefaultProfile { get; set; }
     public List<AutoProfileMapping> Mappings { get; set; } = [];
+
+    public AutoProfilePreset ActivePreset
+    {
+        get
+        {
+            EnsureNormalized();
+            return Presets[ActivePresetIndex];
+        }
+    }
+
+    public void EnsureNormalized()
+    {
+        Presets ??= [];
+        Mappings ??= [];
+
+        if (Presets.Count == 0)
+        {
+            Presets.Add(new AutoProfilePreset
+            {
+                Name = "Profile 1",
+                DefaultProfile = Math.Clamp(DefaultProfile, 0, 4),
+                Mappings = Mappings
+                    .Select(CloneMapping)
+                    .ToList()
+            });
+        }
+
+        if (Presets.Count > 10)
+            Presets = Presets.Take(10).ToList();
+
+        for (int i = 0; i < Presets.Count; i++)
+        {
+            Presets[i] ??= new AutoProfilePreset();
+            Presets[i].Name =
+                string.IsNullOrWhiteSpace(Presets[i].Name)
+                    ? $"Profile {i + 1}"
+                    : Presets[i].Name.Trim();
+
+            Presets[i].DefaultProfile =
+                Math.Clamp(Presets[i].DefaultProfile, 0, 4);
+
+            Presets[i].Mappings ??= [];
+            foreach (var mapping in Presets[i].Mappings)
+            {
+                mapping.ProfileIndex =
+                    Math.Clamp(mapping.ProfileIndex, 0, 4);
+            }
+        }
+
+        ActivePresetIndex =
+            Math.Clamp(ActivePresetIndex, 0, Presets.Count - 1);
+    }
+
+    private static AutoProfileMapping CloneMapping(
+        AutoProfileMapping mapping) =>
+        new()
+        {
+            Name = mapping.Name,
+            ExecutablePath = mapping.ExecutablePath,
+            ProfileIndex = mapping.ProfileIndex
+        };
 }
 
 public sealed record RunningAppInfo(
@@ -47,12 +119,7 @@ public static class AutoProfileService
             if (settings is null)
                 return new AutoProfileSettings();
 
-            settings.DefaultProfile = Math.Clamp(settings.DefaultProfile, 0, 4);
-            settings.Mappings ??= [];
-
-            foreach (var mapping in settings.Mappings)
-                mapping.ProfileIndex = Math.Clamp(mapping.ProfileIndex, 0, 4);
-
+            settings.EnsureNormalized();
             return settings;
         }
         catch
@@ -65,6 +132,8 @@ public static class AutoProfileService
     {
         try
         {
+            settings.EnsureNormalized();
+
             string? folder = Path.GetDirectoryName(SettingsFilePath);
             if (!string.IsNullOrWhiteSpace(folder))
                 Directory.CreateDirectory(folder);
