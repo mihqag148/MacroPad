@@ -961,6 +961,9 @@ public sealed class SerialLink : IDisposable
     public Task EnterDfuAsync() =>
         SendLineAsync("SYS|DFU");
 
+    public Task SleepKeyboardAsync() =>
+        SendLineAsync("SYS|SLEEP");
+
     private async Task SendBulkLineAsync(string line)
     {
         await _writeGate.WaitAsync();
