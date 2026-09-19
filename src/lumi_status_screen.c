@@ -1133,37 +1133,142 @@ static void saver_flash_invalidate(void) {
     saver_media_valid = false;
 }
 
-static void draw_custom_saver_frame(uint8_t frame_index) {
-    if (!device_is_ready(saver_display) ||
-        frame_index >= saver_media_frame_count) {
+static void draw_static_saver_image(void) {
+    if (saver_static_drawn ||
+        saver_media_format != SAVER_FORMAT_RGB565_STATIC ||
+        !device_is_ready(saver_display) ||
+        saver_flash_open_once() != 0) {
         return;
     }
 
-    if (!saver_prefetch_valid ||
-        saver_prefetched_index != frame_index) {
-        if (saver_flash_prefetch_frame(frame_index) != 0) {
+    for (uint16_t y = 0U; y < LUMI_SAVER_IMAGE_H;
+         y += SAVER_STRIPE_DST_ROWS) {
+
+        uint16_t rows =
+            MIN((uint16_t)SAVER_STRIPE_DST_ROWS,
+                (uint16_t)(LUMI_SAVER_IMAGE_H - y));
+
+        for (uint16_t row = 0U; row < rows; row++) {
+            uint32_t flash_offset =
+                SAVER_FLASH_DATA_OFFSET +
+                ((uint32_t)(y + row) * LUMI_SAVER_IMAGE_W * 2U);
+
+            int rc = flash_area_read(
+                saver_flash,
+                flash_offset,
+                saver_image_row_buffer,
+                sizeof(saver_image_row_buffer));
+
+            if (rc != 0) {
+                lumi_diag_report(
+                    'E',
+                    "Static saver flash read rc=%d y=%u",
+                    rc,
+                    (unsigned int)(y + row));
+                return;
+            }
+
+            lv_color_t *dst =
+                &saver_stripe_buf[(size_t)row * LUMI_SAVER_IMAGE_W];
+
+            for (uint16_t x = 0U; x < LUMI_SAVER_IMAGE_W; x++) {
+                size_t o = (size_t)x * 2U;
+                uint16_t v =
+                    (uint16_t)saver_image_row_buffer[o] |
+                    ((uint16_t)saver_image_row_buffer[o + 1U] << 8);
+
+                uint8_t r =
+                    (uint8_t)((((v >> 11) & 0x1FU) * 255U) / 31U);
+                uint8_t g =
+                    (uint8_t)((((v >> 5) & 0x3FU) * 255U) / 63U);
+                uint8_t b =
+                    (uint8_t)(((v & 0x1FU) * 255U) / 31U);
+
+                dst[x] = lv_color_make(r, g, b);
+            }
+        }
+
+        struct display_buffer_descriptor desc = {
+            .buf_size =
+                (size_t)LUMI_SAVER_IMAGE_W * rows * sizeof(lv_color_t),
+            .width = LUMI_SAVER_IMAGE_W,
+            .height = rows,
+            .pitch = LUMI_SAVER_IMAGE_W,
+        };
+
+        int rc = display_write(
+            saver_display,
+            0U,
+            y,
+            &desc,
+            saver_stripe_buf);
+
+        if (rc != 0) {
+            lumi_diag_report(
+                'E',
+                "Static saver display_write rc=%d y=%u",
+                rc,
+                (unsigned int)y);
             return;
         }
     }
 
-    if (!saver_rgb332_lut_ready) {
-        for (uint16_t v = 0U; v < 256U; v++) {
-            uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
-            uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
-            uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
-            saver_rgb332_lut[v] = lv_color_make(r, g, b);
-        }
-        saver_rgb332_lut_ready = true;
+    saver_static_drawn = true;
+}
+
+static bool saver_prepare_blend_frames(uint8_t frame_index) {
+    if (saver_media_format != SAVER_FORMAT_RGB332 ||
+        frame_index >= saver_media_frame_count) {
+        return false;
     }
 
-    /* Write the 2x image in six larger horizontal stripes. At 32 MHz a
-     * full 320x172 RGB565 frame already takes about 27.5 ms on the wire, which
-     * is longer than one ~60 Hz panel scan and cannot be made perfectly
-     * tear-free without a wired TE signal. Using 32-row destination stripes
-     * cuts RAMWR/window transaction overhead sharply versus the old 8-row
-     * stripes, so fast motion shows fewer horizontal slice boundaries while
-     * keeping RAM use well below a full-frame buffer.
-     */
+    uint8_t next_index =
+        (uint8_t)((frame_index + 1U) % saver_media_frame_count);
+
+    if (!saver_prefetch_valid ||
+        saver_prefetched_index != frame_index) {
+        if (saver_flash_read_frame_into(
+                frame_index,
+                saver_media_frame_buffer) != 0) {
+            saver_prefetch_valid = false;
+            return false;
+        }
+
+        saver_prefetched_index = frame_index;
+        saver_prefetch_valid = true;
+    }
+
+    if (!saver_prefetch_next_valid ||
+        saver_prefetched_next_index != next_index) {
+        if (saver_flash_read_frame_into(
+                next_index,
+                saver_media_next_frame_buffer) != 0) {
+            saver_prefetch_next_valid = false;
+            return false;
+        }
+
+        saver_prefetched_next_index = next_index;
+        saver_prefetch_next_valid = true;
+    }
+
+    return true;
+}
+
+static void draw_custom_saver_frame(
+    uint8_t frame_index,
+    uint8_t blend) {
+
+    if (saver_media_format == SAVER_FORMAT_RGB565_STATIC) {
+        draw_static_saver_image();
+        return;
+    }
+
+    if (!device_is_ready(saver_display) ||
+        frame_index >= saver_media_frame_count ||
+        !saver_prepare_blend_frames(frame_index)) {
+        return;
+    }
+
     for (uint16_t src_y = 0U;
          src_y < LUMI_SAVER_FRAME_H;
          src_y += SAVER_STRIPE_SRC_ROWS) {
@@ -1174,8 +1279,11 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
         uint16_t dst_rows = (uint16_t)(src_rows * 2U);
 
         for (uint16_t row = 0U; row < src_rows; row++) {
-            const uint8_t *src =
+            const uint8_t *src_a =
                 &saver_media_frame_buffer[
+                    (size_t)(src_y + row) * LUMI_SAVER_FRAME_W];
+            const uint8_t *src_b =
+                &saver_media_next_frame_buffer[
                     (size_t)(src_y + row) * LUMI_SAVER_FRAME_W];
 
             lv_color_t *dst0 =
@@ -1183,7 +1291,31 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
             lv_color_t *dst1 = dst0 + 320U;
 
             for (uint16_t x = 0U; x < LUMI_SAVER_FRAME_W; x++) {
-                lv_color_t color = saver_rgb332_lut[src[x]];
+                uint8_t a = src_a[x];
+                uint8_t b = src_b[x];
+
+                uint16_t ar =
+                    (uint16_t)((((a >> 5) & 0x07U) * 255U) / 7U);
+                uint16_t ag =
+                    (uint16_t)((((a >> 2) & 0x07U) * 255U) / 7U);
+                uint16_t ab =
+                    (uint16_t)(((a & 0x03U) * 255U) / 3U);
+
+                uint16_t br =
+                    (uint16_t)((((b >> 5) & 0x07U) * 255U) / 7U);
+                uint16_t bg =
+                    (uint16_t)((((b >> 2) & 0x07U) * 255U) / 7U);
+                uint16_t bb =
+                    (uint16_t)(((b & 0x03U) * 255U) / 3U);
+
+                uint8_t r = (uint8_t)(
+                    ar + (((int32_t)br - ar) * blend) / 255);
+                uint8_t g = (uint8_t)(
+                    ag + (((int32_t)bg - ag) * blend) / 255);
+                uint8_t blue = (uint8_t)(
+                    ab + (((int32_t)bb - ab) * blend) / 255);
+
+                lv_color_t color = lv_color_make(r, g, blue);
                 dst0[x * 2U] = color;
                 dst0[x * 2U + 1U] = color;
                 dst1[x * 2U] = color;
@@ -1206,13 +1338,14 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
             saver_stripe_buf);
 
         if (rc != 0) {
-            lumi_diag_report('E', "Saver display_write rc=%d y=%u",
-                             rc, (unsigned int)(src_y * 2U));
+            lumi_diag_report(
+                'E',
+                "Saver display_write rc=%d y=%u",
+                rc,
+                (unsigned int)(src_y * 2U));
             break;
         }
     }
-
-    saver_prefetch_valid = false;
 }
 
 static void refresh_screensaver(lv_timer_t *timer) {
