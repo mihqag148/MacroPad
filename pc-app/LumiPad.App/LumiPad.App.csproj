@@ -6,14 +6,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>LumiPad</AssemblyName>
+    <AssemblyName>Lumi Macropad</AssemblyName>
     <RootNamespace>LumiPad.App</RootNamespace>
-    <Product>LumiPad</Product>
-    <AssemblyTitle>LumiPad</AssemblyTitle>
-    <Description>LumiPad wireless macropad companion</Description>
-    <Version>1.3.3</Version>
-    <AssemblyVersion>1.3.3.0</AssemblyVersion>
-    <FileVersion>1.3.3.0</FileVersion>
+    <Product>Lumi Macropad</Product>
+    <AssemblyTitle>Lumi Macropad</AssemblyTitle>
+    <Description>Lumi Macropad multi-product device manager</Description>
+    <Version>1.4.0</Version>
+    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <FileVersion>1.4.0.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />

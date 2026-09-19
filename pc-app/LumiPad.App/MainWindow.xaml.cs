@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _autoProfileTimer = new();
     private readonly DispatcherTimer _runningAppsTimer = new();
     private readonly DispatcherTimer _actionEventTimer = new();
+    private readonly DispatcherTimer _productStatusTimer = new();
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
@@ -77,6 +78,11 @@ public partial class MainWindow : Window
 
     private Forms.NotifyIcon? _trayIcon;
     private Drawing.Icon? _appIcon;
+    private Border? _dialDeskCardBorder;
+    private Ellipse? _dialDeskConnectionDot;
+    private TextBlock? _dialDeskConnectionText;
+    private TextBlock? _dialDeskBatteryText;
+    private int? _dialDeskBatteryPercent;
 
     public MainWindow()
     {
@@ -172,6 +178,10 @@ public partial class MainWindow : Window
         _actionEventTimer.Interval = TimeSpan.FromMilliseconds(120);
         _actionEventTimer.Tick += async (_, _) => await PollLumiActionAsync();
 
+        _productStatusTimer.Interval = TimeSpan.FromSeconds(10);
+        _productStatusTimer.Tick += async (_, _) =>
+            await UpdateProductOverviewAsync();
+
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
@@ -202,9 +212,11 @@ public partial class MainWindow : Window
             ApplyStoredControlValues();
             ApplyAutoProfileUiState();
             RefreshActionScriptsUi();
+            BuildProductCards();
             _uiReady = true;
             UpdateSettingsInfo();
-            AddLog("INFO", "APP", "LumiPad started");
+            UpdateProductHubUi();
+            AddLog("INFO", "APP", "Lumi Macropad started");
             BuildColorWheel();
             SetDeviceControlsEnabled(false);
 
@@ -222,6 +234,7 @@ public partial class MainWindow : Window
                     DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
                     BottomStatus.Text = message;
                     _keyboardSleeping = false;
+                    _dialDeskBatteryPercent = null;
                     SetDeviceControlsEnabled(false);
                     UpdateTransportIndicators();
                     UpdateSleepButtonUi();
@@ -250,7 +263,9 @@ public partial class MainWindow : Window
             _autoProfileTimer.Start();
             _runningAppsTimer.Start();
             _actionEventTimer.Start();
+            _productStatusTimer.Start();
             await RefreshRunningAppsAsync();
+            await UpdateProductOverviewAsync();
             PollAutoProfile(force: true);
         };
 
@@ -258,9 +273,407 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
     }
 
+    private void BuildProductCards()
+    {
+        if (ProductCardsPanel is null)
+            return;
+
+        ProductCardsPanel.Children.Clear();
+
+        foreach (ProductDefinition product in ProductCatalog.All)
+        {
+            var button = new System.Windows.Controls.Button
+            {
+                Tag = product,
+                Padding = new Thickness(0),
+                Margin = new Thickness(10),
+                Background = System.Windows.Media.Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                FocusVisualStyle = null
+            };
+            button.Click += ProductCard_Click;
+
+            var card = new Border
+            {
+                Width = 410,
+                Height = 510,
+                Background =
+                    TryFindResource("Card") as System.Windows.Media.Brush,
+                BorderBrush =
+                    TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(26),
+                ClipToBounds = true
+            };
+
+            var root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition
+            {
+                Height = new GridLength(318)
+            });
+            root.RowDefinitions.Add(new RowDefinition
+            {
+                Height = new GridLength(1)
+            });
+            root.RowDefinitions.Add(new RowDefinition());
+
+            var preview = new Border
+            {
+                Background =
+                    TryFindResource("Card2") as System.Windows.Media.Brush,
+                Padding = new Thickness(28)
+            };
+            preview.Child = CreateDialDeskPreview();
+            root.Children.Add(preview);
+
+            var divider = new Border
+            {
+                Background =
+                    TryFindResource("Line") as System.Windows.Media.Brush
+            };
+            Grid.SetRow(divider, 1);
+            root.Children.Add(divider);
+
+            var info = new Grid
+            {
+                Margin = new Thickness(24, 22, 24, 20)
+            };
+            info.RowDefinitions.Add(new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+            info.RowDefinitions.Add(new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+            info.RowDefinitions.Add(new RowDefinition());
+            info.RowDefinitions.Add(new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+
+            info.Children.Add(new TextBlock
+            {
+                Text = product.Name,
+                FontSize = 25,
+                FontWeight = FontWeights.SemiBold
+            });
+
+            var subtitle = new TextBlock
+            {
+                Text = product.Subtitle,
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                FontSize = 12,
+                Margin = new Thickness(0, 5, 0, 0)
+            };
+            Grid.SetRow(subtitle, 1);
+            info.Children.Add(subtitle);
+
+            var status = new Grid
+            {
+                Margin = new Thickness(0, 18, 0, 0)
+            };
+            status.ColumnDefinitions.Add(new ColumnDefinition());
+            status.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = GridLength.Auto
+            });
+
+            var left = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var dot = new Ellipse
+            {
+                Width = 9,
+                Height = 9,
+                Fill = new SolidColorBrush(
+                    MediaColor.FromRgb(99, 99, 102)),
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            left.Children.Add(dot);
+
+            var connectionText = new TextBlock
+            {
+                Text = L("Not connected", "Chưa kết nối"),
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12
+            };
+            left.Children.Add(connectionText);
+            status.Children.Add(left);
+
+            var batteryText = new TextBlock
+            {
+                Text = "▰ --%",
+                Foreground =
+                    TryFindResource("Muted") as System.Windows.Media.Brush,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold
+            };
+            Grid.SetColumn(batteryText, 1);
+            status.Children.Add(batteryText);
+
+            Grid.SetRow(status, 3);
+            info.Children.Add(status);
+
+            Grid.SetRow(info, 2);
+            root.Children.Add(info);
+            card.Child = root;
+            button.Content = card;
+            ProductCardsPanel.Children.Add(button);
+
+            if (product.Id == "dial-desk")
+            {
+                _dialDeskCardBorder = card;
+                _dialDeskConnectionDot = dot;
+                _dialDeskConnectionText = connectionText;
+                _dialDeskBatteryText = batteryText;
+            }
+        }
+
+        UpdateProductHubUi();
+    }
+
+    private UIElement CreateDialDeskPreview()
+    {
+        var container = new Grid();
+
+        var body = new Border
+        {
+            Width = 278,
+            Height = 186,
+            CornerRadius = new CornerRadius(26),
+            Background = new SolidColorBrush(
+                MediaColor.FromRgb(12, 12, 14)),
+            BorderBrush = new SolidColorBrush(
+                MediaColor.FromRgb(58, 58, 64)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var device = new Grid
+        {
+            Margin = new Thickness(18)
+        };
+        device.ColumnDefinitions.Add(new ColumnDefinition());
+        device.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(58)
+        });
+
+        var left = new Grid();
+        left.RowDefinitions.Add(new RowDefinition
+        {
+            Height = new GridLength(58)
+        });
+        left.RowDefinitions.Add(new RowDefinition());
+
+        var display = new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            Background = new LinearGradientBrush(
+                MediaColor.FromRgb(25, 40, 75),
+                MediaColor.FromRgb(80, 42, 93),
+                90),
+            Margin = new Thickness(0, 0, 10, 8)
+        };
+        display.Child = new TextBlock
+        {
+            Text = "DIAL DESK",
+            Foreground = System.Windows.Media.Brushes.White,
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        left.Children.Add(display);
+
+        var keys = new UniformGrid
+        {
+            Rows = 2,
+            Columns = 4,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        for (int i = 0; i < 8; i++)
+        {
+            keys.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(
+                    MediaColor.FromRgb(36, 36, 40)),
+                BorderBrush = new SolidColorBrush(
+                    MediaColor.FromRgb(70, 70, 76)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Margin = new Thickness(3)
+            });
+        }
+        Grid.SetRow(keys, 1);
+        left.Children.Add(keys);
+        device.Children.Add(left);
+
+        var dialArea = new Grid();
+        dialArea.Children.Add(new Ellipse
+        {
+            Width = 48,
+            Height = 48,
+            Fill = new LinearGradientBrush(
+                MediaColor.FromRgb(95, 95, 102),
+                MediaColor.FromRgb(30, 30, 34),
+                45),
+            Stroke = new SolidColorBrush(
+                MediaColor.FromRgb(145, 145, 150)),
+            StrokeThickness = 1,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 5, 0, 0)
+        });
+        dialArea.Children.Add(new TextBlock
+        {
+            Text = "L3D",
+            Foreground = new SolidColorBrush(
+                MediaColor.FromRgb(210, 210, 215)),
+            FontSize = 9,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+        Grid.SetColumn(dialArea, 1);
+        device.Children.Add(dialArea);
+
+        body.Child = device;
+        container.Children.Add(body);
+        return container;
+    }
+
+    private async void ProductCard_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button ||
+            button.Tag is not ProductDefinition product)
+            return;
+
+        WorkspaceProductTitle.Text = product.Name;
+        ProductHub.Visibility = Visibility.Collapsed;
+        DeviceWorkspace.Visibility = Visibility.Visible;
+        await UpdateProductOverviewAsync();
+    }
+
+    private async void BackToProducts_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        DeviceWorkspace.Visibility = Visibility.Collapsed;
+        ProductHub.Visibility = Visibility.Visible;
+        await UpdateProductOverviewAsync();
+    }
+
+    private void UpdateProductHubUi()
+    {
+        if (_dialDeskConnectionText is null ||
+            _dialDeskConnectionDot is null ||
+            _dialDeskBatteryText is null)
+            return;
+
+        bool connected = _serial.IsConnected;
+        string connection = _serial.IsUsbConnected
+            ? L("Connected · USB", "Đã kết nối · USB")
+            : _serial.IsBluetoothConnected
+                ? L("Connected · Bluetooth", "Đã kết nối · Bluetooth")
+                : L("Not connected", "Chưa kết nối");
+
+        _dialDeskConnectionText.Text = connection;
+        _dialDeskConnectionText.Foreground =
+            TryFindResource(connected ? "TextPrimary" : "Muted")
+                as System.Windows.Media.Brush;
+
+        _dialDeskConnectionDot.Fill =
+            new SolidColorBrush(
+                connected
+                    ? MediaColor.FromRgb(48, 209, 88)
+                    : MediaColor.FromRgb(99, 99, 102));
+
+        _dialDeskBatteryText.Text =
+            connected && _dialDeskBatteryPercent.HasValue
+                ? $"▰ {_dialDeskBatteryPercent.Value}%"
+                : "▰ --%";
+
+        _dialDeskBatteryText.Foreground =
+            TryFindResource(
+                connected && _dialDeskBatteryPercent.HasValue
+                    ? "TextPrimary"
+                    : "Muted")
+                as System.Windows.Media.Brush;
+
+        if (_dialDeskCardBorder is not null)
+        {
+            _dialDeskCardBorder.BorderBrush =
+                TryFindResource(connected ? "Accent" : "Line")
+                    as System.Windows.Media.Brush;
+        }
+
+        if (ProductHubStatusText is not null)
+        {
+            ProductHubStatusText.Text = connected
+                ? L(
+                    $"DIAL DESK is online · {_serial.ConnectionName}",
+                    $"DIAL DESK đang trực tuyến · {_serial.ConnectionName}")
+                : L(
+                    "Searching for DIAL DESK over USB and Bluetooth…",
+                    "Đang tìm DIAL DESK qua USB và Bluetooth…");
+        }
+
+        if (ProductHubVersionText is not null)
+        {
+            var version = System.Reflection.Assembly
+                .GetExecutingAssembly().GetName().Version;
+            ProductHubVersionText.Text = version is null
+                ? "v--"
+                : $"v{version.Major}.{version.Minor}.{version.Build}";
+        }
+    }
+
+    private async Task UpdateProductOverviewAsync()
+    {
+        if (!_serial.IsConnected)
+        {
+            _dialDeskBatteryPercent = null;
+            UpdateProductHubUi();
+            return;
+        }
+
+        try
+        {
+            int? battery = await _serial.ReadBatteryPercentAsync();
+            if (battery.HasValue)
+                _dialDeskBatteryPercent = battery.Value;
+        }
+        catch
+        {
+        }
+
+        UpdateProductHubUi();
+    }
+
     private static readonly Dictionary<string, string> Vi = new()
     {
         ["Wireless MacroPad Control"] = "Điều khiển MacroPad không dây",
+        ["Choose a product"] = "Chọn sản phẩm",
+        ["Connected · USB"] = "Đã kết nối · USB",
+        ["Connected · Bluetooth"] = "Đã kết nối · Bluetooth",
+        ["Product Hub"] = "Trung tâm sản phẩm",
         ["Home"] = "Trang chủ",
         ["MEDIA"] = "MEDIA",
         ["Nothing Playing"] = "Không có nhạc đang phát",
@@ -707,12 +1120,12 @@ public partial class MainWindow : Window
         _trayIcon = new Forms.NotifyIcon
         {
             Icon = _appIcon,
-            Text = "LumiPad",
+            Text = "Lumi Macropad",
             Visible = true
         };
 
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Open LumiPad", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        menu.Items.Add("Open Lumi Macropad", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
         menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitApplication));
         _trayIcon.ContextMenuStrip = menu;
         _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
@@ -770,7 +1183,7 @@ public partial class MainWindow : Window
         {
             _trayTipShown = true;
             _trayIcon.BalloonTipTitle =
-                L("LumiPad is still running", "LumiPad vẫn đang chạy");
+                L("Lumi Macropad is still running", "Lumi Macropad vẫn đang chạy");
             _trayIcon.BalloonTipText =
                 L("Now Playing and Bluetooth control continue in the system tray.",
                   "Now Playing và điều khiển Bluetooth vẫn tiếp tục chạy ở khay hệ thống.");
@@ -803,6 +1216,7 @@ public partial class MainWindow : Window
         _autoProfileTimer.Stop();
         _runningAppsTimer.Stop();
         _actionEventTimer.Stop();
+        _productStatusTimer.Stop();
         _reconnectCts.Cancel();
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
@@ -1268,6 +1682,8 @@ public partial class MainWindow : Window
         if (ConnectBluetoothButton is not null)
             ConnectBluetoothButton.BorderBrush =
                 bluetooth ? active : normalBorder;
+
+        UpdateProductHubUi();
     }
 
     private void UpdateSleepButtonUi()
@@ -1588,6 +2004,7 @@ public partial class MainWindow : Window
 
         ConnectUsbButton.IsEnabled = true;
         ConnectBluetoothButton.IsEnabled = true;
+        await UpdateProductOverviewAsync();
     }
 
     private void DisconnectButton_Click(object sender, RoutedEventArgs e)
@@ -1599,9 +2016,11 @@ public partial class MainWindow : Window
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
         BottomStatus.Text = L("Disconnected.", "Đã ngắt kết nối.");
         _keyboardSleeping = false;
+        _dialDeskBatteryPercent = null;
         SetDeviceControlsEnabled(false);
         UpdateTransportIndicators();
         UpdateSleepButtonUi();
+        UpdateProductHubUi();
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken token)
@@ -1645,6 +2064,7 @@ public partial class MainWindow : Window
                             await UpdateMemoryUsageAsync();
                             await UpdatePanelInfoAsync();
                             UpdateTransportIndicators();
+                            await UpdateProductOverviewAsync();
                         }
                     }
 
@@ -1677,6 +2097,7 @@ public partial class MainWindow : Window
                 await RestoreScreensaverAfterReconnectAsync();
                 UpdateTransportIndicators();
                 UpdateSleepButtonUi();
+                await UpdateProductOverviewAsync();
             }
             catch (OperationCanceledException)
             {

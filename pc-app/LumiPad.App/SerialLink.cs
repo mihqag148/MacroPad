@@ -59,6 +59,8 @@ public sealed class SerialLink : IDisposable
         SupportsCapability("ACTION");
     public bool SupportsVariableArtwork =>
         SupportsCapability("ARTVAR");
+    public bool SupportsBatteryInfo =>
+        SupportsCapability("BAT");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -99,7 +101,7 @@ public sealed class SerialLink : IDisposable
             foreach (string cap in new[]
                      {
                          "MEM", "PANEL", "LOG", "SAVERSTATE",
-                         "PROFILE", "ACTION", "ARTVAR"
+                         "PROFILE", "ACTION", "ARTVAR", "BAT"
                      })
             {
                 _capabilities.Add(cap);
@@ -1340,6 +1342,67 @@ public sealed class SerialLink : IDisposable
 
     public void ShowScreensaverNow() =>
         _ = SendLineAsync("CFG|SAVERNOW");
+
+    public async Task<int?> ReadBatteryPercentAsync()
+    {
+        if (!IsConnected || !SupportsBatteryInfo)
+            return null;
+
+        string response;
+
+        await _writeGate.WaitAsync();
+        try
+        {
+            if (_port?.IsOpen == true)
+            {
+                _port.ReadTimeout = 800;
+                _port.DiscardInBuffer();
+                byte[] data = Encoding.UTF8.GetBytes("BAT\n");
+                _port.Write(data, 0, data.Length);
+                response =
+                    await Task.Run(() => _port.ReadLine().Trim());
+            }
+            else if (_bleCharacteristic is not null)
+            {
+                var characteristic = _bleCharacteristic;
+                byte[] data = Encoding.UTF8.GetBytes("BAT\n");
+
+                using var writer = new DataWriter();
+                writer.WriteBytes(data);
+
+                var status = await characteristic.WriteValueAsync(
+                    writer.DetachBuffer(),
+                    GattWriteOption.WriteWithResponse);
+
+                if (status != GattCommunicationStatus.Success)
+                    return null;
+
+                await Task.Delay(35);
+                response = await ReadBleStatusAsync();
+            }
+            else
+            {
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("WARN", $"Read battery failed: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 2 ||
+            !string.Equals(parts[0], "BAT", StringComparison.Ordinal) ||
+            !int.TryParse(parts[1], out int percent))
+            return null;
+
+        return Math.Clamp(percent, 0, 100);
+    }
 
     public async Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
         ReadPanelInfoAsync()
