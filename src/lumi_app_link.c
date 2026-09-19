@@ -439,6 +439,11 @@ static void handle_cfg(char *save) {
         if (seconds) {
             lumi_ui_set_screensaver_delay((uint32_t)strtoul(seconds, NULL, 10));
         }
+    } else if (strcmp(cmd, "SAVERSRC") == 0) {
+        char *source = strtok_r(NULL, "|", &save);
+        if (source) {
+            lumi_ui_set_screensaver_source(atoi(source) != 0);
+        }
     } else if (strcmp(cmd, "SAVERNOW") == 0) {
         lumi_diag_report('I', "Screensaver show now");
         lumi_ui_show_screensaver_now();
@@ -967,6 +972,16 @@ static void handle_panel_info(bool from_usb) {
     }
 }
 
+static void handle_pc_config(char *save) {
+    char *name = strtok_r(NULL, "|", &save);
+
+    if (!name || name[0] == '\0') {
+        name = "MY PC";
+    }
+
+    lumi_ui_pc_monitor_set_config_name(name);
+}
+
 static void handle_pc_monitor(char *save) {
     char *cpu_load = strtok_r(NULL, "|", &save);
     char *cpu_temp = strtok_r(NULL, "|", &save);
@@ -1056,6 +1071,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_panel_info(from_usb);
     } else if (strcmp(root, "BAT") == 0) {
         handle_battery(from_usb);
+    } else if (strcmp(root, "PCCFG") == 0) {
+        handle_pc_config(save);
     } else if (strcmp(root, "PCMON") == 0) {
         handle_pc_monitor(save);
     } else if (strcmp(root, "PCMONCLR") == 0) {
