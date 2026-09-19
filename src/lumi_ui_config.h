@@ -50,6 +50,7 @@ void lumi_ui_pc_monitor_update(
     int16_t fps);
 void lumi_ui_pc_monitor_clear(void);
 void lumi_ui_pc_monitor_set_config_name(const char *name);
+void lumi_ui_pc_monitor_set_layout(const uint8_t slots[6]);
 
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
 bool lumi_ui_saver_anim_set_frame_interval(uint8_t index, uint16_t interval_ms);
