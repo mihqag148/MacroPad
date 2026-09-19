@@ -128,10 +128,13 @@ static lv_obj_t *boot_progress;
 static uint32_t boot_started_ms;
 
 static lv_obj_t *pc_monitor_overlay;
+static lv_obj_t *pc_cpu_title;
 static lv_obj_t *pc_cpu_value;
 static lv_obj_t *pc_cpu_meta;
+static lv_obj_t *pc_gpu_title;
 static lv_obj_t *pc_gpu_value;
 static lv_obj_t *pc_gpu_meta;
+static lv_obj_t *pc_ram_title;
 static lv_obj_t *pc_ram_value;
 static lv_obj_t *pc_ram_meta;
 static lv_obj_t *pc_net_down;
@@ -141,6 +144,7 @@ static lv_obj_t *pc_monitor_status;
 static bool pc_monitor_selected;
 static bool pc_monitor_saver_active;
 static char pc_monitor_config_name[20] = "MY PC";
+static uint8_t pc_monitor_metric_slots[6] = {0, 3, 6, 9, 10, 11};
 
 struct pc_monitor_state {
     uint8_t cpu_load;
@@ -177,120 +181,265 @@ static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
 static bool saver_source_pc_monitor = false;
+static void pc_metric_format(
+    uint8_t metric,
+    const struct pc_monitor_state *state,
+    bool stale,
+    char *title,
+    size_t title_len,
+    char *value,
+    size_t value_len,
+    char *meta,
+    size_t meta_len) {
+
+    const char *fallback = "--";
+    snprintf(meta, meta_len, " ");
+
+    switch (metric) {
+    case 0:
+        snprintf(title, title_len, "CPU USE");
+        snprintf(value, value_len, stale ? "%s" : "%u%%",
+                 stale ? fallback : "",
+                 stale ? 0U : (unsigned int)state->cpu_load);
+        break;
+    case 1:
+        snprintf(title, title_len, "CPU TEMP");
+        if (stale || state->cpu_temp_c < 0) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%dC", (int)state->cpu_temp_c);
+        }
+        break;
+    case 2:
+        snprintf(title, title_len, "CPU CLK");
+        if (stale || state->cpu_clock_mhz == 0U) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%u", (unsigned int)state->cpu_clock_mhz);
+            snprintf(meta, meta_len, "MHz");
+        }
+        break;
+    case 3:
+        snprintf(title, title_len, "GPU USE");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%u%%", (unsigned int)state->gpu_load);
+        }
+        break;
+    case 4:
+        snprintf(title, title_len, "GPU TEMP");
+        if (stale || state->gpu_temp_c < 0) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%dC", (int)state->gpu_temp_c);
+        }
+        break;
+    case 5:
+        snprintf(title, title_len, "GPU CLK");
+        if (stale || state->gpu_clock_mhz == 0U) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%u", (unsigned int)state->gpu_clock_mhz);
+            snprintf(meta, meta_len, "MHz");
+        }
+        break;
+    case 6:
+        snprintf(title, title_len, "RAM USE");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%u%%", (unsigned int)state->ram_load);
+        }
+        break;
+    case 7: {
+        snprintf(title, title_len, "RAM USED");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            uint32_t tenths = (state->ram_used_mb * 10U) / 1024U;
+            snprintf(value, value_len, "%u.%u",
+                     (unsigned int)(tenths / 10U),
+                     (unsigned int)(tenths % 10U));
+            snprintf(meta, meta_len, "GB");
+        }
+        break;
+    }
+    case 8: {
+        snprintf(title, title_len, "RAM TOTAL");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            uint32_t tenths = (state->ram_total_mb * 10U) / 1024U;
+            snprintf(value, value_len, "%u.%u",
+                     (unsigned int)(tenths / 10U),
+                     (unsigned int)(tenths % 10U));
+            snprintf(meta, meta_len, "GB");
+        }
+        break;
+    }
+    case 9: {
+        snprintf(title, title_len, "NET DOWN");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            uint32_t tenths = state->net_down_kbps / 100U;
+            snprintf(value, value_len, "%u.%u",
+                     (unsigned int)(tenths / 10U),
+                     (unsigned int)(tenths % 10U));
+            snprintf(meta, meta_len, "Mb/s");
+        }
+        break;
+    }
+    case 10: {
+        snprintf(title, title_len, "NET UP");
+        if (stale) {
+            snprintf(value, value_len, "--");
+        } else {
+            uint32_t tenths = state->net_up_kbps / 100U;
+            snprintf(value, value_len, "%u.%u",
+                     (unsigned int)(tenths / 10U),
+                     (unsigned int)(tenths % 10U));
+            snprintf(meta, meta_len, "Mb/s");
+        }
+        break;
+    }
+    case 11:
+    default:
+        snprintf(title, title_len, "FPS");
+        if (stale || state->fps < 0) {
+            snprintf(value, value_len, "--");
+        } else {
+            snprintf(value, value_len, "%d", (int)state->fps);
+        }
+        break;
+    }
+}
+
+static void pc_render_card(
+    lv_obj_t *title_label,
+    lv_obj_t *value_label,
+    lv_obj_t *meta_label,
+    uint8_t metric,
+    const struct pc_monitor_state *state,
+    bool stale) {
+
+    char title[16];
+    char value[20];
+    char meta[16];
+
+    pc_metric_format(
+        metric,
+        state,
+        stale,
+        title,
+        sizeof(title),
+        value,
+        sizeof(value),
+        meta,
+        sizeof(meta));
+
+    lv_label_set_text(title_label, title);
+    lv_label_set_text(value_label, value);
+    lv_label_set_text(meta_label, meta);
+}
+
+static void pc_render_footer(
+    lv_obj_t *label,
+    uint8_t metric,
+    const struct pc_monitor_state *state,
+    bool stale) {
+
+    char title[16];
+    char value[20];
+    char meta[16];
+    char line[40];
+
+    pc_metric_format(
+        metric,
+        state,
+        stale,
+        title,
+        sizeof(title),
+        value,
+        sizeof(value),
+        meta,
+        sizeof(meta));
+
+    if (meta[0] != ' ' && meta[0] != '\0') {
+        snprintf(line, sizeof(line), "%s %s%s", title, value, meta);
+    } else {
+        snprintf(line, sizeof(line), "%s %s", title, value);
+    }
+
+    lv_label_set_text(label, line);
+}
+
 static void refresh_pc_monitor_labels(void) {
-    if (!pc_monitor_overlay || !pc_cpu_value ||
-        !pc_gpu_value || !pc_ram_value) {
+    if (!pc_monitor_overlay ||
+        !pc_cpu_title || !pc_cpu_value || !pc_cpu_meta ||
+        !pc_gpu_title || !pc_gpu_value || !pc_gpu_meta ||
+        !pc_ram_title || !pc_ram_value || !pc_ram_meta) {
         return;
     }
 
     struct pc_monitor_state state;
+    uint8_t slots[6];
+    char config_name[20];
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     state = pc_monitor_state;
+    memcpy(slots, pc_monitor_metric_slots, sizeof(slots));
+    snprintf(config_name, sizeof(config_name), "%s", pc_monitor_config_name);
     k_mutex_unlock(&lumi_ui_config_lock);
 
     bool stale =
         !state.valid ||
         (uint32_t)(k_uptime_get_32() - state.updated_ms) > 5000U;
 
-    if (stale) {
-        lv_label_set_text(pc_cpu_value, "--%");
-        lv_label_set_text(pc_cpu_meta, "-- C  ·  -- MHz");
-        lv_label_set_text(pc_gpu_value, "--%");
-        lv_label_set_text(pc_gpu_meta, "-- C  ·  -- MHz");
-        lv_label_set_text(pc_ram_value, "--%");
-        lv_label_set_text(pc_ram_meta, "-- / -- GB");
-        lv_label_set_text(pc_net_down, "DL --");
-        lv_label_set_text(pc_net_up, "UL --");
-        lv_label_set_text(pc_fps_value, "FPS --");
-        lv_label_set_text_fmt(
-            pc_monitor_status,
-            "%s  OFFLINE",
-            pc_monitor_config_name);
-        return;
-    }
-
-    lv_label_set_text_fmt(
+    pc_render_card(
+        pc_cpu_title,
         pc_cpu_value,
-        "%u%%",
-        (unsigned int)state.cpu_load);
-    if (state.cpu_temp_c >= 0) {
-        lv_label_set_text_fmt(
-            pc_cpu_meta,
-            "%d C  ·  %u MHz",
-            (int)state.cpu_temp_c,
-            (unsigned int)state.cpu_clock_mhz);
-    } else {
-        lv_label_set_text_fmt(
-            pc_cpu_meta,
-            "-- C  ·  %u MHz",
-            (unsigned int)state.cpu_clock_mhz);
-    }
-
-    lv_label_set_text_fmt(
+        pc_cpu_meta,
+        slots[0],
+        &state,
+        stale);
+    pc_render_card(
+        pc_gpu_title,
         pc_gpu_value,
-        "%u%%",
-        (unsigned int)state.gpu_load);
-    if (state.gpu_temp_c >= 0) {
-        lv_label_set_text_fmt(
-            pc_gpu_meta,
-            "%d C  ·  %u MHz",
-            (int)state.gpu_temp_c,
-            (unsigned int)state.gpu_clock_mhz);
-    } else {
-        lv_label_set_text_fmt(
-            pc_gpu_meta,
-            "-- C  ·  %u MHz",
-            (unsigned int)state.gpu_clock_mhz);
-    }
-
-    lv_label_set_text_fmt(
+        pc_gpu_meta,
+        slots[1],
+        &state,
+        stale);
+    pc_render_card(
+        pc_ram_title,
         pc_ram_value,
-        "%u%%",
-        (unsigned int)state.ram_load);
-
-    uint32_t used_tenths =
-        (state.ram_used_mb * 10U) / 1024U;
-    uint32_t total_tenths =
-        (state.ram_total_mb * 10U) / 1024U;
-
-    lv_label_set_text_fmt(
         pc_ram_meta,
-        "%u.%u / %u.%u GB",
-        (unsigned int)(used_tenths / 10U),
-        (unsigned int)(used_tenths % 10U),
-        (unsigned int)(total_tenths / 10U),
-        (unsigned int)(total_tenths % 10U));
+        slots[2],
+        &state,
+        stale);
 
-    uint32_t down_tenths =
-        state.net_down_kbps / 100U;
-    uint32_t up_tenths =
-        state.net_up_kbps / 100U;
-
-    lv_label_set_text_fmt(
+    pc_render_footer(
         pc_net_down,
-        "DL %u.%u Mb/s",
-        (unsigned int)(down_tenths / 10U),
-        (unsigned int)(down_tenths % 10U));
-    lv_label_set_text_fmt(
+        slots[3],
+        &state,
+        stale);
+    pc_render_footer(
         pc_net_up,
-        "UL %u.%u Mb/s",
-        (unsigned int)(up_tenths / 10U),
-        (unsigned int)(up_tenths % 10U));
-
-    if (state.fps >= 0) {
-        lv_label_set_text_fmt(
-            pc_fps_value,
-            "FPS %d",
-            (int)state.fps);
-    } else {
-        lv_label_set_text(pc_fps_value, "FPS --");
-    }
+        slots[4],
+        &state,
+        stale);
+    pc_render_footer(
+        pc_fps_value,
+        slots[5],
+        &state,
+        stale);
 
     lv_label_set_text_fmt(
         pc_monitor_status,
-        "%s  LIVE",
-        pc_monitor_config_name);
+        "%s  %s",
+        config_name,
+        stale ? "OFFLINE" : "LIVE");
 }
 
 static void pc_monitor_work_handler(struct k_work *work) {
@@ -357,6 +506,22 @@ void lumi_ui_pc_monitor_set_config_name(const char *name) {
         sizeof(pc_monitor_config_name),
         "%.18s",
         name);
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    k_work_submit_to_queue(
+        zmk_display_work_q(),
+        &pc_monitor_work);
+}
+
+void lumi_ui_pc_monitor_set_layout(const uint8_t slots[6]) {
+    if (!slots) {
+        return;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    for (uint8_t i = 0U; i < 6U; i++) {
+        pc_monitor_metric_slots[i] = MIN(slots[i], 11U);
+    }
     k_mutex_unlock(&lumi_ui_config_lock);
 
     k_work_submit_to_queue(
@@ -2219,6 +2384,7 @@ static void pc_monitor_card(
     int32_t x,
     const char *title,
     uint32_t accent_color,
+    lv_obj_t **title_out,
     lv_obj_t **value_out,
     lv_obj_t **meta_out) {
 
@@ -2233,13 +2399,13 @@ static void pc_monitor_card(
     lv_obj_set_style_radius(card, 10, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *title_label =
+    *title_out =
         pc_monitor_label(
             card,
             title,
             &lv_font_montserrat_12,
             accent_color);
-    lv_obj_set_pos(title_label, 9, 6);
+    lv_obj_set_pos(*title_out, 9, 6);
 
     *value_out =
         pc_monitor_label(
@@ -2282,22 +2448,25 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_monitor_card(
         pc_monitor_overlay,
         8,
-        "CPU",
+        "CPU USE",
         0x64D2FF,
+        &pc_cpu_title,
         &pc_cpu_value,
         &pc_cpu_meta);
     pc_monitor_card(
         pc_monitor_overlay,
         112,
-        "GPU",
+        "GPU USE",
         0xBF5AF2,
+        &pc_gpu_title,
         &pc_gpu_value,
         &pc_gpu_meta);
     pc_monitor_card(
         pc_monitor_overlay,
         216,
-        "RAM",
+        "RAM USE",
         0x30D158,
+        &pc_ram_title,
         &pc_ram_value,
         &pc_ram_meta);
 
@@ -2315,18 +2484,22 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_net_down =
         pc_monitor_label(
             network,
-            "DL --",
+            "NET DOWN --",
             &lv_font_montserrat_12,
             0xFFFFFF);
     lv_obj_set_pos(pc_net_down, 10, 6);
+    lv_obj_set_width(pc_net_down, 96);
+    lv_label_set_long_mode(pc_net_down, LV_LABEL_LONG_DOT);
 
     pc_net_up =
         pc_monitor_label(
             network,
-            "UL --",
+            "NET UP --",
             &lv_font_montserrat_12,
             0xFFFFFF);
     lv_obj_set_pos(pc_net_up, 108, 6);
+    lv_obj_set_width(pc_net_up, 96);
+    lv_label_set_long_mode(pc_net_up, LV_LABEL_LONG_DOT);
 
     pc_fps_value =
         pc_monitor_label(
@@ -2335,6 +2508,8 @@ static void init_pc_monitor(lv_obj_t *screen) {
             &lv_font_montserrat_12,
             0xFFFFFF);
     lv_obj_set_pos(pc_fps_value, 212, 6);
+    lv_obj_set_width(pc_fps_value, 82);
+    lv_label_set_long_mode(pc_fps_value, LV_LABEL_LONG_DOT);
 
     pc_monitor_status =
         pc_monitor_label(
