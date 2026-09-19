@@ -252,7 +252,7 @@ public partial class MainWindow : Window
     {
         ["Wireless MacroPad Control"] = "Điều khiển MacroPad không dây",
         ["Home"] = "Trang chủ",
-        ["NOW PLAYING"] = "ĐANG PHÁT",
+        ["MEDIA"] = "MEDIA",
         ["Nothing Playing"] = "Không có nhạc đang phát",
         ["SCREENSAVER MEDIA"] = "MEDIA BẢO VỆ MÀN HÌNH",
         ["GIF / Image local"] = "GIF / Ảnh trên máy",
@@ -914,6 +914,9 @@ public partial class MainWindow : Window
         ElapsedText.Text = FormatTime(data.Position);
         DurationText.Text = FormatTime(data.Duration);
         PlayButton.Content = data.IsPlaying ? "❚❚" : "▶";
+        PlayButton.ToolTip = data.IsPlaying
+            ? L("Pause", "Tạm dừng")
+            : L("Play", "Phát");
 
         if (data.ArtworkRgb332 is { Length: 5776 } artwork)
         {
@@ -942,6 +945,7 @@ public partial class MainWindow : Window
         ElapsedText.Text = "0:00";
         DurationText.Text = "0:00";
         PlayButton.Content = "▶";
+        PlayButton.ToolTip = L("Play", "Phát");
 
         _serial.ClearNowPlaying();
     }
