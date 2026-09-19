@@ -1342,8 +1342,11 @@ public sealed class SerialLink : IDisposable
         return null;
     }
 
+    public Task ShowScreensaverNowAsync(bool pcMonitor) =>
+        SendLineAsync($"CFG|SAVERNOW|{(pcMonitor ? 1 : 0)}");
+
     public void ShowScreensaverNow() =>
-        _ = SendLineAsync("CFG|SAVERNOW");
+        _ = ShowScreensaverNowAsync(false);
 
     public async Task<int?> ReadBatteryPercentAsync()
     {
@@ -1653,8 +1656,11 @@ public sealed class SerialLink : IDisposable
             $"CFG|SAVER|{(enabled ? 1 : 0)}|{style}|{delaySeconds}|" +
             $"{r1}|{g1}|{b1}|{r2}|{g2}|{b2}");
 
+    public Task SetScreensaverSourceAsync(bool pcMonitor) =>
+        SendLineAsync($"CFG|SAVERSRC|{(pcMonitor ? 1 : 0)}");
+
     public void SetScreensaverSource(bool pcMonitor) =>
-        _ = SendLineAsync($"CFG|SAVERSRC|{(pcMonitor ? 1 : 0)}");
+        _ = SetScreensaverSourceAsync(pcMonitor);
 
     public void SetScreensaverDelay(int seconds) =>
         _ = SendLineAsync($"CFG|SAVERDELAY|{Math.Max(0, seconds)}");
