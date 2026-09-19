@@ -484,7 +484,8 @@ public sealed class SerialLink : IDisposable
         // dedicated CDC port before a large upload. USB wins automatically
         // when present; Bluetooth remains the fallback.
         bool useUsb = await EnsureUsbForBulkAsync();
-        Log("INFO", $"Screensaver upload: {animation.Frames.Count} frames, {animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
+        int loopMs = animation.FrameDurationsMs.Sum();
+        Log("INFO", $"Screensaver upload: {animation.Frames.Count} frames, loop={loopMs} ms, avg={animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
 
         int rawChunkSize = useUsb ? 240 : 180;
         int frameBytes =
@@ -494,8 +495,15 @@ public sealed class SerialLink : IDisposable
         int totalChunks = chunksPerFrame * animation.Frames.Count;
         int sentChunks = 0;
 
+        string timingCsv =
+            animation.FrameDurationsMs.Count == animation.Frames.Count
+                ? string.Join(",", animation.FrameDurationsMs.Select(
+                    ms => Math.Clamp(ms, 33, 5000)))
+                : string.Empty;
+
         string begin =
-            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}";
+            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}" +
+            (timingCsv.Length > 0 ? $"|{timingCsv}" : string.Empty);
 
         if (useUsb)
             await SendUsbSaverLineAsync(begin);
