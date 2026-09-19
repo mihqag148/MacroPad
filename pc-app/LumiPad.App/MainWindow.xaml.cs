@@ -292,7 +292,7 @@ public partial class MainWindow : Window
         ["App + firmware events and errors"] = "Sự kiện và lỗi của app + firmware",
         ["View log"] = "Xem log",
         ["Hide log"] = "Ẩn log",
-        ["Save log"] = "Lưu log",
+        ["Save log"] = "Tải log",
         ["Copy log"] = "Sao chép log",
         ["Clear log"] = "Xóa log",
     };
