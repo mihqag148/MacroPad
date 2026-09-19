@@ -1047,6 +1047,30 @@ public partial class MainWindow : Window
         RamUsageText.Text = $"RAM {ramPct:0.0}%";
     }
 
+    private async Task UpdatePanelInfoAsync()
+    {
+        const string fallback =
+            "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+
+        if (!_serial.IsConnected)
+        {
+            PanelInfoText.Text = fallback;
+            return;
+        }
+
+        var info = await _serial.ReadPanelInfoAsync();
+        if (info is null)
+        {
+            PanelInfoText.Text = fallback;
+            return;
+        }
+
+        double spiMhz = info.Value.SpiHz / 1_000_000.0;
+        PanelInfoText.Text =
+            $"{info.Value.Panel} ≈{info.Value.RefreshHz} Hz default · " +
+            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS";
+    }
+
     private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
     {
         _connectionPreference = "usb";
@@ -1107,6 +1131,7 @@ public partial class MainWindow : Window
             SendAllRgb();
             SendPowerTiming();
             await UpdateMemoryUsageAsync();
+            await UpdatePanelInfoAsync();
         }
 
         ConnectUsbButton.IsEnabled = true;
@@ -1154,6 +1179,7 @@ public partial class MainWindow : Window
                 SendAllRgb();
                 SendPowerTiming();
                 await UpdateMemoryUsageAsync();
+                await UpdatePanelInfoAsync();
                 await RestoreScreensaverAfterReconnectAsync();
             }
             catch (OperationCanceledException)
@@ -1680,11 +1706,17 @@ public partial class MainWindow : Window
                     scaleMode);
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
+            int playbackAverageFps =
+                (int)Math.Round(
+                    1000.0 /
+                    Math.Max(1, _screensaverAnimation.FrameIntervalMs));
+
             ScreensaverMediaInfo.Text =
-                $"{_screensaverAnimation.Frames.Count} frames · " +
+                $"{_screensaverAnimation.Frames.Count} stored frames · " +
                 $"{ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · " +
-                $"{Math.Round(1000.0 / Math.Max(1, _screensaverAnimation.FrameIntervalMs))} FPS · " +
-                $"{_screensaverAnimation.FrameIntervalMs} ms/frame · {scaleMode}";
+                $"Playback avg {playbackAverageFps} FPS · " +
+                $"cap {ScreensaverMediaService.MaxPlaybackFps} FPS · " +
+                $"{_screensaverAnimation.FrameIntervalMs} ms/frame avg · {scaleMode}";
 
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
                 _screensaverAnimation.Frames[0],
