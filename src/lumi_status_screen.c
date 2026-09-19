@@ -780,7 +780,9 @@ static int saver_flash_open_once(void) {
 
     size_t required =
         SAVER_FLASH_DATA_OFFSET +
-        (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES;
+        MAX(
+            (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES,
+            (size_t)LUMI_SAVER_IMAGE_BYTES);
 
     if (saver_flash->fa_size < required) {
         lumi_diag_report('E', "Saver flash too small have=%u need=%u",
@@ -811,27 +813,42 @@ static bool saver_flash_load_metadata(void) {
         return false;
     }
 
+    bool gif_ok =
+        header.format == SAVER_FORMAT_RGB332 &&
+        header.width == LUMI_SAVER_FRAME_W &&
+        header.height == LUMI_SAVER_FRAME_H &&
+        header.frame_bytes == LUMI_SAVER_FRAME_BYTES &&
+        header.frame_count >= 1U &&
+        header.frame_count <= LUMI_SAVER_MAX_FRAMES &&
+        header.interval_ms >= SAVER_MIN_FRAME_MS &&
+        header.data_size ==
+            (uint32_t)header.frame_count * LUMI_SAVER_FRAME_BYTES;
+
+    bool static_ok =
+        header.format == SAVER_FORMAT_RGB565_STATIC &&
+        header.width == LUMI_SAVER_IMAGE_W &&
+        header.height == LUMI_SAVER_IMAGE_H &&
+        header.frame_bytes == LUMI_SAVER_IMAGE_BYTES &&
+        header.frame_count == 1U &&
+        header.data_size == LUMI_SAVER_IMAGE_BYTES;
+
     if (header.magic != SAVER_FLASH_MAGIC ||
         header.version != SAVER_FLASH_VERSION ||
-        header.width != LUMI_SAVER_FRAME_W ||
-        header.height != LUMI_SAVER_FRAME_H ||
-        header.frame_bytes != LUMI_SAVER_FRAME_BYTES ||
-        header.frame_count < 1U ||
-        header.frame_count > LUMI_SAVER_MAX_FRAMES ||
-        header.interval_ms < 33U ||
-        header.data_size !=
-            (uint32_t)header.frame_count * LUMI_SAVER_FRAME_BYTES) {
-        lumi_diag_report('W', "Saver metadata invalid magic=%08x frames=%u interval=%u",
-                         (unsigned int)header.magic,
-                         (unsigned int)header.frame_count,
-                         (unsigned int)header.interval_ms);
+        (!gif_ok && !static_ok)) {
+        lumi_diag_report(
+            'W',
+            "Saver metadata invalid magic=%08x fmt=%u frames=%u",
+            (unsigned int)header.magic,
+            (unsigned int)header.format,
+            (unsigned int)header.frame_count);
         return false;
     }
 
+    saver_media_format = header.format;
     saver_media_frame_count = header.frame_count;
     saver_timing_set_uniform(
         saver_media_frame_count,
-        header.interval_ms);
+        static_ok ? 1000U : header.interval_ms);
 
     struct saver_flash_timing timing = {0};
     int timing_rc = flash_area_read(
@@ -840,7 +857,8 @@ static bool saver_flash_load_metadata(void) {
         &timing,
         sizeof(timing));
 
-    if (timing_rc == 0 &&
+    if (saver_media_format == SAVER_FORMAT_RGB332 &&
+        timing_rc == 0 &&
         timing.magic == SAVER_FLASH_TIMING_MAGIC &&
         timing.frame_count == saver_media_frame_count) {
 
@@ -856,10 +874,16 @@ static bool saver_flash_load_metadata(void) {
 
     saver_media_index = 0U;
     saver_media_epoch_ms = 0U;
+    saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    saver_static_drawn = false;
     saver_media_valid = true;
-    lumi_diag_report('I', "Saver metadata OK frames=%u interval=%ums",
-                     (unsigned int)saver_media_frame_count,
-                     (unsigned int)saver_media_interval_ms);
+    lumi_diag_report(
+        'I',
+        "Saver metadata OK fmt=%u frames=%u interval=%ums",
+        (unsigned int)saver_media_format,
+        (unsigned int)saver_media_frame_count,
+        (unsigned int)saver_media_interval_ms);
     return true;
 }
 
