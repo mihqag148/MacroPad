@@ -8,6 +8,12 @@
             #binding-cells = <1>;
             display-name = "Lumi RGB";
         };
+
+        lumi_action: lumi_action {
+            compatible = "zmk,behavior-lumi-action";
+            #binding-cells = <1>;
+            display-name = "Lumi Action";
+        };
     };
 
     // Hold these two keys together to unlock ZMK Studio:
