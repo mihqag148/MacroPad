@@ -400,237 +400,7 @@
 
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="14"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="14"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <Border Background="{DynamicResource Card2}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="18"
-                            Padding="10">
-                        <UniformGrid Columns="5">
-                            <Button x:Name="RgbProfileTab0" Tag="0"
-                                    Click="RgbProfileTab_Click" Height="46">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="RgbProfileDot0" Width="12" Height="12"
-                                             Fill="#FF7800" Margin="0,0,8,0"/>
-                                    <TextBlock Text="OFFICE" FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="RgbProfileTab1" Tag="1"
-                                    Click="RgbProfileTab_Click" Height="46">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="RgbProfileDot1" Width="12" Height="12"
-                                             Fill="#B428FF" Margin="0,0,8,0"/>
-                                    <TextBlock Text="MEDIA" FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="RgbProfileTab2" Tag="2"
-                                    Click="RgbProfileTab_Click" Height="46">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="RgbProfileDot2" Width="12" Height="12"
-                                             Fill="#FF5A00" Margin="0,0,8,0"/>
-                                    <TextBlock Text="FUSION 360" FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="RgbProfileTab3" Tag="3"
-                                    Click="RgbProfileTab_Click" Height="46">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="RgbProfileDot3" Width="12" Height="12"
-                                             Fill="#00AAFF" Margin="0,0,8,0"/>
-                                    <TextBlock Text="CUSTOM 4" FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="RgbProfileTab4" Tag="4"
-                                    Click="RgbProfileTab_Click" Height="46" Margin="0">
-                                <StackPanel Orientation="Horizontal">
-                                    <Ellipse x:Name="RgbProfileDot4" Width="12" Height="12"
-                                             Fill="#50FF64" Margin="0,0,8,0"/>
-                                    <TextBlock Text="CUSTOM 5" FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                        </UniformGrid>
-                    </Border>
-
-                    <Border Grid.Row="2"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="22"
-                            Padding="18">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="12"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="LED MAP"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock x:Name="RgbLedSelectionText"
-                                               Text="All LEDs selected"
-                                               FontSize="16"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                                <Button Grid.Column="1"
-                                        Content="All LEDs"
-                                        Tag="-1"
-                                        Click="RgbLedSelector_Click"
-                                        Margin="0"/>
-                            </Grid>
-
-                            <Grid Grid.Row="2"
-                                  Width="820"
-                                  Height="220"
-                                  HorizontalAlignment="Center">
-                                <Border Background="#202022"
-                                        BorderBrush="#4A4A4D"
-                                        BorderThickness="1"
-                                        CornerRadius="18"
-                                        Padding="28,22"
-                                        Margin="20,8,20,8">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition/>
-                                            <ColumnDefinition Width="110"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <UniformGrid Columns="4" Rows="3"
-                                                     Margin="0,0,16,0">
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="COPY" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="PASTE" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="CUT" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="UNDO" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="REDO" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="SELECT" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="SAVE" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="FIND" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="ENTER" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="BACK" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="TAB" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <Border Background="#2A2A2D" BorderBrush="#626267"
-                                                    BorderThickness="1" CornerRadius="8" Margin="4">
-                                                <TextBlock Text="ESC" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            </Border>
-                                        </UniformGrid>
-
-                                        <Grid Grid.Column="1">
-                                            <Ellipse Width="76" Height="76"
-                                                     Fill="#2A2A2D"
-                                                     Stroke="#626267"
-                                                     StrokeThickness="2"
-                                                     HorizontalAlignment="Center"
-                                                     VerticalAlignment="Center"/>
-                                            <TextBlock Text="ENC"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontWeight="SemiBold"/>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-
-                                <Button x:Name="RgbLedButton0"
-                                        Tag="0" Click="RgbLedSelector_Click"
-                                        Width="42" Height="42" Padding="5"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Top"
-                                        Margin="0,0,0,0"
-                                        ToolTip="LED 1">
-                                    <Ellipse x:Name="RgbLedPreview0" Fill="#FF7800"/>
-                                </Button>
-                                <Button x:Name="RgbLedButton1"
-                                        Tag="1" Click="RgbLedSelector_Click"
-                                        Width="42" Height="42" Padding="5"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Margin="0,0,0,0"
-                                        ToolTip="LED 2">
-                                    <Ellipse x:Name="RgbLedPreview1" Fill="#FF7800"/>
-                                </Button>
-                                <Button x:Name="RgbLedButton2"
-                                        Tag="2" Click="RgbLedSelector_Click"
-                                        Width="42" Height="42" Padding="5"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Bottom"
-                                        Margin="0"
-                                        ToolTip="LED 3">
-                                    <Ellipse x:Name="RgbLedPreview2" Fill="#FF7800"/>
-                                </Button>
-                                <Button x:Name="RgbLedButton3"
-                                        Tag="3" Click="RgbLedSelector_Click"
-                                        Width="42" Height="42" Padding="5"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Bottom"
-                                        Margin="0"
-                                        ToolTip="LED 4">
-                                    <Ellipse x:Name="RgbLedPreview3" Fill="#FF7800"/>
-                                </Button>
-                            </Grid>
-                        </Grid>
-                    </Border>
-
                     <Border x:Name="RgbDevicePanel"
-                            Grid.Row="4"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
@@ -760,9 +530,6 @@
                                     <Button Content="Solid Color" Tag="3"
                                             Click="RgbPreset_Click"
                                             Width="120" Height="48"/>
-                                    <Button Content="Per-LED Static" Tag="PIXEL"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
                                     <Button Content="Auto by Layer" Tag="AUTO"
                                             Click="RgbPreset_Click"
                                             Width="120" Height="48"/>
@@ -790,12 +557,6 @@
                                             Click="RgbPreset_Click"
                                             Width="130" Height="48"/>
                                 </WrapPanel>
-
-                                <TextBlock Text="Tip: select LED 1–4 on the board, then choose a color."
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"
-                                           Margin="0,18,0,0"/>
                             </StackPanel>
 
                             <Border Grid.Column="3" Width="1"
@@ -809,21 +570,13 @@
                                 <ComboBox x:Name="RgbProfileCombo"
                                           SelectedValuePath="Tag"
                                           SelectionChanged="RgbProfileCombo_SelectionChanged"
-                                          Visibility="Collapsed">
+                                          Margin="0,8,0,8">
                                     <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
                                     <ComboBoxItem Content="MEDIA" Tag="1"/>
                                     <ComboBoxItem Content="FUSION 360" Tag="2"/>
                                     <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
                                     <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
                                 </ComboBox>
-
-                                <TextBlock x:Name="RgbCurrentProfileText"
-                                           Text="OFFICE"
-                                           Foreground="{DynamicResource Accent}"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"
-                                           Margin="0,8,0,8"/>
-
                                 <Button Content="Save to profile"
                                         Click="RgbSaveProfile_Click"
                                         HorizontalAlignment="Left"
@@ -913,6 +666,7 @@
                     </Border>
                 </Grid>
             </TabItem>
+
 
 
             <TabItem x:Name="ZmkTab" Header="ZMK Studio">
