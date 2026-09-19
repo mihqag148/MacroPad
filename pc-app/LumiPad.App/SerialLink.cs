@@ -681,7 +681,7 @@ public sealed class SerialLink : IDisposable
                     "Invalid RGB565 static image size.");
 
             int rawChunk = 240;
-            int totalChunks =
+            int staticTotalChunks =
                 (image.Length + rawChunk - 1) / rawChunk;
             int sent = 0;
 
@@ -690,11 +690,11 @@ public sealed class SerialLink : IDisposable
                 $"Static saver upload: {animation.Width}x{animation.Height} RGB565, " +
                 $"{image.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
 
-            string begin = $"IMGBEGIN|{image.Length}";
+            string staticBegin = $"IMGBEGIN|{image.Length}";
             if (useUsb)
-                await SendUsbSaverLineAsync(begin);
+                await SendUsbSaverLineAsync(staticBegin);
             else
-                await SendLineAsync(begin);
+                await SendLineAsync(staticBegin);
 
             for (int offset = 0; offset < image.Length; offset += rawChunk)
             {
@@ -713,7 +713,7 @@ public sealed class SerialLink : IDisposable
 
                 sent++;
                 progress?.Report(
-                    (int)Math.Round(sent * 100.0 / totalChunks));
+                    (int)Math.Round(sent * 100.0 / staticTotalChunks));
             }
 
             if (useUsb)
