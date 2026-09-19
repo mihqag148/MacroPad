@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _diagnosticTimer = new();
     private readonly DispatcherTimer _autoProfileTimer = new();
     private readonly DispatcherTimer _runningAppsTimer = new();
+    private readonly DispatcherTimer _actionEventTimer = new();
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
     private bool _loadingAutoProfilePresetUi;
@@ -50,6 +51,8 @@ public partial class MainWindow : Window
     private int _lastAppliedAutoProfile = -1;
     private List<ActionScriptDefinition> _actionScripts = [];
     private bool _loadingActionScriptUi;
+    private readonly HashSet<int> _runningActionIds = [];
+    private uint _lastActionEventSeq;
     private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
@@ -157,6 +160,9 @@ public partial class MainWindow : Window
         _runningAppsTimer.Interval = TimeSpan.FromSeconds(4);
         _runningAppsTimer.Tick += async (_, _) => await RefreshRunningAppsAsync();
 
+        _actionEventTimer.Interval = TimeSpan.FromMilliseconds(120);
+        _actionEventTimer.Tick += async (_, _) => await PollLumiActionAsync();
+
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
@@ -234,6 +240,7 @@ public partial class MainWindow : Window
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
             _autoProfileTimer.Start();
             _runningAppsTimer.Start();
+            _actionEventTimer.Start();
             await RefreshRunningAppsAsync();
             PollAutoProfile(force: true);
         };
@@ -783,6 +790,9 @@ public partial class MainWindow : Window
 
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Stop();
+        _autoProfileTimer.Stop();
+        _runningAppsTimer.Stop();
+        _actionEventTimer.Stop();
         _reconnectCts.Cancel();
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
@@ -2272,6 +2282,101 @@ public partial class MainWindow : Window
             $"Profile {target + 1} ({profileName}) for {appName}");
     }
 
+    private async Task PollLumiActionAsync()
+    {
+        if (!_uiReady ||
+            !_serial.IsConnected ||
+            !_serial.SupportsActions ||
+            _actionScripts.Count == 0)
+        {
+            return;
+        }
+
+        var actionEvent =
+            await _serial.ReadActionEventAsync(_lastActionEventSeq);
+
+        if (actionEvent is null)
+            return;
+
+        _lastActionEventSeq = actionEvent.Value.Seq;
+
+        ActionScriptDefinition? script =
+            _actionScripts.FirstOrDefault(
+                s => s.ActionId == actionEvent.Value.ActionId);
+
+        if (script is null)
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"No script assigned to Lumi Action {actionEvent.Value.ActionId}");
+            return;
+        }
+
+        if (!_runningActionIds.Add(script.ActionId))
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"Lumi Action {script.ActionId} ignored because it is already running");
+            return;
+        }
+
+        try
+        {
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L("Triggered from keyboard…", "Đã kích hoạt từ bàn phím…");
+            }
+
+            AddLog(
+                "INFO",
+                "ACTION",
+                $"Run #{script.ActionId:00} {script.Name} from key position {actionEvent.Value.Position}");
+
+            await ActionScriptEngine.ExecuteAsync(
+                script,
+                step =>
+                {
+                    if (SelectedActionScript?.Id != script.Id ||
+                        ActionScriptStatusText is null)
+                    {
+                        return;
+                    }
+
+                    Dispatcher.Invoke(() =>
+                        ActionScriptStatusText.Text = step);
+                });
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L("Completed", "Hoàn tất");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "ERROR",
+                "ACTION",
+                $"Lumi Action {script.ActionId} failed: {ex.Message}");
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L($"Failed: {ex.Message}", $"Lỗi: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _runningActionIds.Remove(script.ActionId);
+        }
+    }
+
     private ActionScriptDefinition? SelectedActionScript =>
         ActionScriptsList?.SelectedItem as ActionScriptDefinition;
 
@@ -2324,6 +2429,15 @@ public partial class MainWindow : Window
 
             ActionStepsList.ItemsSource = null;
             ActionStepsList.ItemsSource = script?.Steps;
+
+            if (ActionScriptIdText is not null)
+            {
+                ActionScriptIdText.Text =
+                    script is null || script.ActionId <= 0
+                        ? "Lumi Action —"
+                        : $"Lumi Action {script.ActionId} · ZMK Studio → Lumi Action → Action {script.ActionId}";
+            }
+
             ActionScriptStatusText.Text =
                 script is null
                     ? L("Ready", "Sẵn sàng")
@@ -2347,8 +2461,19 @@ public partial class MainWindow : Window
 
     private void NewActionScript_Click(object sender, RoutedEventArgs e)
     {
+        int actionId =
+            ActionScriptStore.NextAvailableActionId(_actionScripts);
+
+        if (actionId == 0)
+        {
+            ActionScriptStatusText.Text =
+                L("Maximum 32 Lumi Actions.", "Tối đa 32 Lumi Action.");
+            return;
+        }
+
         var script = new ActionScriptDefinition
         {
+            ActionId = actionId,
             Name = $"Script {_actionScripts.Count + 1}"
         };
 
