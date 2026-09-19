@@ -1213,9 +1213,20 @@ public partial class MainWindow : Window
 
         if (FirmwareVersionText is not null)
         {
-            FirmwareVersionText.Text = string.IsNullOrWhiteSpace(_serial.FirmwareHello)
-                ? "--"
-                : _serial.FirmwareHello.Replace("LUMIPAD|", "Protocol v");
+            if (string.IsNullOrWhiteSpace(_serial.FirmwareHello))
+            {
+                FirmwareVersionText.Text = "--";
+            }
+            else
+            {
+                string legacy =
+                    _serial.ProtocolVersion is > 0 and < 3
+                        ? L(" · Legacy compatible", " · Tương thích firmware cũ")
+                        : "";
+
+                FirmwareVersionText.Text =
+                    $"Protocol v{Math.Max(0, _serial.ProtocolVersion)}{legacy}";
+            }
         }
 
         if (ConnectionInfoText is not null)
