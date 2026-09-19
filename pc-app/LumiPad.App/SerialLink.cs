@@ -1728,7 +1728,9 @@ public sealed class SerialLink : IDisposable
         }
     }
 
-    public Task<bool> SendPcMonitorConfigAsync(string name)
+    public Task<bool> SendPcMonitorConfigAsync(
+        string name,
+        IReadOnlyList<int>? metricSlots = null)
     {
         if (!IsConnected || !SupportsPcMonitor)
             return Task.FromResult(false);
@@ -1742,7 +1744,16 @@ public sealed class SerialLink : IDisposable
         if (string.IsNullOrWhiteSpace(safe))
             safe = "MY PC";
 
-        return SendRealtimeLineAsync($"PCCFG|{safe}");
+        int[] slots =
+            metricSlots is { Count: 6 }
+                ? metricSlots.Select(v => Math.Clamp(v, 0, 11)).ToArray()
+                : [0, 3, 6, 9, 10, 11];
+
+        string layout =
+            string.Join("|", slots.Select(v => v.ToString()));
+
+        return SendRealtimeLineAsync(
+            $"PCCFG|{safe}|{layout}");
     }
 
     public async Task<bool> SendPcMonitorAsync(PcMonitorSnapshot data)
