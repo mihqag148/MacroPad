@@ -31,11 +31,13 @@ public sealed record PcMonitorSnapshot(
 public sealed class PcMonitorService : IDisposable
 {
     private readonly object _gate = new();
+
     private readonly Computer _computer = new()
     {
         IsCpuEnabled = true,
         IsGpuEnabled = true,
-        IsMemoryEnabled = true
+        IsMemoryEnabled = true,
+        IsMotherboardEnabled = true
     };
 
     private bool _opened;
@@ -43,14 +45,17 @@ public sealed class PcMonitorService : IDisposable
     private long _lastTxBytes;
     private DateTimeOffset _lastNetworkSample;
 
+    private ulong _lastCpuIdle;
+    private ulong _lastCpuKernel;
+    private ulong _lastCpuUser;
+    private bool _haveCpuTimes;
+
     public PcMonitorSnapshot ReadSnapshot(string? selectedGpuId)
     {
         lock (_gate)
         {
             EnsureOpen();
-
-            foreach (IHardware hardware in _computer.Hardware)
-                UpdateHardware(hardware);
+            UpdateAllHardware();
 
             IHardware? cpuHardware = _computer.Hardware
                 .FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
@@ -62,11 +67,10 @@ public sealed class PcMonitorService : IDisposable
             PcGpuInfo[] gpuInfos = gpuHardware
                 .Select(h => new PcGpuInfo(
                     h.Identifier.ToString(),
-                    string.IsNullOrWhiteSpace(h.Name) ? h.HardwareType.ToString() : h.Name.Trim(),
-                    Math.Clamp(
-                        ReadPreferred(h, SensorType.Load, "GPU Core", true) ?? 0,
-                        0,
-                        100),
+                    string.IsNullOrWhiteSpace(h.Name)
+                        ? h.HardwareType.ToString()
+                        : h.Name.Trim(),
+                    ReadGpuLoad(h),
                     h.HardwareType))
                 .ToArray();
 
@@ -76,53 +80,66 @@ public sealed class PcMonitorService : IDisposable
                 selectedGpuId);
 
             PcGpuInfo selectedGpuInfo = selectedGpu is null
-                ? new PcGpuInfo("none", "No GPU detected", 0, 0)
+                ? new PcGpuInfo(
+                    "none",
+                    "No GPU detected",
+                    0,
+                    0)
                 : gpuInfos.First(g =>
                     string.Equals(
                         g.Id,
                         selectedGpu.Identifier.ToString(),
                         StringComparison.OrdinalIgnoreCase));
 
-            double cpuLoad = ReadPreferred(
-                cpuHardware,
-                SensorType.Load,
-                "CPU Total",
-                fallbackMax: true) ?? 0;
+            // Windows GetSystemTimes is used as the dependable baseline for CPU
+            // usage. LibreHardwareMonitor is still used for clocks/temperature.
+            double? windowsCpuLoad = ReadWindowsCpuLoad();
+            double lhmCpuLoad = ReadCpuLoad(cpuHardware);
+            double cpuLoad = windowsCpuLoad.HasValue
+                ? windowsCpuLoad.Value
+                : lhmCpuLoad;
 
-            double? cpuTemp = ReadPreferred(
-                cpuHardware,
-                SensorType.Temperature,
-                "CPU Package",
-                fallbackMax: true);
+            // If the Windows sample is the very first one, LHM can fill the gap.
+            if (cpuLoad <= 0.01 && lhmCpuLoad > 0.01)
+                cpuLoad = lhmCpuLoad;
 
-            double? cpuClock = AverageCoreClock(cpuHardware);
+            double? cpuTemp =
+                ReadTemperature(
+                    cpuHardware,
+                    "CPU Package",
+                    "Package",
+                    "Core");
 
-            double gpuLoad = selectedGpu is null
-                ? 0
-                : ReadPreferred(
-                    selectedGpu,
-                    SensorType.Load,
-                    "GPU Core",
-                    fallbackMax: true) ?? 0;
+            double? cpuClock =
+                AverageCoreClock(cpuHardware);
 
-            double? gpuTemp = selectedGpu is null
-                ? null
-                : ReadPreferred(
-                    selectedGpu,
-                    SensorType.Temperature,
-                    "GPU Core",
-                    fallbackMax: true);
+            double gpuLoad =
+                selectedGpu is null
+                    ? 0
+                    : ReadGpuLoad(selectedGpu);
 
-            double? gpuClock = selectedGpu is null
-                ? null
-                : ReadPreferred(
-                    selectedGpu,
-                    SensorType.Clock,
-                    "GPU Core",
-                    fallbackMax: true);
+            double? gpuTemp =
+                selectedGpu is null
+                    ? null
+                    : ReadTemperature(
+                        selectedGpu,
+                        "GPU Core",
+                        "Hot Spot",
+                        "Core");
 
-            GetMemory(out double usedGb, out double totalGb, out double memoryLoad);
-            GetNetworkRates(out double downloadMbps, out double uploadMbps);
+            double? gpuClock =
+                selectedGpu is null
+                    ? null
+                    : ReadGpuClock(selectedGpu);
+
+            GetMemory(
+                out double usedGb,
+                out double totalGb,
+                out double memoryLoad);
+
+            GetNetworkRates(
+                out double downloadMbps,
+                out double uploadMbps);
 
             return new PcMonitorSnapshot(
                 Math.Clamp(cpuLoad, 0, 100),
@@ -144,6 +161,38 @@ public sealed class PcMonitorService : IDisposable
         }
     }
 
+    private void EnsureOpen()
+    {
+        if (_opened)
+            return;
+
+        _computer.Open();
+        _opened = true;
+
+        // Several load sensors need two samples before they contain a useful
+        // value. Prime the hardware tree once instead of showing permanent 0%.
+        UpdateAllHardware();
+        Thread.Sleep(160);
+        UpdateAllHardware();
+
+        // Prime GetSystemTimes for the same reason.
+        _ = ReadWindowsCpuLoad();
+    }
+
+    private void UpdateAllHardware()
+    {
+        foreach (IHardware hardware in _computer.Hardware)
+            UpdateHardware(hardware);
+    }
+
+    private static void UpdateHardware(IHardware hardware)
+    {
+        hardware.Update();
+
+        foreach (IHardware child in hardware.SubHardware)
+            UpdateHardware(child);
+    }
+
     private static bool IsGpu(IHardware hardware) =>
         hardware.HardwareType == HardwareType.GpuNvidia ||
         hardware.HardwareType == HardwareType.GpuAmd ||
@@ -158,7 +207,10 @@ public sealed class PcMonitorService : IDisposable
             return null;
 
         if (!string.IsNullOrWhiteSpace(selectedGpuId) &&
-            !string.Equals(selectedGpuId, "auto", StringComparison.OrdinalIgnoreCase))
+            !string.Equals(
+                selectedGpuId,
+                "auto",
+                StringComparison.OrdinalIgnoreCase))
         {
             IHardware? manual = hardware.FirstOrDefault(h =>
                 string.Equals(
@@ -170,8 +222,8 @@ public sealed class PcMonitorService : IDisposable
                 return manual;
         }
 
-        // MSI Afterburner-style Auto mode: follow the GPU doing real work.
-        // On a tie, prefer a discrete NVIDIA/AMD GPU over an idle integrated GPU.
+        // Auto mode follows the adapter that is actually doing the most work.
+        // When both are equally idle, prefer a discrete NVIDIA/AMD card.
         PcGpuInfo winner = infos
             .OrderByDescending(g => g.Load)
             .ThenByDescending(g =>
@@ -188,24 +240,8 @@ public sealed class PcMonitorService : IDisposable
                 StringComparison.OrdinalIgnoreCase));
     }
 
-    private void EnsureOpen()
-    {
-        if (_opened)
-            return;
-
-        _computer.Open();
-        _opened = true;
-    }
-
-    private static void UpdateHardware(IHardware hardware)
-    {
-        hardware.Update();
-
-        foreach (IHardware child in hardware.SubHardware)
-            UpdateHardware(child);
-    }
-
-    private static IEnumerable<ISensor> SensorsRecursive(IHardware? hardware)
+    private static IEnumerable<ISensor> SensorsRecursive(
+        IHardware? hardware)
     {
         if (hardware is null)
             yield break;
@@ -220,46 +256,227 @@ public sealed class PcMonitorService : IDisposable
         }
     }
 
-    private static double? ReadPreferred(
+    private static ISensor[] SensorsOfType(
         IHardware? hardware,
-        SensorType type,
-        string preferredName,
-        bool fallbackMax)
-    {
-        var values = SensorsRecursive(hardware)
-            .Where(s => s.SensorType == type && s.Value.HasValue)
+        SensorType type) =>
+        SensorsRecursive(hardware)
+            .Where(s =>
+                s.SensorType == type &&
+                s.Value.HasValue &&
+                !float.IsNaN(s.Value.Value) &&
+                !float.IsInfinity(s.Value.Value))
             .ToArray();
 
-        ISensor? preferred = values.FirstOrDefault(s =>
-            s.Name.Contains(preferredName, StringComparison.OrdinalIgnoreCase));
+    private static double ReadCpuLoad(IHardware? cpu)
+    {
+        ISensor[] sensors = SensorsOfType(cpu, SensorType.Load);
 
-        if (preferred?.Value is float preferredValue)
-            return preferredValue;
+        if (sensors.Length == 0)
+            return 0;
 
-        if (values.Length == 0)
+        double? total = sensors
+            .Where(s =>
+                s.Name.Contains(
+                    "CPU Total",
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    s.Name,
+                    "Total CPU",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(s => (double?)s.Value!.Value)
+            .FirstOrDefault();
+
+        double[] coreLoads = sensors
+            .Where(s =>
+                s.Name.Contains(
+                    "Core",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "Thread",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
+            .ToArray();
+
+        double fallback = coreLoads.Length > 0
+            ? coreLoads.Average()
+            : sensors
+                .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
+                .DefaultIfEmpty(0)
+                .Max();
+
+        // Some firmware/CPU combinations expose CPU Total but leave it at 0
+        // while the per-core counters are live.
+        if (!total.HasValue ||
+            (total.Value <= 0.01 && fallback > 0.01))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(total.Value, 0, 100);
+    }
+
+    private static double ReadGpuLoad(IHardware gpu)
+    {
+        ISensor[] loads = SensorsOfType(gpu, SensorType.Load);
+
+        if (loads.Length == 0)
+            return 0;
+
+        // "GPU Core" is ideal when present and alive. On Intel/hybrid systems
+        // the useful sensor can instead be D3D 3D / Graphics / Render.
+        double preferred = loads
+            .Where(s =>
+                s.Name.Contains(
+                    "GPU Core",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "D3D 3D",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "Graphics",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "Render",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        double anyEngine = loads
+            .Where(s =>
+                !s.Name.Contains(
+                    "Memory",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return Math.Max(preferred, anyEngine);
+    }
+
+    private static double? ReadTemperature(
+        IHardware? hardware,
+        params string[] preferredNames)
+    {
+        ISensor[] sensors =
+            SensorsOfType(hardware, SensorType.Temperature);
+
+        // 0 C / 1 C is not a valid live PC sensor reading here; treating it as
+        // missing is much more useful than displaying a fake 0 degrees.
+        sensors = sensors
+            .Where(s => s.Value!.Value > 1f)
+            .ToArray();
+
+        if (sensors.Length == 0)
             return null;
 
-        return fallbackMax
-            ? values.Max(s => (double)s.Value!.Value)
-            : values.Average(s => (double)s.Value!.Value);
+        foreach (string preferredName in preferredNames)
+        {
+            ISensor? preferred = sensors.FirstOrDefault(s =>
+                s.Name.Contains(
+                    preferredName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (preferred?.Value is float value && value > 1f)
+                return value;
+        }
+
+        return sensors.Max(s => (double)s.Value!.Value);
     }
 
     private static double? AverageCoreClock(IHardware? cpu)
     {
-        var clocks = SensorsRecursive(cpu)
-            .Where(s =>
-                s.SensorType == SensorType.Clock &&
-                s.Value.HasValue &&
-                s.Value.Value > 0 &&
-                s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
-            .Select(s => (double)s.Value!.Value)
-            .ToArray();
+        double[] clocks =
+            SensorsOfType(cpu, SensorType.Clock)
+                .Where(s =>
+                    s.Value!.Value > 1 &&
+                    (s.Name.Contains(
+                         "Core",
+                         StringComparison.OrdinalIgnoreCase) ||
+                     s.Name.Contains(
+                         "CPU",
+                         StringComparison.OrdinalIgnoreCase)))
+                .Select(s => (double)s.Value!.Value)
+                .ToArray();
 
         if (clocks.Length == 0)
-            return ReadPreferred(cpu, SensorType.Clock, "Core", fallbackMax: true);
+            return null;
 
         return clocks.Average();
     }
+
+    private static double? ReadGpuClock(IHardware gpu)
+    {
+        ISensor[] clocks =
+            SensorsOfType(gpu, SensorType.Clock)
+                .Where(s => s.Value!.Value > 1)
+                .ToArray();
+
+        if (clocks.Length == 0)
+            return null;
+
+        ISensor? core = clocks.FirstOrDefault(s =>
+            s.Name.Contains(
+                "Core",
+                StringComparison.OrdinalIgnoreCase) ||
+            s.Name.Contains(
+                "Graphics",
+                StringComparison.OrdinalIgnoreCase));
+
+        if (core?.Value is float value && value > 1)
+            return value;
+
+        return clocks
+            .Select(s => (double)s.Value!.Value)
+            .DefaultIfEmpty()
+            .Max();
+    }
+
+    private double? ReadWindowsCpuLoad()
+    {
+        if (!GetSystemTimes(
+                out FILETIME idle,
+                out FILETIME kernel,
+                out FILETIME user))
+        {
+            return null;
+        }
+
+        ulong idleNow = ToUInt64(idle);
+        ulong kernelNow = ToUInt64(kernel);
+        ulong userNow = ToUInt64(user);
+
+        if (!_haveCpuTimes)
+        {
+            _lastCpuIdle = idleNow;
+            _lastCpuKernel = kernelNow;
+            _lastCpuUser = userNow;
+            _haveCpuTimes = true;
+            return null;
+        }
+
+        ulong idleDelta = idleNow - _lastCpuIdle;
+        ulong kernelDelta = kernelNow - _lastCpuKernel;
+        ulong userDelta = userNow - _lastCpuUser;
+
+        _lastCpuIdle = idleNow;
+        _lastCpuKernel = kernelNow;
+        _lastCpuUser = userNow;
+
+        ulong total = kernelDelta + userDelta;
+        if (total == 0)
+            return null;
+
+        // Kernel time includes idle time.
+        double busy =
+            100d * (total - Math.Min(idleDelta, total)) / total;
+
+        return Math.Clamp(busy, 0, 100);
+    }
+
+    private static ulong ToUInt64(FILETIME time) =>
+        ((ulong)time.dwHighDateTime << 32) |
+        time.dwLowDateTime;
 
     private static void GetMemory(
         out double usedGb,
@@ -268,10 +485,12 @@ public sealed class PcMonitorService : IDisposable
     {
         var memory = new MEMORYSTATUSEX
         {
-            dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
+            dwLength =
+                (uint)Marshal.SizeOf<MEMORYSTATUSEX>()
         };
 
-        if (!GlobalMemoryStatusEx(ref memory) || memory.ullTotalPhys == 0)
+        if (!GlobalMemoryStatusEx(ref memory) ||
+            memory.ullTotalPhys == 0)
         {
             usedGb = 0;
             totalGb = 0;
@@ -279,12 +498,16 @@ public sealed class PcMonitorService : IDisposable
             return;
         }
 
-        ulong used = memory.ullTotalPhys - memory.ullAvailPhys;
-        const double gib = 1024d * 1024d * 1024d;
+        ulong used =
+            memory.ullTotalPhys - memory.ullAvailPhys;
+
+        const double gib =
+            1024d * 1024d * 1024d;
 
         usedGb = used / gib;
         totalGb = memory.ullTotalPhys / gib;
-        loadPercent = used * 100d / memory.ullTotalPhys;
+        loadPercent =
+            used * 100d / memory.ullTotalPhys;
     }
 
     private void GetNetworkRates(
@@ -294,18 +517,25 @@ public sealed class PcMonitorService : IDisposable
         long rx = 0;
         long tx = 0;
 
-        foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+        foreach (
+            NetworkInterface nic in
+            NetworkInterface.GetAllNetworkInterfaces())
         {
-            if (nic.OperationalStatus != OperationalStatus.Up ||
-                nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
+            if (nic.OperationalStatus !=
+                    OperationalStatus.Up ||
+                nic.NetworkInterfaceType ==
+                    NetworkInterfaceType.Loopback ||
+                nic.NetworkInterfaceType ==
+                    NetworkInterfaceType.Tunnel)
             {
                 continue;
             }
 
             try
             {
-                IPv4InterfaceStatistics stats = nic.GetIPv4Statistics();
+                IPv4InterfaceStatistics stats =
+                    nic.GetIPv4Statistics();
+
                 rx += stats.BytesReceived;
                 tx += stats.BytesSent;
             }
@@ -314,10 +544,15 @@ public sealed class PcMonitorService : IDisposable
             }
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        double seconds = (now - _lastNetworkSample).TotalSeconds;
+        DateTimeOffset now =
+            DateTimeOffset.UtcNow;
 
-        if (_lastNetworkSample == default || seconds <= 0)
+        double seconds =
+            (now - _lastNetworkSample)
+            .TotalSeconds;
+
+        if (_lastNetworkSample == default ||
+            seconds <= 0)
         {
             downloadMbps = 0;
             uploadMbps = 0;
@@ -325,9 +560,20 @@ public sealed class PcMonitorService : IDisposable
         else
         {
             downloadMbps =
-                Math.Max(0, rx - _lastRxBytes) * 8d / seconds / 1_000_000d;
+                Math.Max(
+                    0,
+                    rx - _lastRxBytes) *
+                8d /
+                seconds /
+                1_000_000d;
+
             uploadMbps =
-                Math.Max(0, tx - _lastTxBytes) * 8d / seconds / 1_000_000d;
+                Math.Max(
+                    0,
+                    tx - _lastTxBytes) *
+                8d /
+                seconds /
+                1_000_000d;
         }
 
         _lastRxBytes = rx;
@@ -347,7 +593,9 @@ public sealed class PcMonitorService : IDisposable
         }
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    [StructLayout(
+        LayoutKind.Sequential,
+        CharSet = CharSet.Auto)]
     private struct MEMORYSTATUSEX
     {
         public uint dwLength;
@@ -361,7 +609,27 @@ public sealed class PcMonitorService : IDisposable
         public ulong ullAvailExtendedVirtual;
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILETIME
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+    }
+
+    [DllImport(
+        "kernel32.dll",
+        CharSet = CharSet.Auto,
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX buffer);
+    private static extern bool GlobalMemoryStatusEx(
+        ref MEMORYSTATUSEX buffer);
+
+    [DllImport(
+        "kernel32.dll",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(
+        out FILETIME idleTime,
+        out FILETIME kernelTime,
+        out FILETIME userTime);
 }
