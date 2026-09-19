@@ -1420,9 +1420,7 @@ public sealed class SerialLink : IDisposable
         }
         catch (Exception ex)
         {
-            Log("ERROR", ex.Message);
-            LinkError?.Invoke(ex.Message);
-            Disconnect();
+            RecordLinkFailure("Bulk transfer", ex);
             throw;
         }
         finally
@@ -1462,12 +1460,14 @@ public sealed class SerialLink : IDisposable
                             $"Bluetooth realtime write failed: {status}");
                 }
 
+                RecordLinkSuccess();
                 return true;
             }
 
             if (_port?.IsOpen == true)
             {
                 _port.Write(data, 0, data.Length);
+                RecordLinkSuccess();
                 return true;
             }
 
@@ -1475,9 +1475,7 @@ public sealed class SerialLink : IDisposable
         }
         catch (Exception ex)
         {
-            Log("ERROR", $"Realtime link write failed: {ex.Message}");
-            LinkError?.Invoke(ex.Message);
-            Disconnect();
+            RecordLinkFailure("Realtime link write", ex);
             return false;
         }
         finally
@@ -1513,19 +1511,19 @@ public sealed class SerialLink : IDisposable
                         throw new IOException($"Bluetooth write failed: {status}");
                 }
 
+                RecordLinkSuccess();
                 return;
             }
 
             if (_port?.IsOpen == true)
             {
                 _port.Write(data, 0, data.Length);
+                RecordLinkSuccess();
             }
         }
         catch (Exception ex)
         {
-            Log("ERROR", $"Link write failed: {ex.Message}");
-            LinkError?.Invoke(ex.Message);
-            Disconnect();
+            RecordLinkFailure("Link write", ex);
         }
         finally
         {
