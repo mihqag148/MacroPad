@@ -760,7 +760,7 @@ static bool saver_flash_load_metadata(void) {
     saver_media_frame_count = header.frame_count;
     saver_media_interval_ms = header.interval_ms;
     saver_media_index = 0U;
-    saver_media_last_ms = 0U;
+    saver_media_epoch_ms = 0U;
     saver_media_valid = true;
     lumi_diag_report('I', "Saver metadata OK frames=%u interval=%ums",
                      (unsigned int)saver_media_frame_count,
