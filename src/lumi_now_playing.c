@@ -12,7 +12,10 @@
 #include "lumi_now_playing.h"
 #include "lumi_ui_config.h"
 
-#define MUSIC_TIMEOUT_MS 60000
+/* If the companion app/transport disappears, do not pin the last track on
+ * screen for a full minute. A healthy app refreshes NP state every ~250 ms.
+ */
+#define MUSIC_TIMEOUT_MS 8000
 #define USER_ACTIVITY_HIDE_MS 10000
 #define SCROLL_STEP_MS 75
 #define SCROLL_HOLD_MS 650
@@ -515,8 +518,21 @@ static void music_visibility_timer(lv_timer_t *timer) {
     bool show;
     bool redraw = false;
 
+    bool timed_out = false;
+
     k_mutex_lock(&state_lock, K_FOREVER);
     show = should_show_locked(now);
+
+    if (!show &&
+        state.active &&
+        state.last_rx_ms != 0U &&
+        (uint32_t)(now - state.last_rx_ms) > MUSIC_TIMEOUT_MS) {
+        state.active = false;
+        state.playing = false;
+        state.last_rx_ms = 0U;
+        state.suppress_until_ms = 0U;
+        timed_out = true;
+    }
 
     if (show && (uint32_t)(now - state.last_scroll_ms) >= SCROLL_STEP_MS) {
         uint16_t old_title = state.title_scroll;
@@ -543,6 +559,15 @@ static void music_visibility_timer(lv_timer_t *timer) {
     }
 
     k_mutex_unlock(&state_lock);
+
+    if (timed_out) {
+        /* Release the status-screen media lock as soon as the app/transport
+         * stops refreshing Now Playing. This allows Main/saver/sleep to resume.
+         */
+        lumi_ui_set_media_active(false);
+        lumi_diag_report('I', "Now Playing timed out after %ums",
+                         (unsigned int)MUSIC_TIMEOUT_MS);
+    }
 
     if ((uint32_t)(now - last_header_ms) >= 500U) {
         last_header_ms = now;
