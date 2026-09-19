@@ -26,7 +26,7 @@ public static class TextBitmapRenderer
         // NFC normalization also fixes Vietnamese titles delivered as
         // combining-mark sequences by some media apps.
         var typeface = new Typeface(
-            SystemFonts.MessageFontFamily,
+            System.Windows.SystemFonts.MessageFontFamily,
             FontStyles.Normal,
             bold ? FontWeights.SemiBold : FontWeights.Normal,
             FontStretches.Normal);
