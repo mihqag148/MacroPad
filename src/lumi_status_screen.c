@@ -952,18 +952,14 @@ static int saver_flash_prepare_upload(void) {
     return 0;
 }
 
-static int saver_flash_write_chunk(uint8_t index,
-                                   uint16_t offset,
+static int saver_flash_write_bytes(uint32_t data_offset,
                                    const uint8_t *data,
                                    size_t len) {
     if (!saver_flash || !data || len == 0U) {
         return -EINVAL;
     }
 
-    uint32_t absolute =
-        SAVER_FLASH_DATA_OFFSET +
-        (uint32_t)index * LUMI_SAVER_FRAME_BYTES +
-        offset;
+    uint32_t absolute = SAVER_FLASH_DATA_OFFSET + data_offset;
 
     if ((size_t)absolute + len > saver_flash->fa_size) {
         return -ENOSPC;
@@ -983,6 +979,15 @@ static int saver_flash_write_chunk(uint8_t index,
     return flash_area_write(saver_flash, absolute, data, len);
 }
 
+static int saver_flash_write_chunk(uint8_t index,
+                                   uint16_t offset,
+                                   const uint8_t *data,
+                                   size_t len) {
+    uint32_t data_offset =
+        (uint32_t)index * LUMI_SAVER_FRAME_BYTES + offset;
+    return saver_flash_write_bytes(data_offset, data, len);
+}
+
 static int saver_flash_read_frame(uint8_t index) {
     if (!saver_media_valid ||
         index >= saver_media_frame_count ||
@@ -999,6 +1004,29 @@ static int saver_flash_read_frame(uint8_t index) {
         offset,
         saver_media_frame_buffer,
         sizeof(saver_media_frame_buffer));
+}
+
+static int saver_flash_read_frame_into(
+    uint8_t index,
+    uint8_t *destination) {
+
+    if (!destination ||
+        saver_media_format != SAVER_FORMAT_RGB332 ||
+        !saver_flash_load_metadata() ||
+        index >= saver_media_frame_count ||
+        saver_flash_open_once() != 0) {
+        return -EINVAL;
+    }
+
+    uint32_t offset =
+        SAVER_FLASH_DATA_OFFSET +
+        (uint32_t)index * LUMI_SAVER_FRAME_BYTES;
+
+    return flash_area_read(
+        saver_flash,
+        offset,
+        destination,
+        LUMI_SAVER_FRAME_BYTES);
 }
 
 static int saver_flash_prefetch_frame(uint8_t index) {
@@ -1034,17 +1062,29 @@ static int saver_flash_commit_header(void) {
         return -ENODEV;
     }
 
+    bool static_image =
+        saver_media_format == SAVER_FORMAT_RGB565_STATIC;
+
     struct saver_flash_header header = {
         .magic = SAVER_FLASH_MAGIC,
         .version = SAVER_FLASH_VERSION,
-        .width = LUMI_SAVER_FRAME_W,
-        .height = LUMI_SAVER_FRAME_H,
-        .frame_bytes = LUMI_SAVER_FRAME_BYTES,
+        .width = static_image
+            ? LUMI_SAVER_IMAGE_W
+            : LUMI_SAVER_FRAME_W,
+        .height = static_image
+            ? LUMI_SAVER_IMAGE_H
+            : LUMI_SAVER_FRAME_H,
+        .frame_bytes = static_image
+            ? LUMI_SAVER_IMAGE_BYTES
+            : LUMI_SAVER_FRAME_BYTES,
         .frame_count = saver_media_frame_count,
-        .reserved = 0U,
-        .interval_ms = saver_media_interval_ms,
-        .data_size =
-            (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
+        .format = saver_media_format,
+        .interval_ms = static_image
+            ? 1000U
+            : saver_media_interval_ms,
+        .data_size = static_image
+            ? LUMI_SAVER_IMAGE_BYTES
+            : (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
     };
 
     int rc = flash_area_write(
@@ -1055,6 +1095,10 @@ static int saver_flash_commit_header(void) {
 
     if (rc != 0) {
         return rc;
+    }
+
+    if (static_image) {
+        return 0;
     }
 
     struct saver_flash_timing timing = {
