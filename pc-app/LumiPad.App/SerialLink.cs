@@ -75,30 +75,55 @@ public sealed class SerialLink : IDisposable
         if (_port?.IsOpen == true)
             return _connectionName;
 
-        string previousName = _connectionName;
-        string? usb = await TryUsbAsync(cancellationToken);
-
-        if (usb is null)
+        // Do not tear down BLE in the middle of a Now Playing/artwork packet.
+        // Wait for both media and normal command writers to become idle, then
+        // switch transports atomically from the app's point of view.
+        await _mediaGate.WaitAsync(cancellationToken);
+        try
         {
-            _connectionName = previousName;
-            return null;
+            await _writeGate.WaitAsync(cancellationToken);
+            try
+            {
+                if (_port?.IsOpen == true)
+                    return _connectionName;
+
+                string previousName = _connectionName;
+                string? usb = await TryUsbAsync(cancellationToken);
+
+                if (usb is null)
+                {
+                    _connectionName = previousName;
+                    return null;
+                }
+
+                // USB becomes the active companion-app transport. Keep media
+                // state and cached artwork keys intact so a cable insertion
+                // does not restart the Now Playing pipeline.
+                if (_bleDevice is not null)
+                {
+                    _bleDevice.ConnectionStatusChanged -=
+                        OnBleConnectionStatusChanged;
+                }
+
+                _bleCharacteristic = null;
+                _blePayloadSize = 20;
+                _bleService?.Dispose();
+                _bleService = null;
+                _bleDevice?.Dispose();
+                _bleDevice = null;
+
+                Log("INFO", $"Promoted companion link to {usb}");
+                return usb;
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
-
-        // USB becomes the active companion-app transport. Keep media state and
-        // cached artwork keys intact so switching cables does not restart the
-        // Now Playing pipeline.
-        if (_bleDevice is not null)
-            _bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
-
-        _bleCharacteristic = null;
-        _blePayloadSize = 20;
-        _bleService?.Dispose();
-        _bleService = null;
-        _bleDevice?.Dispose();
-        _bleDevice = null;
-
-        Log("INFO", $"Promoted companion link to {usb}");
-        return usb;
+        finally
+        {
+            _mediaGate.Release();
+        }
     }
 
     private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
