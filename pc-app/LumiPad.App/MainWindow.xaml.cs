@@ -322,18 +322,21 @@ public partial class MainWindow : Window
             var button = new System.Windows.Controls.Button
             {
                 Tag = product,
+                Width = 394,
+                Height = 502,
                 Padding = new Thickness(0),
                 Margin = new Thickness(10),
                 Background = System.Windows.Media.Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                FocusVisualStyle = null
+                FocusVisualStyle = null,
+                ClipToBounds = true
             };
             button.Click += ProductCard_Click;
 
             var card = new Border
             {
-                Width = 410,
-                Height = 510,
+                Width = 388,
+                Height = 496,
                 Background =
                     TryFindResource("Card") as System.Windows.Media.Brush,
                 BorderBrush =
@@ -346,7 +349,7 @@ public partial class MainWindow : Window
             var root = new Grid();
             root.RowDefinitions.Add(new RowDefinition
             {
-                Height = new GridLength(318)
+                Height = new GridLength(304)
             });
             root.RowDefinitions.Add(new RowDefinition
             {
@@ -358,7 +361,10 @@ public partial class MainWindow : Window
             {
                 Background =
                     TryFindResource("Card2") as System.Windows.Media.Brush,
-                Padding = new Thickness(28)
+                Padding = new Thickness(24),
+                Margin = new Thickness(1, 1, 1, 0),
+                CornerRadius = new CornerRadius(25, 25, 0, 0),
+                ClipToBounds = true
             };
             preview.Child = CreateDialDeskPreview();
             root.Children.Add(preview);
@@ -483,8 +489,8 @@ public partial class MainWindow : Window
 
         var body = new Border
         {
-            Width = 238,
-            Height = 232,
+            Width = 222,
+            Height = 220,
             CornerRadius = new CornerRadius(24),
             Background = new SolidColorBrush(
                 MediaColor.FromRgb(12, 12, 14)),
@@ -498,15 +504,15 @@ public partial class MainWindow : Window
 
         var device = new Grid
         {
-            Width = 184,
-            Height = 198,
+            Width = 176,
+            Height = 190,
             HorizontalAlignment =
                 System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
         device.RowDefinitions.Add(new RowDefinition
         {
-            Height = new GridLength(52)
+            Height = new GridLength(50)
         });
         device.RowDefinitions.Add(new RowDefinition
         {
@@ -514,13 +520,13 @@ public partial class MainWindow : Window
         });
         device.RowDefinitions.Add(new RowDefinition
         {
-            Height = new GridLength(138)
+            Height = new GridLength(132)
         });
 
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(126)
+            Width = new GridLength(120)
         });
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
@@ -528,7 +534,7 @@ public partial class MainWindow : Window
         });
         top.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(50)
+            Width = new GridLength(48)
         });
 
         var display = new Border
@@ -553,8 +559,8 @@ public partial class MainWindow : Window
 
         var dial = new Ellipse
         {
-            Width = 46,
-            Height = 46,
+            Width = 44,
+            Height = 44,
             Fill = new LinearGradientBrush(
                 MediaColor.FromRgb(95, 95, 102),
                 MediaColor.FromRgb(30, 30, 34),
@@ -574,8 +580,8 @@ public partial class MainWindow : Window
         {
             Rows = 3,
             Columns = 4,
-            Width = 184,
-            Height = 138
+            Width = 176,
+            Height = 132
         };
 
         for (int i = 0; i < 12; i++)
@@ -4218,7 +4224,15 @@ public partial class MainWindow : Window
             return;
 
         _screensaverMediaPath = dialog.FileName;
+        _screensaverSource = "Media";
+        if (ScreensaverSourceCombo is not null)
+            SelectComboTag(ScreensaverSourceCombo, "Media");
+        UpdateScreensaverSourceUi();
         SaveAppSettings();
+
+        if (_serial.IsConnected)
+            await _serial.SetScreensaverSourceAsync(false);
+
         await PrepareScreensaverMediaAsync();
     }
 
@@ -4290,8 +4304,8 @@ public partial class MainWindow : Window
             {
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"{_screensaverAnimation.Frames.Count} stored GIF frames · Playback avg {ScreensaverMediaService.MaxPlaybackFps} FPS · source timing preserved · {scaleMode}",
-                        $"{_screensaverAnimation.Frames.Count} khung GIF lưu · Playback avg {ScreensaverMediaService.MaxPlaybackFps} FPS · giữ tốc độ gốc · {scaleMode}");
+                        $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                        $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
 
                 ScreensaverPreviewImage.Source =
                     CreateRgb332Bitmap(
@@ -4380,6 +4394,12 @@ public partial class MainWindow : Window
 
             if (verified)
             {
+                _screensaverSource = "Media";
+                if (ScreensaverSourceCombo is not null)
+                    SelectComboTag(ScreensaverSourceCombo, "Media");
+                UpdateScreensaverSourceUi();
+                await _serial.SetScreensaverSourceAsync(false);
+
                 SetScreensaverUploadState(
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
                     MediaColor.FromRgb(48, 209, 88));
@@ -4418,7 +4438,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowScreensaverNow_Click(
+    private async void ShowScreensaverNow_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -4429,10 +4449,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        _serial.ShowScreensaverNow();
+        bool pcMonitor =
+            string.Equals(
+                _screensaverSource,
+                "PcMonitor",
+                StringComparison.Ordinal);
+
+        await _serial.ShowScreensaverNowAsync(pcMonitor);
+
         ScreensaverSendStatus.Text =
-            L("Showing the custom screensaver now.",
-              "Đang bật bảo vệ màn hình tùy chỉnh ngay.");
+            pcMonitor
+                ? L("Showing PC Monitor screensaver now.",
+                    "Đang bật PC Monitor làm bảo vệ màn hình.")
+                : L("Showing the uploaded GIF / image now.",
+                    "Đang hiển thị GIF / ảnh đã tải lên ngay.");
     }
 
     private void ClearScreensaverMedia_Click(
