@@ -1233,6 +1233,27 @@ public sealed class SerialLink : IDisposable
             $"RGB|PROFILE|{Math.Clamp(index, 0, 4)}|" +
             $"{Math.Clamp(effect, 0, 4)}|{r}|{g}|{b}");
 
+    public void SetRgbPixelMode(bool enabled) =>
+        _ = SendLineAsync($"RGB|PMODE|{(enabled ? 1 : 0)}");
+
+    public void SetRgbPixel(int index, byte r, byte g, byte b) =>
+        _ = SendLineAsync(
+            $"RGB|PIX|{Math.Clamp(index, 0, 3)}|{r}|{g}|{b}");
+
+    public void SetRgbProfilePixelMode(int profile, bool enabled) =>
+        _ = SendLineAsync(
+            $"RGB|PPMODE|{Math.Clamp(profile, 0, 4)}|{(enabled ? 1 : 0)}");
+
+    public void SetRgbProfilePixel(
+        int profile,
+        int index,
+        byte r,
+        byte g,
+        byte b) =>
+        _ = SendLineAsync(
+            $"RGB|PPIX|{Math.Clamp(profile, 0, 4)}|" +
+            $"{Math.Clamp(index, 0, 3)}|{r}|{g}|{b}");
+
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
     public void SetBrightness(int percent) => _ = SendLineAsync($"RGB|BRI|{Math.Clamp(percent, 5, 50)}");
     public void SetSpeed(int percent) => _ = SendLineAsync($"RGB|SPD|{Math.Clamp(percent, 10, 100)}");
