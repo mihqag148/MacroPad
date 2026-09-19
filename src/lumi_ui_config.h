@@ -29,6 +29,7 @@ void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
 
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
+bool lumi_ui_saver_anim_set_frame_interval(uint8_t index, uint16_t interval_ms);
 void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len);
 bool lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len);
