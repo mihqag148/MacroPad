@@ -29,5 +29,7 @@ bool lumi_now_playing_is_active(void);
 void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
                                  const uint8_t *data, size_t len);
 void lumi_now_playing_set_artwork(const uint8_t *data, size_t len);
+void lumi_now_playing_set_artwork_scaled(const uint8_t *data, size_t len,
+                                         uint16_t width, uint16_t height);
 void lumi_now_playing_user_activity(void);
 void lumi_now_playing_clear(void);
