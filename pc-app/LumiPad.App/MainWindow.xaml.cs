@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private ScreensaverAnimation? _screensaverAnimation;
     private string? _screensaverMediaPath;
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
+    private readonly Stopwatch _screensaverPreviewClock = new();
     private readonly DispatcherTimer _memoryUsageTimer = new();
     private readonly DispatcherTimer _diagnosticTimer = new();
     private readonly List<string> _logLines = new();
@@ -60,30 +61,54 @@ public partial class MainWindow : Window
         InitializeComponent();
         InitializeTrayIcon();
 
+        // Keep the preview on an absolute playback timeline, just like the
+        // firmware. If the UI thread is briefly late, skip a stale frame
+        // instead of stretching the whole GIF and drifting out of sync.
+        _screensaverPreviewTimer.Interval = TimeSpan.FromMilliseconds(10);
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
             if (_screensaverAnimation is null ||
                 _screensaverAnimation.Frames.Count < 2)
                 return;
 
-            _screensaverPreviewIndex =
-                (_screensaverPreviewIndex + 1) %
-                _screensaverAnimation.Frames.Count;
+            int frameCount = _screensaverAnimation.Frames.Count;
+            int loopMs =
+                _screensaverAnimation.FrameDurationsMs.Count == frameCount
+                    ? _screensaverAnimation.FrameDurationsMs.Sum()
+                    : _screensaverAnimation.FrameIntervalMs * frameCount;
 
+            if (loopMs <= 0)
+                return;
+
+            int loopPosition =
+                (int)(_screensaverPreviewClock.ElapsedMilliseconds % loopMs);
+            int desiredIndex = 0;
+            int boundary = 0;
+
+            for (int i = 0; i < frameCount; i++)
+            {
+                int duration =
+                    _screensaverAnimation.FrameDurationsMs.Count == frameCount
+                        ? _screensaverAnimation.FrameDurationsMs[i]
+                        : _screensaverAnimation.FrameIntervalMs;
+
+                boundary += Math.Max(
+                    ScreensaverMediaService.MinFrameIntervalMs,
+                    duration);
+                desiredIndex = i;
+
+                if (loopPosition < boundary)
+                    break;
+            }
+
+            if (desiredIndex == _screensaverPreviewIndex)
+                return;
+
+            _screensaverPreviewIndex = desiredIndex;
             ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
                 _screensaverAnimation.Frames[_screensaverPreviewIndex],
                 ScreensaverMediaService.Width,
                 ScreensaverMediaService.Height);
-
-            int frameDelay =
-                _screensaverAnimation.FrameDurationsMs.Count >
-                _screensaverPreviewIndex
-                    ? _screensaverAnimation.FrameDurationsMs[
-                        _screensaverPreviewIndex]
-                    : _screensaverAnimation.FrameIntervalMs;
-
-            _screensaverPreviewTimer.Interval =
-                TimeSpan.FromMilliseconds(Math.Max(33, frameDelay));
         };
 
         _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
@@ -674,6 +699,7 @@ public partial class MainWindow : Window
         _allowExit = true;
 
         _screensaverPreviewTimer.Stop();
+        _screensaverPreviewClock.Stop();
         _reconnectCts.Cancel();
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
@@ -1141,12 +1167,15 @@ public partial class MainWindow : Window
     }
 
     private static int ComboSeconds(
-        SelectionChangedEventArgs e,
+        object sender,
         int fallback)
     {
-        if (e.AddedItems.Count > 0 &&
-            e.AddedItems[0] is ComboBoxItem item &&
-            int.TryParse(item.Tag?.ToString(), out int seconds))
+        // Read the ComboBox's current SelectedValue (Tag) instead of relying
+        // on SelectionChangedEventArgs.AddedItems. AddedItems can be stale or
+        // empty after WPF style/language refreshes, which made the timing
+        // controls appear stuck on the first selected value.
+        if (sender is ComboBox combo &&
+            int.TryParse(combo.SelectedValue?.ToString(), out int seconds))
         {
             return Math.Max(0, seconds);
         }
@@ -1165,7 +1194,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _screensaverDelaySeconds =
-            ComboSeconds(e, _screensaverDelaySeconds);
+            ComboSeconds(sender, _screensaverDelaySeconds);
 
         if (_uiReady)
         {
@@ -1186,7 +1215,7 @@ public partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         _sleepDelaySeconds =
-            ComboSeconds(e, _sleepDelaySeconds);
+            ComboSeconds(sender, _sleepDelaySeconds);
 
         if (_uiReady)
         {
@@ -1667,16 +1696,13 @@ public partial class MainWindow : Window
 
             _screensaverPreviewIndex = 0;
             _screensaverPreviewTimer.Stop();
-            int firstFrameDelay =
-                _screensaverAnimation.FrameDurationsMs.Count > 0
-                    ? _screensaverAnimation.FrameDurationsMs[0]
-                    : _screensaverAnimation.FrameIntervalMs;
-
-            _screensaverPreviewTimer.Interval =
-                TimeSpan.FromMilliseconds(Math.Max(33, firstFrameDelay));
+            _screensaverPreviewClock.Reset();
 
             if (_screensaverAnimation.Frames.Count > 1)
+            {
+                _screensaverPreviewClock.Restart();
                 _screensaverPreviewTimer.Start();
+            }
 
             ScreensaverSendStatus.Text =
                 L("Ready. Send once to store the lightweight loop in LumiPad flash.",
@@ -1798,6 +1824,7 @@ public partial class MainWindow : Window
         _screensaverMediaPath = null;
         SaveAppSettings();
         _screensaverPreviewTimer.Stop();
+        _screensaverPreviewClock.Reset();
         _serial.ClearScreensaverAnimation();
 
         ScreensaverPreviewImage.Source = null;
