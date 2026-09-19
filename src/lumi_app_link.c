@@ -363,6 +363,9 @@ static void handle_sys(char *save) {
         /* nice!nano v2 uses the Adafruit nRF52 bootloader magic reset value. */
         k_sleep(K_MSEC(80));
         sys_reboot(0x57);
+    } else if (strcmp(cmd, "SLEEP") == 0) {
+        lumi_diag_report('I', "Manual sleep requested");
+        lumi_ui_sleep_now();
     }
 }
 
