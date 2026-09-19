@@ -1980,6 +1980,14 @@ public partial class MainWindow : Window
 
         if (existing is null)
         {
+            if (ActiveAutoProfile.Mappings.Count >= 10)
+            {
+                AutoProfileStatusText.Text =
+                    L("Maximum 10 app profiles in this preset.",
+                      "Tối đa 10 profile ứng dụng trong preset này.");
+                return;
+            }
+
             string name = System.IO.Path.GetFileNameWithoutExtension(path);
 
             try
