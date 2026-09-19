@@ -31,6 +31,10 @@ public sealed class SerialLink : IDisposable
     private readonly object _pendingNowPlayingLock = new();
     private NowPlayingData? _pendingNowPlaying;
     private int _mediaGeneration;
+    private int _protocolVersion;
+    private readonly HashSet<string> _capabilities =
+        new(StringComparer.OrdinalIgnoreCase);
+    private int _consecutiveLinkFailures;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public bool IsUsbConnected => _port?.IsOpen == true;
@@ -39,6 +43,92 @@ public sealed class SerialLink : IDisposable
     public event Action<string>? LinkError;
     public event Action<string, string>? Diagnostic;
     public string FirmwareHello { get; private set; } = "";
+    public int ProtocolVersion => _protocolVersion;
+    public bool SupportsDiagnostics =>
+        SupportsCapability("LOG");
+    public bool SupportsMemoryInfo =>
+        SupportsCapability("MEM");
+    public bool SupportsPanelInfo =>
+        SupportsCapability("PANEL");
+    public bool SupportsSaverState =>
+        SupportsCapability("SAVERSTATE");
+    public bool SupportsProfileSwitch =>
+        SupportsCapability("PROFILE");
+    public bool SupportsActions =>
+        SupportsCapability("ACTION");
+
+    private bool SupportsCapability(string name) =>
+        _protocolVersion >= 3 &&
+        (_capabilities.Count == 0 || _capabilities.Contains(name));
+
+    private void SetFirmwareHello(string hello)
+    {
+        FirmwareHello = hello ?? "";
+        _protocolVersion = 0;
+        _capabilities.Clear();
+
+        string[] parts = FirmwareHello.Split('|');
+        if (parts.Length >= 2 &&
+            string.Equals(parts[0], "LUMIPAD", StringComparison.Ordinal) &&
+            int.TryParse(parts[1], out int version))
+        {
+            _protocolVersion = version;
+        }
+
+        foreach (string part in parts)
+        {
+            if (!part.StartsWith("CAPS=", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            foreach (string cap in part["CAPS=".Length..].Split(
+                         ',',
+                         StringSplitOptions.RemoveEmptyEntries |
+                         StringSplitOptions.TrimEntries))
+            {
+                _capabilities.Add(cap);
+            }
+        }
+
+        // Protocol v3 defines these capabilities as the baseline. BLE status
+        // reads may only contain LUMIPAD|3|SAVER:* rather than the CAPS field.
+        if (_protocolVersion >= 3 && _capabilities.Count == 0)
+        {
+            foreach (string cap in new[]
+                     {
+                         "MEM", "PANEL", "LOG", "SAVERSTATE",
+                         "PROFILE", "ACTION"
+                     })
+            {
+                _capabilities.Add(cap);
+            }
+        }
+
+        Log(
+            "INFO",
+            $"Firmware protocol v{_protocolVersion}; caps=" +
+            string.Join(",", _capabilities));
+    }
+
+    private void RecordLinkSuccess() =>
+        _consecutiveLinkFailures = 0;
+
+    private void RecordLinkFailure(string context, Exception ex)
+    {
+        _consecutiveLinkFailures++;
+        Log(
+            "WARN",
+            $"{context} failed ({_consecutiveLinkFailures}/3): {ex.Message}");
+
+        bool transportGone =
+            (_port is not null && !_port.IsOpen) ||
+            (_port is null && _bleCharacteristic is null);
+
+        if (!transportGone && _consecutiveLinkFailures < 3)
+            return;
+
+        LinkError?.Invoke(ex.Message);
+        Disconnect();
+    }
 
     private void Log(string level, string message) =>
         Diagnostic?.Invoke(level, message);
@@ -281,7 +371,8 @@ public sealed class SerialLink : IDisposable
 
                         candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
 
-                        FirmwareHello = hello;
+                        SetFirmwareHello(hello);
+                        RecordLinkSuccess();
                         _connectionName =
                             $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : candidate.Name)}";
 
@@ -354,7 +445,8 @@ public sealed class SerialLink : IDisposable
                 if (response.StartsWith("LUMIPAD|", StringComparison.Ordinal))
                 {
                     _port = candidate;
-                    FirmwareHello = response;
+                    SetFirmwareHello(response);
+                    RecordLinkSuccess();
                     _connectionName = $"USB · {name}";
                     Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
                     return _connectionName;
@@ -493,6 +585,9 @@ public sealed class SerialLink : IDisposable
 
         _connectionName = "";
         FirmwareHello = "";
+        _protocolVersion = 0;
+        _capabilities.Clear();
+        _consecutiveLinkFailures = 0;
         _lastBitmapKey = "";
         _lastArtworkKey = "";
         _lastNowPlayingKey = "";
@@ -949,6 +1044,9 @@ public sealed class SerialLink : IDisposable
     public async Task<(uint Seq, string Level, string Message)?> ReadFirmwareLogAsync(
         uint afterSeq)
     {
+        if (!SupportsDiagnostics)
+            return null;
+
         string response;
 
         try
@@ -1002,6 +1100,9 @@ public sealed class SerialLink : IDisposable
 
     public async Task<string?> GetScreensaverStateAsync()
     {
+        if (!SupportsSaverState)
+            return null;
+
         try
         {
             if (_port?.IsOpen == true)
@@ -1099,6 +1200,9 @@ public sealed class SerialLink : IDisposable
     public async Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
         ReadPanelInfoAsync()
     {
+        if (!SupportsPanelInfo)
+            return null;
+
         string response;
 
         try
@@ -1152,6 +1256,9 @@ public sealed class SerialLink : IDisposable
     public async Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
         ReadMemoryUsageAsync()
     {
+        if (!SupportsMemoryInfo)
+            return null;
+
         string response;
 
         if (_port?.IsOpen == true)
@@ -1256,8 +1363,13 @@ public sealed class SerialLink : IDisposable
     public void SetSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
 
-    public void SetActiveProfile(int profile) =>
+    public void SetActiveProfile(int profile)
+    {
+        if (!SupportsProfileSwitch)
+            return;
+
         _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 4)}");
+    }
 
     public Task RestartKeyboardAsync() =>
         SendLineAsync("SYS|RESTART");
