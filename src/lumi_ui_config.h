@@ -34,6 +34,21 @@ void lumi_ui_show_screensaver_now(void);
 void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
 
+void lumi_ui_pc_monitor_update(
+    uint8_t cpu_load,
+    int16_t cpu_temp_c,
+    uint16_t cpu_clock_mhz,
+    uint8_t gpu_load,
+    int16_t gpu_temp_c,
+    uint16_t gpu_clock_mhz,
+    uint8_t ram_load,
+    uint32_t ram_used_mb,
+    uint32_t ram_total_mb,
+    uint32_t net_down_kbps,
+    uint32_t net_up_kbps,
+    int16_t fps);
+void lumi_ui_pc_monitor_clear(void);
+
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
 bool lumi_ui_saver_anim_set_frame_interval(uint8_t index, uint16_t interval_ms);
 void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len);

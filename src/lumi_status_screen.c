@@ -127,6 +127,38 @@ static lv_obj_t *boot_overlay;
 static lv_obj_t *boot_progress;
 static uint32_t boot_started_ms;
 
+static lv_obj_t *pc_monitor_overlay;
+static lv_obj_t *pc_cpu_value;
+static lv_obj_t *pc_cpu_meta;
+static lv_obj_t *pc_gpu_value;
+static lv_obj_t *pc_gpu_meta;
+static lv_obj_t *pc_ram_value;
+static lv_obj_t *pc_ram_meta;
+static lv_obj_t *pc_net_down;
+static lv_obj_t *pc_net_up;
+static lv_obj_t *pc_fps_value;
+static lv_obj_t *pc_monitor_status;
+static bool pc_monitor_selected;
+
+struct pc_monitor_state {
+    uint8_t cpu_load;
+    int16_t cpu_temp_c;
+    uint16_t cpu_clock_mhz;
+    uint8_t gpu_load;
+    int16_t gpu_temp_c;
+    uint16_t gpu_clock_mhz;
+    uint8_t ram_load;
+    uint32_t ram_used_mb;
+    uint32_t ram_total_mb;
+    uint32_t net_down_kbps;
+    uint32_t net_up_kbps;
+    int16_t fps;
+    uint32_t updated_ms;
+    bool valid;
+};
+
+static struct pc_monitor_state pc_monitor_state;
+
 K_MUTEX_DEFINE(lumi_ui_config_lock);
 static uint32_t ui_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
@@ -142,6 +174,189 @@ static bool saver_style_dirty = true;
 static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
+static void refresh_pc_monitor_labels(void) {
+    if (!pc_monitor_overlay || !pc_cpu_value ||
+        !pc_gpu_value || !pc_ram_value) {
+        return;
+    }
+
+    struct pc_monitor_state state;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    state = pc_monitor_state;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    bool stale =
+        !state.valid ||
+        (uint32_t)(k_uptime_get_32() - state.updated_ms) > 5000U;
+
+    if (stale) {
+        lv_label_set_text(pc_cpu_value, "--%");
+        lv_label_set_text(pc_cpu_meta, "-- C  ·  -- MHz");
+        lv_label_set_text(pc_gpu_value, "--%");
+        lv_label_set_text(pc_gpu_meta, "-- C  ·  -- MHz");
+        lv_label_set_text(pc_ram_value, "--%");
+        lv_label_set_text(pc_ram_meta, "-- / -- GB");
+        lv_label_set_text(pc_net_down, "DL --");
+        lv_label_set_text(pc_net_up, "UL --");
+        lv_label_set_text(pc_fps_value, "FPS --");
+        lv_label_set_text(pc_monitor_status, "PC OFFLINE");
+        return;
+    }
+
+    lv_label_set_text_fmt(
+        pc_cpu_value,
+        "%u%%",
+        (unsigned int)state.cpu_load);
+    if (state.cpu_temp_c >= 0) {
+        lv_label_set_text_fmt(
+            pc_cpu_meta,
+            "%d C  ·  %u MHz",
+            (int)state.cpu_temp_c,
+            (unsigned int)state.cpu_clock_mhz);
+    } else {
+        lv_label_set_text_fmt(
+            pc_cpu_meta,
+            "-- C  ·  %u MHz",
+            (unsigned int)state.cpu_clock_mhz);
+    }
+
+    lv_label_set_text_fmt(
+        pc_gpu_value,
+        "%u%%",
+        (unsigned int)state.gpu_load);
+    if (state.gpu_temp_c >= 0) {
+        lv_label_set_text_fmt(
+            pc_gpu_meta,
+            "%d C  ·  %u MHz",
+            (int)state.gpu_temp_c,
+            (unsigned int)state.gpu_clock_mhz);
+    } else {
+        lv_label_set_text_fmt(
+            pc_gpu_meta,
+            "-- C  ·  %u MHz",
+            (unsigned int)state.gpu_clock_mhz);
+    }
+
+    lv_label_set_text_fmt(
+        pc_ram_value,
+        "%u%%",
+        (unsigned int)state.ram_load);
+
+    uint32_t used_tenths =
+        (state.ram_used_mb * 10U) / 1024U;
+    uint32_t total_tenths =
+        (state.ram_total_mb * 10U) / 1024U;
+
+    lv_label_set_text_fmt(
+        pc_ram_meta,
+        "%u.%u / %u.%u GB",
+        (unsigned int)(used_tenths / 10U),
+        (unsigned int)(used_tenths % 10U),
+        (unsigned int)(total_tenths / 10U),
+        (unsigned int)(total_tenths % 10U));
+
+    uint32_t down_tenths =
+        state.net_down_kbps / 100U;
+    uint32_t up_tenths =
+        state.net_up_kbps / 100U;
+
+    lv_label_set_text_fmt(
+        pc_net_down,
+        "DL %u.%u Mb/s",
+        (unsigned int)(down_tenths / 10U),
+        (unsigned int)(down_tenths % 10U));
+    lv_label_set_text_fmt(
+        pc_net_up,
+        "UL %u.%u Mb/s",
+        (unsigned int)(up_tenths / 10U),
+        (unsigned int)(up_tenths % 10U));
+
+    if (state.fps >= 0) {
+        lv_label_set_text_fmt(
+            pc_fps_value,
+            "FPS %d",
+            (int)state.fps);
+    } else {
+        lv_label_set_text(pc_fps_value, "FPS --");
+    }
+
+    lv_label_set_text(pc_monitor_status, "LIVE PC DATA");
+}
+
+static void pc_monitor_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    refresh_pc_monitor_labels();
+}
+
+K_WORK_DEFINE(pc_monitor_work, pc_monitor_work_handler);
+
+void lumi_ui_pc_monitor_update(
+    uint8_t cpu_load,
+    int16_t cpu_temp_c,
+    uint16_t cpu_clock_mhz,
+    uint8_t gpu_load,
+    int16_t gpu_temp_c,
+    uint16_t gpu_clock_mhz,
+    uint8_t ram_load,
+    uint32_t ram_used_mb,
+    uint32_t ram_total_mb,
+    uint32_t net_down_kbps,
+    uint32_t net_up_kbps,
+    int16_t fps) {
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    pc_monitor_state.cpu_load = MIN(cpu_load, 100U);
+    pc_monitor_state.cpu_temp_c = cpu_temp_c;
+    pc_monitor_state.cpu_clock_mhz = cpu_clock_mhz;
+    pc_monitor_state.gpu_load = MIN(gpu_load, 100U);
+    pc_monitor_state.gpu_temp_c = gpu_temp_c;
+    pc_monitor_state.gpu_clock_mhz = gpu_clock_mhz;
+    pc_monitor_state.ram_load = MIN(ram_load, 100U);
+    pc_monitor_state.ram_used_mb = ram_used_mb;
+    pc_monitor_state.ram_total_mb = ram_total_mb;
+    pc_monitor_state.net_down_kbps = net_down_kbps;
+    pc_monitor_state.net_up_kbps = net_up_kbps;
+    pc_monitor_state.fps = fps;
+    pc_monitor_state.updated_ms = k_uptime_get_32();
+    pc_monitor_state.valid = true;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    k_work_submit_to_queue(
+        zmk_display_work_q(),
+        &pc_monitor_work);
+}
+
+void lumi_ui_pc_monitor_clear(void) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    pc_monitor_state.valid = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    k_work_submit_to_queue(
+        zmk_display_work_q(),
+        &pc_monitor_work);
+}
+
+static void set_pc_monitor_selected(bool selected) {
+    pc_monitor_selected = selected;
+
+    if (!pc_monitor_overlay) {
+        return;
+    }
+
+    if (selected) {
+        refresh_pc_monitor_labels();
+        lv_obj_clear_flag(
+            pc_monitor_overlay,
+            LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(pc_monitor_overlay);
+    } else {
+        lv_obj_add_flag(
+            pc_monitor_overlay,
+            LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 
 static uint32_t popup_until;
 static bool popup_visible = false;
@@ -348,6 +563,9 @@ static void update_page(struct page_state state) {
     if (!layer_label || same) {
         return;
     }
+
+    set_pc_monitor_selected(state.id == 5);
+
     bool animate_change = have_previous && previous.id != state.id;
     previous = state;
     have_previous = true;
@@ -1421,6 +1639,7 @@ static void refresh_screensaver(lv_timer_t *timer) {
                        saver_media_valid &&
                        (force_show ||
                         (!current_media_active &&
+                         !pc_monitor_selected &&
                          delay > 0U &&
                          (uint32_t)(now_uptime - ui_last_activity_ms) >= delay));
 
@@ -1905,6 +2124,165 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
 }
 
+static lv_obj_t *pc_monitor_label(
+    lv_obj_t *parent,
+    const char *text,
+    const lv_font_t *font,
+    uint32_t color) {
+
+    lv_obj_t *label = lv_label_create(parent);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(
+        label,
+        lv_color_hex(color),
+        0);
+    return label;
+}
+
+static void pc_monitor_card(
+    lv_obj_t *parent,
+    int32_t x,
+    const char *title,
+    uint32_t accent_color,
+    lv_obj_t **value_out,
+    lv_obj_t **meta_out) {
+
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_pos(card, x, 8);
+    lv_obj_set_size(card, 96, 82);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x111317), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x2D3138), 0);
+    lv_obj_set_style_radius(card, 10, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title_label =
+        pc_monitor_label(
+            card,
+            title,
+            &lv_font_montserrat_12,
+            accent_color);
+    lv_obj_set_pos(title_label, 9, 6);
+
+    *value_out =
+        pc_monitor_label(
+            card,
+            "--%",
+            &lv_font_montserrat_20,
+            0xFFFFFF);
+    lv_obj_set_pos(*value_out, 9, 26);
+
+    *meta_out =
+        pc_monitor_label(
+            card,
+            "--",
+            &lv_font_montserrat_12,
+            0x8E8E93);
+    lv_obj_set_pos(*meta_out, 9, 57);
+    lv_obj_set_width(*meta_out, 80);
+    lv_label_set_long_mode(
+        *meta_out,
+        LV_LABEL_LONG_DOT);
+}
+
+static void init_pc_monitor(lv_obj_t *screen) {
+    pc_monitor_overlay = lv_obj_create(screen);
+    lv_obj_remove_style_all(pc_monitor_overlay);
+    lv_obj_set_pos(pc_monitor_overlay, 0, STATUS_H);
+    lv_obj_set_size(pc_monitor_overlay, 320, 172 - STATUS_H);
+    lv_obj_set_style_bg_color(
+        pc_monitor_overlay,
+        lv_color_hex(0x050608),
+        0);
+    lv_obj_set_style_bg_opa(
+        pc_monitor_overlay,
+        LV_OPA_COVER,
+        0);
+    lv_obj_clear_flag(
+        pc_monitor_overlay,
+        LV_OBJ_FLAG_SCROLLABLE);
+
+    pc_monitor_card(
+        pc_monitor_overlay,
+        8,
+        "CPU",
+        0x64D2FF,
+        &pc_cpu_value,
+        &pc_cpu_meta);
+    pc_monitor_card(
+        pc_monitor_overlay,
+        112,
+        "GPU",
+        0xBF5AF2,
+        &pc_gpu_value,
+        &pc_gpu_meta);
+    pc_monitor_card(
+        pc_monitor_overlay,
+        216,
+        "RAM",
+        0x30D158,
+        &pc_ram_value,
+        &pc_ram_meta);
+
+    lv_obj_t *network = lv_obj_create(pc_monitor_overlay);
+    lv_obj_remove_style_all(network);
+    lv_obj_set_pos(network, 8, 98);
+    lv_obj_set_size(network, 304, 41);
+    lv_obj_set_style_bg_color(network, lv_color_hex(0x111317), 0);
+    lv_obj_set_style_bg_opa(network, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(network, 1, 0);
+    lv_obj_set_style_border_color(network, lv_color_hex(0x2D3138), 0);
+    lv_obj_set_style_radius(network, 10, 0);
+    lv_obj_clear_flag(network, LV_OBJ_FLAG_SCROLLABLE);
+
+    pc_net_down =
+        pc_monitor_label(
+            network,
+            "DL --",
+            &lv_font_montserrat_12,
+            0xFFFFFF);
+    lv_obj_set_pos(pc_net_down, 10, 6);
+
+    pc_net_up =
+        pc_monitor_label(
+            network,
+            "UL --",
+            &lv_font_montserrat_12,
+            0xFFFFFF);
+    lv_obj_set_pos(pc_net_up, 108, 6);
+
+    pc_fps_value =
+        pc_monitor_label(
+            network,
+            "FPS --",
+            &lv_font_montserrat_12,
+            0xFFFFFF);
+    lv_obj_set_pos(pc_fps_value, 212, 6);
+
+    pc_monitor_status =
+        pc_monitor_label(
+            network,
+            "PC OFFLINE",
+            &lv_font_montserrat_12,
+            0x8E8E93);
+    lv_obj_set_pos(pc_monitor_status, 10, 22);
+
+    lv_obj_add_flag(
+        pc_monitor_overlay,
+        LV_OBJ_FLAG_HIDDEN);
+}
+
+static void refresh_pc_monitor_timer(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+
+    if (pc_monitor_selected) {
+        refresh_pc_monitor_labels();
+    }
+}
+
 static void refresh_boot_splash(lv_timer_t *timer) {
     if (!boot_overlay || !boot_progress) {
         lv_timer_del(timer);
@@ -2307,7 +2685,9 @@ lv_obj_add_flag(
     popup,
     LV_OBJ_FLAG_HIDDEN
 );
-   lumi_page_init();
+
+    init_pc_monitor(screen);
+    lumi_page_init();
     lumi_now_playing_init(screen);
     init_screensaver(screen);
 
@@ -2324,6 +2704,7 @@ k_work_schedule(&page_poll_work, K_MSEC(500));
 
 lv_timer_create(refresh_pressed, 20, NULL);
 lv_timer_create(refresh_popup, 20, NULL);
+lv_timer_create(refresh_pc_monitor_timer, 500, NULL);
 lv_timer_create(refresh_screensaver, SAVER_MIN_FRAME_MS, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));

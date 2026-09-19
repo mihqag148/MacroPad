@@ -194,7 +194,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT";
+        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON";
 
     if (from_usb) {
         write_text_usb(response);
@@ -967,6 +967,43 @@ static void handle_panel_info(bool from_usb) {
     }
 }
 
+static void handle_pc_monitor(char *save) {
+    char *cpu_load = strtok_r(NULL, "|", &save);
+    char *cpu_temp = strtok_r(NULL, "|", &save);
+    char *cpu_clock = strtok_r(NULL, "|", &save);
+    char *gpu_load = strtok_r(NULL, "|", &save);
+    char *gpu_temp = strtok_r(NULL, "|", &save);
+    char *gpu_clock = strtok_r(NULL, "|", &save);
+    char *ram_load = strtok_r(NULL, "|", &save);
+    char *ram_used = strtok_r(NULL, "|", &save);
+    char *ram_total = strtok_r(NULL, "|", &save);
+    char *net_down = strtok_r(NULL, "|", &save);
+    char *net_up = strtok_r(NULL, "|", &save);
+    char *fps = strtok_r(NULL, "|", &save);
+
+    if (!cpu_load || !cpu_temp || !cpu_clock ||
+        !gpu_load || !gpu_temp || !gpu_clock ||
+        !ram_load || !ram_used || !ram_total ||
+        !net_down || !net_up || !fps) {
+        lumi_diag_report('W', "PCMON invalid payload");
+        return;
+    }
+
+    lumi_ui_pc_monitor_update(
+        (uint8_t)CLAMP(atoi(cpu_load), 0, 100),
+        (int16_t)atoi(cpu_temp),
+        (uint16_t)MAX(atoi(cpu_clock), 0),
+        (uint8_t)CLAMP(atoi(gpu_load), 0, 100),
+        (int16_t)atoi(gpu_temp),
+        (uint16_t)MAX(atoi(gpu_clock), 0),
+        (uint8_t)CLAMP(atoi(ram_load), 0, 100),
+        (uint32_t)strtoul(ram_used, NULL, 10),
+        (uint32_t)strtoul(ram_total, NULL, 10),
+        (uint32_t)strtoul(net_down, NULL, 10),
+        (uint32_t)strtoul(net_up, NULL, 10),
+        (int16_t)atoi(fps));
+}
+
 static void handle_battery(bool from_usb) {
     char response[24];
     uint8_t percent = zmk_battery_state_of_charge();
@@ -1007,7 +1044,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT\r\n");
+                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -1019,6 +1056,10 @@ static void handle_line(char *line, bool from_usb) {
         handle_panel_info(from_usb);
     } else if (strcmp(root, "BAT") == 0) {
         handle_battery(from_usb);
+    } else if (strcmp(root, "PCMON") == 0) {
+        handle_pc_monitor(save);
+    } else if (strcmp(root, "PCMONCLR") == 0) {
+        lumi_ui_pc_monitor_clear();
     } else if (strcmp(root, "SAVERSTATE") == 0) {
         handle_saver_state(from_usb);
     } else if (strcmp(root, "LOG") == 0) {

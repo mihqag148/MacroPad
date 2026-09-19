@@ -11,12 +11,13 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.4.1</Version>
-    <AssemblyVersion>1.4.1.0</AssemblyVersion>
-    <FileVersion>1.4.1.0</FileVersion>
+    <Version>1.5.0</Version>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <FileVersion>1.5.0.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 </Project>

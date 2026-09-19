@@ -86,9 +86,21 @@
                 &kp N4     &kp N5     &kp N6
                 &kp N7     &kp N8     &kp N9
                 &kp N0     &kp MINUS  &kp EQUAL
-                &to 0
+                &to 5
             >;
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
+
+        pcmonitor { // Layer 5 - reserved telemetry page
+            display-name = "PC MONITOR";
+            bindings = <
+                &none &none &none
+                &none &none &none
+                &none &none &none
+                &none &none &none
+                &to 0
+            >;
+            sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
         };
     };
 };

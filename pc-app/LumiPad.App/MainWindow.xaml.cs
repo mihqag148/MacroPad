@@ -22,6 +22,7 @@ public partial class MainWindow : Window
 {
     private readonly SerialLink _serial = new();
     private readonly NowPlayingService _nowPlaying = new();
+    private readonly PcMonitorService _pcMonitorService = new();
 
     private bool _uiReady;
     private bool _lightTheme;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _runningAppsTimer = new();
     private readonly DispatcherTimer _actionEventTimer = new();
     private readonly DispatcherTimer _productStatusTimer = new();
+    private readonly DispatcherTimer _pcMonitorTimer = new();
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
@@ -84,6 +86,10 @@ public partial class MainWindow : Window
     private TextBlock? _dialDeskConnectionText;
     private TextBlock? _dialDeskBatteryText;
     private int? _dialDeskBatteryPercent;
+    private bool _pcMonitorEnabled = true;
+    private int _pcMonitorIntervalMs = 1000;
+    private bool _pcMonitorPolling;
+    private PcMonitorSnapshot? _lastPcMonitorSnapshot;
 
     public MainWindow()
     {
@@ -183,6 +189,10 @@ public partial class MainWindow : Window
         _productStatusTimer.Tick += async (_, _) =>
             await UpdateProductOverviewAsync();
 
+        _pcMonitorTimer.Interval = TimeSpan.FromMilliseconds(_pcMonitorIntervalMs);
+        _pcMonitorTimer.Tick += async (_, _) =>
+            await PollPcMonitorAsync();
+
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
@@ -265,6 +275,9 @@ public partial class MainWindow : Window
             _runningAppsTimer.Start();
             _actionEventTimer.Start();
             _productStatusTimer.Start();
+            if (_pcMonitorEnabled)
+                _pcMonitorTimer.Start();
+            await PollPcMonitorAsync(force: true);
             await RefreshRunningAppsAsync();
             await UpdateProductOverviewAsync();
             PollAutoProfile(force: true);
@@ -1000,6 +1013,8 @@ public partial class MainWindow : Window
         public int SleepDelaySeconds { get; set; } = 120;
         public string? ScreensaverMediaPath { get; set; }
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
+        public bool PcMonitorEnabled { get; set; } = true;
+        public int PcMonitorIntervalMs { get; set; } = 1000;
     }
 
     private void LoadAppSettings()
@@ -1078,7 +1093,9 @@ public partial class MainWindow : Window
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 ScreensaverMediaPath = _screensaverMediaPath,
-                ScreensaverScaleMode = SelectedScreensaverScaleMode()
+                ScreensaverScaleMode = SelectedScreensaverScaleMode(),
+                PcMonitorEnabled = _pcMonitorEnabled,
+                PcMonitorIntervalMs = _pcMonitorIntervalMs
             };
 
             System.IO.File.WriteAllText(
@@ -1105,6 +1122,12 @@ public partial class MainWindow : Window
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
+
+        if (PcMonitorEnabledCheckBox is not null)
+            PcMonitorEnabledCheckBox.IsChecked = _pcMonitorEnabled;
+        if (PcMonitorIntervalCombo is not null)
+            SelectComboTag(PcMonitorIntervalCombo, _pcMonitorIntervalMs.ToString());
+
         UpdateRgbReadout();
     }
 
@@ -1217,9 +1240,11 @@ public partial class MainWindow : Window
         _runningAppsTimer.Stop();
         _actionEventTimer.Stop();
         _productStatusTimer.Stop();
+        _pcMonitorTimer.Stop();
         _reconnectCts.Cancel();
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
+        _pcMonitorService.Dispose();
         _serial.Dispose();
 
         if (_trayIcon is not null)
@@ -2418,6 +2443,134 @@ public partial class MainWindow : Window
         {
             _syncingMediaUi = false;
         }
+    }
+
+    private async Task PollPcMonitorAsync(bool force = false)
+    {
+        if ((!_pcMonitorEnabled && !force) || _pcMonitorPolling)
+            return;
+
+        _pcMonitorPolling = true;
+        try
+        {
+            PcMonitorSnapshot snapshot =
+                await Task.Run(_pcMonitorService.ReadSnapshot);
+            _lastPcMonitorSnapshot = snapshot;
+            ApplyPcMonitorUi(snapshot);
+
+            if (_pcMonitorEnabled &&
+                _serial.IsConnected &&
+                _serial.SupportsPcMonitor)
+            {
+                await _serial.SendPcMonitorAsync(snapshot);
+                PcMonitorLinkText.Text =
+                    _serial.IsBluetoothConnected
+                        ? L("Live · Bluetooth telemetry", "Trực tiếp · dữ liệu Bluetooth")
+                        : L("Live · USB telemetry", "Trực tiếp · dữ liệu USB");
+            }
+            else if (_pcMonitorEnabled && _serial.IsConnected)
+            {
+                PcMonitorLinkText.Text =
+                    L("Firmware does not support PC Monitor yet.",
+                      "Firmware chưa hỗ trợ PC Monitor.");
+            }
+            else if (_pcMonitorEnabled)
+            {
+                PcMonitorLinkText.Text =
+                    L("PC sensors live · DIAL DESK is offline",
+                      "Cảm biến PC đang chạy · DIAL DESK chưa kết nối");
+            }
+            else
+            {
+                PcMonitorLinkText.Text =
+                    L("PC Monitor streaming is off", "Đã tắt truyền PC Monitor");
+            }
+        }
+        catch (Exception ex)
+        {
+            PcMonitorLinkText.Text =
+                L($"PC sensors unavailable: {ex.Message}",
+                  $"Không đọc được cảm biến PC: {ex.Message}");
+            AddLog("WARN", "PCMON", ex.Message);
+        }
+        finally
+        {
+            _pcMonitorPolling = false;
+        }
+    }
+
+    private void ApplyPcMonitorUi(PcMonitorSnapshot snapshot)
+    {
+        PcCpuLoadText.Text = $"{snapshot.CpuLoad:0}%";
+        PcCpuTempText.Text = snapshot.CpuTemperature.HasValue
+            ? $"{snapshot.CpuTemperature.Value:0} °C" : "-- °C";
+        PcCpuClockText.Text = snapshot.CpuClockMHz.HasValue
+            ? $"{snapshot.CpuClockMHz.Value:0} MHz" : "-- MHz";
+
+        PcGpuLoadText.Text = $"{snapshot.GpuLoad:0}%";
+        PcGpuTempText.Text = snapshot.GpuTemperature.HasValue
+            ? $"{snapshot.GpuTemperature.Value:0} °C" : "-- °C";
+        PcGpuClockText.Text = snapshot.GpuClockMHz.HasValue
+            ? $"{snapshot.GpuClockMHz.Value:0} MHz" : "-- MHz";
+
+        PcRamLoadText.Text = $"{snapshot.MemoryLoad:0}%";
+        PcRamDetailText.Text =
+            $"{snapshot.MemoryUsedGb:0.0} / {snapshot.MemoryTotalGb:0.0} GB";
+        PcNetDownText.Text = $"{snapshot.NetworkDownloadMbps:0.0} Mbps";
+        PcNetUpText.Text = $"{snapshot.NetworkUploadMbps:0.0} Mbps";
+        PcFpsText.Text = snapshot.Fps.HasValue
+            ? $"FPS {snapshot.Fps.Value}" : "FPS --";
+    }
+
+    private async void PcMonitorEnabled_Changed(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!_uiReady)
+            return;
+
+        _pcMonitorEnabled =
+            PcMonitorEnabledCheckBox?.IsChecked == true;
+
+        if (_pcMonitorEnabled)
+        {
+            _pcMonitorTimer.Start();
+            await PollPcMonitorAsync(force: true);
+        }
+        else
+        {
+            _pcMonitorTimer.Stop();
+
+            if (_serial.IsConnected &&
+                _serial.SupportsPcMonitor)
+            {
+                await _serial.ClearPcMonitorAsync();
+            }
+
+            PcMonitorLinkText.Text =
+                L("PC Monitor streaming is off", "Đã tắt truyền PC Monitor");
+        }
+
+        SaveAppSettings();
+    }
+
+    private void PcMonitorIntervalCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (PcMonitorIntervalCombo?.SelectedItem is not ComboBoxItem item ||
+            !int.TryParse(item.Tag?.ToString(), out int interval) ||
+            interval is not (500 or 1000 or 2000))
+        {
+            return;
+        }
+
+        _pcMonitorIntervalMs = interval;
+        _pcMonitorTimer.Interval =
+            TimeSpan.FromMilliseconds(_pcMonitorIntervalMs);
+
+        if (_uiReady)
+            SaveAppSettings();
     }
 
     private static string ProfileName(int index) =>

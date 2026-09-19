@@ -61,6 +61,8 @@ public sealed class SerialLink : IDisposable
         SupportsCapability("ARTVAR");
     public bool SupportsBatteryInfo =>
         SupportsCapability("BAT");
+    public bool SupportsPcMonitor =>
+        SupportsCapability("PCMON");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -1722,6 +1724,49 @@ public sealed class SerialLink : IDisposable
             _writeGate.Release();
         }
     }
+
+    public async Task<bool> SendPcMonitorAsync(PcMonitorSnapshot data)
+    {
+        if (!IsConnected || !SupportsPcMonitor)
+            return false;
+
+        static int I(double value) => (int)Math.Round(value);
+        static int N(double? value) =>
+            value.HasValue ? (int)Math.Round(value.Value) : -1;
+
+        int usedMb =
+            (int)Math.Clamp(
+                Math.Round(data.MemoryUsedGb * 1024d),
+                0,
+                int.MaxValue);
+        int totalMb =
+            (int)Math.Clamp(
+                Math.Round(data.MemoryTotalGb * 1024d),
+                0,
+                int.MaxValue);
+        int downKbps =
+            (int)Math.Clamp(
+                Math.Round(data.NetworkDownloadMbps * 1000d),
+                0,
+                int.MaxValue);
+        int upKbps =
+            (int)Math.Clamp(
+                Math.Round(data.NetworkUploadMbps * 1000d),
+                0,
+                int.MaxValue);
+
+        string line =
+            $"PCMON|{I(data.CpuLoad)}|{N(data.CpuTemperature)}|" +
+            $"{N(data.CpuClockMHz)}|{I(data.GpuLoad)}|" +
+            $"{N(data.GpuTemperature)}|{N(data.GpuClockMHz)}|" +
+            $"{I(data.MemoryLoad)}|{usedMb}|{totalMb}|" +
+            $"{downKbps}|{upKbps}|{data.Fps ?? -1}";
+
+        return await SendRealtimeLineAsync(line);
+    }
+
+    public Task<bool> ClearPcMonitorAsync() =>
+        SendRealtimeLineAsync("PCMONCLR");
 
     private async Task<bool> SendRealtimeLineAsync(string line)
     {
