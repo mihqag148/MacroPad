@@ -57,7 +57,7 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
-#define SAVER_STRIPE_SRC_ROWS 4U
+#define SAVER_STRIPE_SRC_ROWS 16U
 #define SAVER_STRIPE_DST_ROWS (SAVER_STRIPE_SRC_ROWS * 2U)
 #define SAVER_MIN_FRAME_MS 40U /* 25 FPS maximum playback rate */
 
@@ -1079,10 +1079,13 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
         saver_rgb332_lut_ready = true;
     }
 
-    /* Write the 2x image as narrow horizontal stripes instead of asking
-     * LVGL to invalidate one zoomed 320x172 object. Total bytes are the same,
-     * but each RAMWR window is only up to 8 rows high, so any unsynchronised
-     * tear is confined to a much thinner band.
+    /* Write the 2x image in six larger horizontal stripes. At 32 MHz a
+     * full 320x172 RGB565 frame already takes about 27.5 ms on the wire, which
+     * is longer than one ~60 Hz panel scan and cannot be made perfectly
+     * tear-free without a wired TE signal. Using 32-row destination stripes
+     * cuts RAMWR/window transaction overhead sharply versus the old 8-row
+     * stripes, so fast motion shows fewer horizontal slice boundaries while
+     * keeping RAM use well below a full-frame buffer.
      */
     for (uint16_t src_y = 0U;
          src_y < LUMI_SAVER_FRAME_H;
