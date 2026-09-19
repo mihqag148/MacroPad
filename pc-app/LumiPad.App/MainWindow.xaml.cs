@@ -88,7 +88,7 @@ public partial class MainWindow : Window
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
-        Application.Current.DispatcherUnhandledException += (_, args) =>
+        System.Windows.Application.Current.DispatcherUnhandledException += (_, args) =>
         {
             AddLog("ERROR", "APP", $"Unhandled UI exception: {args.Exception}");
             args.Handled = true;
