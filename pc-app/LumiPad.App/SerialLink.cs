@@ -459,7 +459,8 @@ public sealed class SerialLink : IDisposable
                 $"{Math.Max(0, (long)data.Duration.TotalMilliseconds)}|" +
                 $"{(data.IsPlaying ? 1 : 0)}|{source}|{title}|{artist}";
 
-            await SendRealtimeLineAsync(nowPlayingLine);
+            if (!await SendRealtimeLineAsync(nowPlayingLine))
+                return;
 
             _lastNowPlayingKey = key;
             _lastNowPlayingPlaying = data.IsPlaying;
@@ -468,15 +469,19 @@ public sealed class SerialLink : IDisposable
             string bitmapKey = $"{data.Title}\u001F{data.Artist}";
             if (!string.Equals(bitmapKey, _lastBitmapKey, StringComparison.Ordinal))
             {
-                _lastBitmapKey = bitmapKey;
-                await SendUnicodeBitmapsAsync(data.Title ?? "", data.Artist ?? "");
+                if (await SendUnicodeBitmapsAsync(
+                        data.Title ?? "",
+                        data.Artist ?? ""))
+                {
+                    _lastBitmapKey = bitmapKey;
+                }
             }
 
             if (data.ArtworkRgb332 is { Length: 5776 } artwork &&
                 !string.Equals(bitmapKey, _lastArtworkKey, StringComparison.Ordinal))
             {
-                _lastArtworkKey = bitmapKey;
-                await SendArtworkAsync(artwork);
+                if (await SendArtworkAsync(artwork))
+                    _lastArtworkKey = bitmapKey;
             }
 
             // Refresh the state after the heavier title/artwork transfer so
@@ -490,7 +495,7 @@ public sealed class SerialLink : IDisposable
         }
     }
 
-    private async Task SendUnicodeBitmapsAsync(string title, string artist)
+    private async Task<bool> SendUnicodeBitmapsAsync(string title, string artist)
     {
         try
         {
@@ -499,19 +504,24 @@ public sealed class SerialLink : IDisposable
             var artistBitmap = TextBitmapRenderer.RenderScrollable(
                 artist, 206, 360, 20, 13, false);
 
-            await SendTextBitmapAsync("T", titleBitmap, 24);
-            await SendTextBitmapAsync("A", artistBitmap, 20);
+            if (!await SendTextBitmapAsync("T", titleBitmap, 24) ||
+                !await SendTextBitmapAsync("A", artistBitmap, 20))
+            {
+                return false;
+            }
 
             Log("INFO",
                 $"Now Playing text sent: title={titleBitmap.Width}px, artist={artistBitmap.Width}px");
+            return true;
         }
         catch (Exception ex)
         {
             Log("ERROR", $"Now Playing text transfer failed: {ex.Message}");
+            return false;
         }
     }
 
-    private async Task SendTextBitmapAsync(
+    private async Task<bool> SendTextBitmapAsync(
         string kind,
         RenderedTextBitmap bitmap,
         int height)
@@ -519,39 +529,56 @@ public sealed class SerialLink : IDisposable
         byte[] packed = Convert.FromHexString(bitmap.Hex);
         const int rawChunk = 360;
 
-        await SendRealtimeLineAsync(
-            $"TXTBEGIN|{kind}|{bitmap.Width}|{height}|{packed.Length}");
+        if (!await SendRealtimeLineAsync(
+                $"TXTBEGIN|{kind}|{bitmap.Width}|{height}|{packed.Length}"))
+        {
+            return false;
+        }
 
         for (int offset = 0; offset < packed.Length; offset += rawChunk)
         {
             int len = Math.Min(rawChunk, packed.Length - offset);
             string hex = Convert.ToHexString(packed, offset, len);
-            await SendRealtimeLineAsync($"TXTCHUNK|{kind}|{offset}|{hex}");
+            if (!await SendRealtimeLineAsync(
+                    $"TXTCHUNK|{kind}|{offset}|{hex}"))
+            {
+                return false;
+            }
         }
 
-        await SendRealtimeLineAsync($"TXTEND|{kind}");
+        return await SendRealtimeLineAsync($"TXTEND|{kind}");
     }
 
-    private async Task SendArtworkAsync(byte[] artwork)
+    private async Task<bool> SendArtworkAsync(byte[] artwork)
     {
         try
         {
             const int rawChunk = 540;
-            await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}");
+            if (!await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}"))
+                return false;
 
             for (int offset = 0; offset < artwork.Length; offset += rawChunk)
             {
                 int len = Math.Min(rawChunk, artwork.Length - offset);
                 string base64 = Convert.ToBase64String(artwork, offset, len);
-                await SendRealtimeLineAsync($"ARTCHUNK|{offset}|{base64}");
+
+                if (!await SendRealtimeLineAsync(
+                        $"ARTCHUNK|{offset}|{base64}"))
+                {
+                    return false;
+                }
             }
 
-            await SendRealtimeLineAsync("ARTEND");
+            if (!await SendRealtimeLineAsync("ARTEND"))
+                return false;
+
             Log("INFO", $"Now Playing artwork sent: {artwork.Length} bytes");
+            return true;
         }
         catch (Exception ex)
         {
             Log("ERROR", $"Now Playing artwork transfer failed: {ex.Message}");
+            return false;
         }
     }
 
@@ -963,7 +990,7 @@ public sealed class SerialLink : IDisposable
         }
     }
 
-    private async Task SendRealtimeLineAsync(string line)
+    private async Task<bool> SendRealtimeLineAsync(string line)
     {
         await _writeGate.WaitAsync();
         try
@@ -973,17 +1000,12 @@ public sealed class SerialLink : IDisposable
             if (_bleCharacteristic is not null)
             {
                 var characteristic = _bleCharacteristic;
-                bool fastWrite =
-                    (characteristic.CharacteristicProperties &
-                     GattCharacteristicProperties.WriteWithoutResponse) != 0;
-
-                GattWriteOption option = fastWrite
-                    ? GattWriteOption.WriteWithoutResponse
-                    : GattWriteOption.WriteWithResponse;
-
                 int chunkSize = _blePayloadSize;
-                int packet = 0;
 
+                // Track metadata and artwork must be lossless. Use the larger
+                // negotiated ATT payload, but keep acknowledged writes so a
+                // dropped packet can never leave the firmware stuck on an old
+                // title or with an incomplete album image.
                 for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
                     int len = Math.Min(chunkSize, data.Length - offset);
@@ -992,31 +1014,30 @@ public sealed class SerialLink : IDisposable
 
                     var status = await characteristic.WriteValueAsync(
                         writer.DetachBuffer(),
-                        option);
+                        GattWriteOption.WriteWithResponse);
 
                     if (status != GattCommunicationStatus.Success)
                         throw new IOException(
                             $"Bluetooth realtime write failed: {status}");
-
-                    // WriteWithoutResponse is much faster, but Windows can queue
-                    // commands faster than the nRF52840 consumes them. A tiny
-                    // yield every few ATT packets keeps order without adding the
-                    // per-packet round-trip latency of acknowledged writes.
-                    if (fastWrite && (++packet % 6) == 0)
-                        await Task.Delay(1);
                 }
 
-                return;
+                return true;
             }
 
             if (_port?.IsOpen == true)
+            {
                 _port.Write(data, 0, data.Length);
+                return true;
+            }
+
+            return false;
         }
         catch (Exception ex)
         {
             Log("ERROR", $"Realtime link write failed: {ex.Message}");
             LinkError?.Invoke(ex.Message);
             Disconnect();
+            return false;
         }
         finally
         {
@@ -1035,10 +1056,9 @@ public sealed class SerialLink : IDisposable
             {
                 var characteristic = _bleCharacteristic;
 
-                // Keep each packet inside the default BLE ATT payload and require
-                // an acknowledgement. This is slower than WriteWithoutResponse,
-                // but much more reliable on Windows with HID keyboards.
-                const int chunkSize = 20;
+                // Use the negotiated ATT payload while keeping acknowledged
+                // writes for reliable control commands.
+                int chunkSize = _blePayloadSize;
                 for (int offset = 0; offset < data.Length; offset += chunkSize)
                 {
                     int len = Math.Min(chunkSize, data.Length - offset);
