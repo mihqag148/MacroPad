@@ -56,6 +56,8 @@ public sealed class SerialLink : IDisposable
         SupportsCapability("PROFILE");
     public bool SupportsActions =>
         SupportsCapability("ACTION");
+    public bool SupportsVariableArtwork =>
+        SupportsCapability("ARTVAR");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -96,7 +98,7 @@ public sealed class SerialLink : IDisposable
             foreach (string cap in new[]
                      {
                          "MEM", "PANEL", "LOG", "SAVERSTATE",
-                         "PROFILE", "ACTION"
+                         "PROFILE", "ACTION", "ARTVAR"
                      })
             {
                 _capabilities.Add(cap);
@@ -777,6 +779,70 @@ public sealed class SerialLink : IDisposable
         return await SendRealtimeLineAsync($"TXTEND|{kind}");
     }
 
+    private static byte[] DownsampleRgb332(
+        byte[] source,
+        int sourceWidth,
+        int sourceHeight,
+        int targetWidth,
+        int targetHeight)
+    {
+        if (sourceWidth == targetWidth && sourceHeight == targetHeight)
+            return source;
+
+        var target = new byte[targetWidth * targetHeight];
+
+        for (int y = 0; y < targetHeight; y++)
+        {
+            double srcY =
+                ((y + 0.5) * sourceHeight / targetHeight) - 0.5;
+            int y0 = Math.Clamp((int)Math.Floor(srcY), 0, sourceHeight - 1);
+            int y1 = Math.Clamp(y0 + 1, 0, sourceHeight - 1);
+            double fy = Math.Clamp(srcY - y0, 0.0, 1.0);
+
+            for (int x = 0; x < targetWidth; x++)
+            {
+                double srcX =
+                    ((x + 0.5) * sourceWidth / targetWidth) - 0.5;
+                int x0 = Math.Clamp((int)Math.Floor(srcX), 0, sourceWidth - 1);
+                int x1 = Math.Clamp(x0 + 1, 0, sourceWidth - 1);
+                double fx = Math.Clamp(srcX - x0, 0.0, 1.0);
+
+                static (double R, double G, double B) Decode(byte v) =>
+                    (
+                        (((v >> 5) & 0x07) * 255.0) / 7.0,
+                        (((v >> 2) & 0x07) * 255.0) / 7.0,
+                        ((v & 0x03) * 255.0) / 3.0
+                    );
+
+                var c00 = Decode(source[y0 * sourceWidth + x0]);
+                var c10 = Decode(source[y0 * sourceWidth + x1]);
+                var c01 = Decode(source[y1 * sourceWidth + x0]);
+                var c11 = Decode(source[y1 * sourceWidth + x1]);
+
+                double r0 = c00.R + (c10.R - c00.R) * fx;
+                double g0 = c00.G + (c10.G - c00.G) * fx;
+                double b0 = c00.B + (c10.B - c00.B) * fx;
+                double r1 = c01.R + (c11.R - c01.R) * fx;
+                double g1 = c01.G + (c11.G - c01.G) * fx;
+                double b1 = c01.B + (c11.B - c01.B) * fx;
+
+                byte r = (byte)Math.Clamp(
+                    (int)Math.Round(r0 + (r1 - r0) * fy), 0, 255);
+                byte g = (byte)Math.Clamp(
+                    (int)Math.Round(g0 + (g1 - g0) * fy), 0, 255);
+                byte b = (byte)Math.Clamp(
+                    (int)Math.Round(b0 + (b1 - b0) * fy), 0, 255);
+
+                target[y * targetWidth + x] =
+                    (byte)(((r >> 5) << 5) |
+                           ((g >> 5) << 2) |
+                           (b >> 6));
+            }
+        }
+
+        return target;
+    }
+
     private async Task<bool> SendArtworkAsync(
         byte[] artwork,
         int generation,
@@ -784,18 +850,41 @@ public sealed class SerialLink : IDisposable
     {
         try
         {
+            const int fullSize = 76;
+            const int bleSize = 48;
             const int rawChunk = 240;
-            if (!await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}"))
+
+            bool compactBle =
+                _bleCharacteristic is not null &&
+                SupportsVariableArtwork;
+
+            int width = compactBle ? bleSize : fullSize;
+            int height = compactBle ? bleSize : fullSize;
+            byte[] payload = compactBle
+                ? DownsampleRgb332(
+                    artwork,
+                    fullSize,
+                    fullSize,
+                    bleSize,
+                    bleSize)
+                : artwork;
+
+            string begin = compactBle
+                ? $"ARTBEGIN|{payload.Length}|{width}|{height}"
+                : $"ARTBEGIN|{payload.Length}";
+
+            if (!await SendRealtimeLineAsync(begin))
                 return false;
 
             int chunkNumber = 0;
-            for (int offset = 0; offset < artwork.Length; offset += rawChunk)
+            for (int offset = 0; offset < payload.Length; offset += rawChunk)
             {
                 if (!IsMediaGenerationCurrent(generation))
                     return false;
 
-                int len = Math.Min(rawChunk, artwork.Length - offset);
-                string base64 = Convert.ToBase64String(artwork, offset, len);
+                int len = Math.Min(rawChunk, payload.Length - offset);
+                string base64 =
+                    Convert.ToBase64String(payload, offset, len);
 
                 if (!await SendRealtimeLineAsync(
                         $"ARTCHUNK|{offset}|{base64}"))
@@ -806,8 +895,8 @@ public sealed class SerialLink : IDisposable
                 chunkNumber++;
                 if ((chunkNumber % 6) == 0)
                 {
-                    // Keep the firmware's media-session watchdog alive during
-                    // slower acknowledged BLE artwork transfers.
+                    // Keep the firmware media session alive while acknowledged
+                    // BLE writes are in flight.
                     if (!await SendRealtimeLineAsync(heartbeatLine))
                         return false;
                 }
@@ -816,7 +905,12 @@ public sealed class SerialLink : IDisposable
             if (!await SendRealtimeLineAsync("ARTEND"))
                 return false;
 
-            Log("INFO", $"Now Playing artwork sent: {artwork.Length} bytes");
+            Log(
+                "INFO",
+                compactBle
+                    ? $"Now Playing artwork sent compact BLE: {width}x{height}, {payload.Length} bytes"
+                    : $"Now Playing artwork sent: {payload.Length} bytes");
+
             return true;
         }
         catch (Exception ex)
@@ -1321,6 +1415,9 @@ public sealed class SerialLink : IDisposable
         if (!SupportsActions || !IsConnected)
             return null;
 
+        if (!_mediaGate.Wait(0))
+            return null;
+
         string? response = null;
 
         await _writeGate.WaitAsync();
@@ -1377,6 +1474,7 @@ public sealed class SerialLink : IDisposable
         finally
         {
             _writeGate.Release();
+            _mediaGate.Release();
         }
 
         if (string.IsNullOrWhiteSpace(response) ||
