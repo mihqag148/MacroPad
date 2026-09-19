@@ -803,162 +803,6 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Actions">
-                <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="330"/>
-                        <ColumnDefinition Width="18"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Border Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="20">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <StackPanel>
-                                <TextBlock Text="ACTION / SCRIPT ENGINE"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="Scripts"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Margin="0,6,0,0"/>
-                            </StackPanel>
-
-                            <ListBox x:Name="ActionScriptsList"
-                                     Grid.Row="2"
-                                     SelectionChanged="ActionScriptsList_SelectionChanged"/>
-
-                            <StackPanel Grid.Row="4"
-                                        Orientation="Horizontal">
-                                <Button Content="New"
-                                        Click="NewActionScript_Click"/>
-                                <Button Content="Delete"
-                                        Click="DeleteActionScript_Click"
-                                        Margin="0"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Column="2"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="22">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="18"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="12"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="16"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <StackPanel>
-                                <TextBlock Text="SCRIPT EDITOR"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock x:Name="ActionEditorTitle"
-                                           Text="Select or create a script"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Margin="0,6,0,0"/>
-                            </StackPanel>
-
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="90"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Name"
-                                           VerticalAlignment="Center"/>
-                                <TextBox x:Name="ActionScriptNameText"
-                                         Grid.Column="1"
-                                         TextChanged="ActionScriptNameText_TextChanged"/>
-                            </Grid>
-
-                            <Grid Grid.Row="4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="14"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <ComboBox x:Name="ActionStepTypeCombo"
-                                          SelectedValuePath="Tag">
-                                    <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
-                                    <ComboBoxItem Content="Key combination" Tag="Keys"/>
-                                    <ComboBoxItem Content="Type text" Tag="Text"/>
-                                    <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
-                                    <ComboBoxItem Content="Media key" Tag="Media"/>
-                                </ComboBox>
-
-                                <TextBox x:Name="ActionStepValueText"
-                                         Grid.Column="2"
-                                         ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
-
-                                <Button Grid.Column="3"
-                                        Content="Add Step"
-                                        Click="AddActionStep_Click"
-                                        Margin="12,0,0,0"/>
-                            </Grid>
-
-                            <ListBox x:Name="ActionStepsList"
-                                     Grid.Row="6"/>
-
-                            <Grid Grid.Row="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="Remove Step"
-                                            Click="RemoveActionStep_Click"/>
-                                    <Button Content="Move Up"
-                                            Click="MoveActionStepUp_Click"/>
-                                    <Button Content="Move Down"
-                                            Click="MoveActionStepDown_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1"
-                                            Orientation="Horizontal">
-                                    <TextBlock x:Name="ActionScriptStatusText"
-                                               Text="Ready"
-                                               Foreground="{DynamicResource Muted}"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,14,0"/>
-                                    <Button Content="Save"
-                                            Click="SaveActionScript_Click"/>
-                                    <Button Content="Run Test"
-                                            Click="RunActionScript_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Grid>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </TabItem>
-
             <TabItem x:Name="ZmkTab" Header="ZMK Studio">
                 <Grid Margin="0,14,0,0">
                     <Grid.RowDefinitions>
@@ -1190,6 +1034,49 @@
                                         IsEnabled="False"
                                         Margin="0"/>
                             </StackPanel>
+
+                            <Border Height="1"
+                                    Background="{DynamicResource Line}"
+                                    Margin="0,18,0,16"/>
+
+                            <TextBlock Text="DISPLAY"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Muted}"/>
+                            <TextBlock Text="Panel timing"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Margin="0,5,0,8"/>
+                            <Border Background="{DynamicResource ControlBg}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="10">
+                                <TextBlock x:Name="PanelInfoText"
+                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"/>
+                            </Border>
+
+                            <TextBlock Text="DIAGNOSTIC LOG"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Muted}"
+                                       Margin="0,16,0,0"/>
+                            <TextBlock Text="App + firmware events and errors"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,10"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="ViewLogButton"
+                                        Content="View log"
+                                        Click="ToggleLog_Click"/>
+                                <Button Content="Save log"
+                                        Click="SaveLog_Click"
+                                        Margin="0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -1199,88 +1086,171 @@
                             BorderThickness="1"
                             CornerRadius="24"
                             Padding="20">
-                        <StackPanel>
-                            <TextBlock Text="DISPLAY"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"/>
-                            <TextBlock Text="Panel timing"
-                                       FontSize="16"
-                                       FontWeight="SemiBold"
-                                       Margin="0,4,0,10"/>
-                            <Border Background="{DynamicResource ControlBg}"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="12">
-                                <TextBlock x:Name="PanelInfoText"
-                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="14"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="ACTION / SCRIPT ENGINE"
                                            FontSize="12"
                                            FontWeight="SemiBold"
-                                           TextWrapping="Wrap"/>
-                            </Border>
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="Actions"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Margin="0,6,0,0"/>
+                            </StackPanel>
 
-                            <Border Height="1"
-                                    Background="{DynamicResource Line}"
-                                    Margin="0,18,0,18"/>
-
-                            <Grid>
+                            <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="250"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="DIAGNOSTIC LOG"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="App + firmware events and errors"
-                                               FontSize="16"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1"
-                                            Orientation="Horizontal"
-                                            VerticalAlignment="Center">
-                                    <Button x:Name="ViewLogButton"
-                                            Content="View log"
-                                            Click="ToggleLog_Click"/>
-                                    <Button Content="Save log"
-                                            Click="SaveLog_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Grid>
 
-                            <Border x:Name="LogPanel"
-                                    Visibility="Collapsed"
-                                    Margin="0,14,0,0">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal"
-                                                HorizontalAlignment="Right"
-                                                Margin="0,0,0,8">
-                                        <Button Content="Copy log"
-                                                Click="CopyLog_Click"/>
-                                        <Button Content="Clear log"
-                                                Click="ClearLog_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
-                                    <TextBox x:Name="LogTextBox"
-                                             Height="330"
-                                             IsReadOnly="True"
-                                             AcceptsReturn="True"
-                                             TextWrapping="NoWrap"
-                                             VerticalScrollBarVisibility="Auto"
-                                             HorizontalScrollBarVisibility="Auto"
-                                             FontFamily="Consolas"
-                                             FontSize="12"
-                                             Background="{DynamicResource ControlBg}"
-                                             Foreground="{DynamicResource TextPrimary}"
-                                             BorderBrush="{DynamicResource Line}"
-                                             BorderThickness="1"
-                                             Padding="12"/>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
+                                <Border Background="{DynamicResource Card2}"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        CornerRadius="16"
+                                        Padding="14">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="10"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="12"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="Scripts"
+                                                   FontSize="17"
+                                                   FontWeight="SemiBold"/>
+
+                                        <ListBox x:Name="ActionScriptsList"
+                                                 Grid.Row="2"
+                                                 SelectionChanged="ActionScriptsList_SelectionChanged"/>
+
+                                        <StackPanel Grid.Row="4"
+                                                    Orientation="Horizontal">
+                                            <Button Content="New"
+                                                    Click="NewActionScript_Click"/>
+                                            <Button Content="Delete"
+                                                    Click="DeleteActionScript_Click"
+                                                    Margin="0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="2"
+                                        Background="{DynamicResource Card2}"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        CornerRadius="16"
+                                        Padding="16">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="12"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="14"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="12"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="14"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel>
+                                            <TextBlock Text="SCRIPT EDITOR"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                            <TextBlock x:Name="ActionEditorTitle"
+                                                       Text="Select or create a script"
+                                                       FontSize="20"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Name"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBox x:Name="ActionScriptNameText"
+                                                     Grid.Column="1"
+                                                     TextChanged="ActionScriptNameText_TextChanged"/>
+                                        </Grid>
+
+                                        <Grid Grid.Row="4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="145"/>
+                                                <ColumnDefinition Width="10"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <ComboBox x:Name="ActionStepTypeCombo"
+                                                      SelectedValuePath="Tag">
+                                                <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
+                                                <ComboBoxItem Content="Key combination" Tag="Keys"/>
+                                                <ComboBoxItem Content="Type text" Tag="Text"/>
+                                                <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
+                                                <ComboBoxItem Content="Media key" Tag="Media"/>
+                                            </ComboBox>
+
+                                            <TextBox x:Name="ActionStepValueText"
+                                                     Grid.Column="2"
+                                                     ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
+
+                                            <Button Grid.Column="3"
+                                                    Content="Add Step"
+                                                    Click="AddActionStep_Click"
+                                                    Margin="10,0,0,0"/>
+                                        </Grid>
+
+                                        <ListBox x:Name="ActionStepsList"
+                                                 Grid.Row="6"/>
+
+                                        <Grid Grid.Row="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Remove Step"
+                                                        Click="RemoveActionStep_Click"/>
+                                                <Button Content="Move Up"
+                                                        Click="MoveActionStepUp_Click"/>
+                                                <Button Content="Move Down"
+                                                        Click="MoveActionStepDown_Click"
+                                                        Margin="0"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1"
+                                                        Orientation="Horizontal">
+                                                <TextBlock x:Name="ActionScriptStatusText"
+                                                           Text="Ready"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,12,0"/>
+                                                <Button Content="Save"
+                                                        Click="SaveActionScript_Click"/>
+                                                <Button Content="Run Test"
+                                                        Click="RunActionScript_Click"
+                                                        Margin="0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
                     </Border>
                 </Grid>
             </TabItem>
