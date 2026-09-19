@@ -344,11 +344,45 @@
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Margin="0,0,6,0">
-                            <TextBlock Text="SCREENSAVER MEDIA" FontSize="12"
-                                       Foreground="{DynamicResource Muted}"
-                                       FontWeight="SemiBold"/>
-                            <TextBlock Text="GIF / Image local" FontSize="22"
-                                       FontWeight="SemiBold" Margin="0,7,0,12"/>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="SCREENSAVER MEDIA"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock Text="GIF / Image local"
+                                               FontSize="22"
+                                               FontWeight="SemiBold"
+                                               Margin="0,7,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1"
+                                            HorizontalAlignment="Right">
+                                    <TextBlock Text="Source"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Muted}"
+                                               HorizontalAlignment="Right"
+                                               Margin="0,0,0,5"/>
+                                    <ComboBox x:Name="ScreensaverSourceCombo"
+                                              Width="170"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="ScreensaverSourceCombo_SelectionChanged">
+                                        <ComboBoxItem Content="GIF / Image" Tag="Media" IsSelected="True"/>
+                                        <ComboBoxItem Content="PC Monitor" Tag="PcMonitor"/>
+                                    </ComboBox>
+                                    <TextBlock x:Name="ScreensaverSourceHint"
+                                               Text="Uploaded media"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="10"
+                                               HorizontalAlignment="Right"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
 
                             <Border Height="150"
                                     Background="#050505"
@@ -380,25 +414,6 @@
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource Muted}"
                                        Margin="0,4,0,10"/>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBlock Text="Source"
-                                           Width="52"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <ComboBox x:Name="ScreensaverSourceCombo"
-                                          Width="180"
-                                          SelectedValuePath="Tag"
-                                          SelectionChanged="ScreensaverSourceCombo_SelectionChanged">
-                                    <ComboBoxItem Content="GIF / Image" Tag="Media" IsSelected="True"/>
-                                    <ComboBoxItem Content="PC Monitor" Tag="PcMonitor"/>
-                                </ComboBox>
-                                <TextBlock x:Name="ScreensaverSourceHint"
-                                           Text="Uploaded media"
-                                           Foreground="{DynamicResource Muted}"
-                                           VerticalAlignment="Center"
-                                           Margin="10,0,0,0"/>
-                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                 <TextBlock Text="Scale"
@@ -1181,6 +1196,8 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="14"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="14"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <Grid>
@@ -1281,7 +1298,112 @@
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="4">
+                        <Border Grid.Row="4"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="DIAL DESK DISPLAY"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <TextBlock Text="Custom sensor layout"
+                                                   FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Text="Choose exactly what each slot shows"
+                                               Foreground="{DynamicResource Muted}"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="10"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel>
+                                        <TextBlock Text="Card 1"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric1Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Card 2"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric2Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="4">
+                                        <TextBlock Text="Card 3"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric3Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="2">
+                                        <TextBlock Text="Footer 1"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric4Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="2" Grid.Column="2">
+                                        <TextBlock Text="Footer 2"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric5Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="2" Grid.Column="4">
+                                        <TextBlock Text="Footer 3"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PcMetric6Combo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PcMetricSlot_SelectionChanged"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid Grid.Row="6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition/>
                                 <ColumnDefinition Width="16"/>
@@ -1410,7 +1532,7 @@
                             </Border>
                         </Grid>
 
-                        <Border Grid.Row="6"
+                        <Border Grid.Row="8"
                                 Background="{DynamicResource Card}"
                                 BorderBrush="{DynamicResource Line}"
                                 BorderThickness="1"
