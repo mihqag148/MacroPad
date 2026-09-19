@@ -445,7 +445,17 @@ static void handle_cfg(char *save) {
             lumi_ui_set_screensaver_source(atoi(source) != 0);
         }
     } else if (strcmp(cmd, "SAVERNOW") == 0) {
-        lumi_diag_report('I', "Screensaver show now");
+        char *source = strtok_r(NULL, "|", &save);
+        if (source) {
+            bool pc_monitor = atoi(source) != 0;
+            lumi_ui_set_screensaver_source(pc_monitor);
+            lumi_diag_report(
+                'I',
+                "Screensaver show now source=%s",
+                pc_monitor ? "PCMON" : "MEDIA");
+        } else {
+            lumi_diag_report('I', "Screensaver show now");
+        }
         lumi_ui_show_screensaver_now();
     } else if (strcmp(cmd, "SLEEP") == 0) {
         char *seconds = strtok_r(NULL, "|", &save);
