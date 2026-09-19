@@ -45,7 +45,6 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _actionEventTimer = new();
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
-    private bool _loadingAutoProfilePresetUi;
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
     private string? _lastForegroundAppPath;
     private int _lastAppliedAutoProfile = -1;
@@ -1744,15 +1743,6 @@ public partial class MainWindow : Window
             _ => $"PROFILE {index + 1}"
         };
 
-    private AutoProfilePreset ActiveAutoProfile
-    {
-        get
-        {
-            _autoProfileSettings.EnsureNormalized();
-            return _autoProfileSettings.ActivePreset;
-        }
-    }
-
     private void ApplyAutoProfileUiState()
     {
         _autoProfileSettings.EnsureNormalized();
@@ -1760,136 +1750,14 @@ public partial class MainWindow : Window
         if (AutoProfileEnabledCheckBox is not null)
             AutoProfileEnabledCheckBox.IsChecked = _autoProfileSettings.Enabled;
 
-        _loadingAutoProfilePresetUi = true;
-        try
+        if (AutoProfileDefaultCombo is not null)
         {
-            if (AutoProfilePresetCombo is not null)
-            {
-                AutoProfilePresetCombo.ItemsSource = null;
-                AutoProfilePresetCombo.ItemsSource = _autoProfileSettings.Presets;
-                AutoProfilePresetCombo.SelectedIndex =
-                    _autoProfileSettings.ActivePresetIndex;
-            }
-
-            if (AutoProfilePresetCountText is not null)
-            {
-                AutoProfilePresetCountText.Text =
-                    $"{_autoProfileSettings.Presets.Count} / 10";
-            }
-
-            if (AutoProfileDefaultCombo is not null)
-            {
-                AutoProfileDefaultCombo.SelectedValue =
-                    Math.Clamp(ActiveAutoProfile.DefaultProfile, 0, 4).ToString();
-            }
-        }
-        finally
-        {
-            _loadingAutoProfilePresetUi = false;
+            AutoProfileDefaultCombo.SelectedValue =
+                Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4).ToString();
         }
 
         RefreshAutoProfileMappingsUi();
         RefreshRunningAppsUi();
-    }
-
-    private void AutoProfilePresetCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (_loadingAutoProfilePresetUi ||
-            AutoProfilePresetCombo.SelectedIndex < 0)
-        {
-            return;
-        }
-
-        _autoProfileSettings.ActivePresetIndex =
-            Math.Clamp(
-                AutoProfilePresetCombo.SelectedIndex,
-                0,
-                _autoProfileSettings.Presets.Count - 1);
-
-        AutoProfileService.Save(_autoProfileSettings);
-        _lastAppliedAutoProfile = -1;
-        _lastForegroundAppPath = null;
-        ApplyAutoProfileUiState();
-        PollAutoProfile(force: true);
-    }
-
-    private void NewAutoProfilePreset_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        _autoProfileSettings.EnsureNormalized();
-
-        if (_autoProfileSettings.Presets.Count >= 10)
-        {
-            AutoProfileStatusText.Text =
-                L("Maximum 10 Auto Profile presets.",
-                  "Tối đa 10 Auto Profile.");
-            return;
-        }
-
-        int number = _autoProfileSettings.Presets.Count + 1;
-        _autoProfileSettings.Presets.Add(new AutoProfilePreset
-        {
-            Name = $"Profile {number}",
-            DefaultProfile = ActiveAutoProfile.DefaultProfile,
-            Mappings = []
-        });
-        _autoProfileSettings.ActivePresetIndex =
-            _autoProfileSettings.Presets.Count - 1;
-
-        AutoProfileService.Save(_autoProfileSettings);
-        _lastAppliedAutoProfile = -1;
-        _lastForegroundAppPath = null;
-        ApplyAutoProfileUiState();
-        PollAutoProfile(force: true);
-    }
-
-    private void RenameAutoProfilePreset_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        _autoProfileSettings.EnsureNormalized();
-        var preset = ActiveAutoProfile;
-
-        string name = Microsoft.VisualBasic.Interaction.InputBox(
-            L("Enter Auto Profile name:", "Nhập tên Auto Profile:"),
-            "LumiPad Auto Profile",
-            preset.Name);
-
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        preset.Name = name.Trim();
-        AutoProfileService.Save(_autoProfileSettings);
-        ApplyAutoProfileUiState();
-    }
-
-    private void DeleteAutoProfilePreset_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        _autoProfileSettings.EnsureNormalized();
-
-        if (_autoProfileSettings.Presets.Count <= 1)
-        {
-            AutoProfileStatusText.Text =
-                L("At least one Auto Profile preset is required.",
-                  "Phải giữ lại ít nhất một Auto Profile.");
-            return;
-        }
-
-        int index = _autoProfileSettings.ActivePresetIndex;
-        _autoProfileSettings.Presets.RemoveAt(index);
-        _autoProfileSettings.ActivePresetIndex =
-            Math.Clamp(index - 1, 0, _autoProfileSettings.Presets.Count - 1);
-
-        AutoProfileService.Save(_autoProfileSettings);
-        _lastAppliedAutoProfile = -1;
-        _lastForegroundAppPath = null;
-        ApplyAutoProfileUiState();
-        PollAutoProfile(force: true);
     }
 
     private void AutoProfileEnabled_Changed(object sender, RoutedEventArgs e)
@@ -1915,7 +1783,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ActiveAutoProfile.DefaultProfile = Math.Clamp(profile, 0, 4);
+        _autoProfileSettings.DefaultProfile = Math.Clamp(profile, 0, 4);
 
         if (_uiReady)
         {
@@ -1975,16 +1843,16 @@ public partial class MainWindow : Window
             path = executablePath;
         }
 
-        var existing = ActiveAutoProfile.Mappings.FirstOrDefault(
+        var existing = _autoProfileSettings.Mappings.FirstOrDefault(
             m => AutoProfileService.PathsEqual(m.ExecutablePath, path));
 
         if (existing is null)
         {
-            if (ActiveAutoProfile.Mappings.Count >= 10)
+            if (_autoProfileSettings.Mappings.Count >= 10)
             {
                 AutoProfileStatusText.Text =
-                    L("Maximum 10 app profiles in this preset.",
-                      "Tối đa 10 profile ứng dụng trong preset này.");
+                    L("Maximum 10 application profiles.",
+                      "Tối đa 10 profile ứng dụng.");
                 return;
             }
 
@@ -2000,7 +1868,7 @@ public partial class MainWindow : Window
             {
             }
 
-            ActiveAutoProfile.Mappings.Add(new AutoProfileMapping
+            _autoProfileSettings.Mappings.Add(new AutoProfileMapping
             {
                 Name = string.IsNullOrWhiteSpace(name) ? "Application" : name,
                 ExecutablePath = path,
@@ -2046,7 +1914,13 @@ public partial class MainWindow : Window
 
         AutoProfileMappingsPanel.Children.Clear();
 
-        if (ActiveAutoProfile.Mappings.Count == 0)
+        if (AutoProfileMappingCountText is not null)
+        {
+            AutoProfileMappingCountText.Text =
+                $"{_autoProfileSettings.Mappings.Count} / 10 app profiles";
+        }
+
+        if (_autoProfileSettings.Mappings.Count == 0)
         {
             AutoProfileMappingsPanel.Children.Add(new TextBlock
             {
@@ -2061,7 +1935,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        foreach (AutoProfileMapping mapping in ActiveAutoProfile.Mappings.ToArray())
+        foreach (AutoProfileMapping mapping in _autoProfileSettings.Mappings.ToArray())
         {
             var row = new Border
             {
@@ -2140,7 +2014,7 @@ public partial class MainWindow : Window
                 if (remove.Tag is not AutoProfileMapping current)
                     return;
 
-                ActiveAutoProfile.Mappings.Remove(current);
+                _autoProfileSettings.Mappings.Remove(current);
                 AutoProfileService.Save(_autoProfileSettings);
                 RefreshAutoProfileMappingsUi();
                 RefreshRunningAppsUi();
@@ -2164,7 +2038,7 @@ public partial class MainWindow : Window
 
         foreach (RunningAppInfo app in _runningApps)
         {
-            bool added = ActiveAutoProfile.Mappings.Any(
+            bool added = _autoProfileSettings.Mappings.Any(
                 m => AutoProfileService.PathsEqual(
                     m.ExecutablePath,
                     app.ExecutablePath));
@@ -2267,13 +2141,13 @@ public partial class MainWindow : Window
 
         AutoProfileMapping? mapping = app is null
             ? null
-            : ActiveAutoProfile.Mappings.FirstOrDefault(
+            : _autoProfileSettings.Mappings.FirstOrDefault(
                 m => AutoProfileService.PathsEqual(
                     m.ExecutablePath,
                     app.ExecutablePath));
 
         int target = mapping?.ProfileIndex ??
-                     Math.Clamp(ActiveAutoProfile.DefaultProfile, 0, 4);
+                     Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4);
 
         string appName = app?.Name ??
                          L("Desktop", "Màn hình chính");
