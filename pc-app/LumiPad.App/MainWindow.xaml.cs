@@ -150,7 +150,7 @@ public partial class MainWindow : Window
             await UpdateMemoryUsageAsync();
         _memoryUsageTimer.Start();
 
-        _diagnosticTimer.Interval = TimeSpan.FromSeconds(1);
+        _diagnosticTimer.Interval = TimeSpan.FromSeconds(2);
         _diagnosticTimer.Tick += async (_, _) => await PollFirmwareDiagnosticsAsync();
         _diagnosticTimer.Start();
 
@@ -1241,8 +1241,13 @@ public partial class MainWindow : Window
         if (!_serial.IsConnected)
             return;
 
-        // Drain a few queued firmware entries per tick without monopolising the link.
-        for (int i = 0; i < 6; i++)
+        if (!_serial.SupportsDiagnostics)
+            return;
+
+        // Keep background diagnostics lightweight so USB/BLE control and
+        // Now Playing remain responsive. The full queue is still drained over
+        // subsequent ticks.
+        for (int i = 0; i < 2; i++)
         {
             var entry = await _serial.ReadFirmwareLogAsync(_firmwareLogSeq);
             if (entry is null)
