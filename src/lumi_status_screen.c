@@ -1145,6 +1145,16 @@ static void refresh_screensaver(lv_timer_t *timer) {
         }
     }
 }
+
+static void lumi_panel_refresh_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    if (sleep_overlay) {
+        lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (root_screen) {
+        lv_obj_invalidate(root_screen);
+    }
 }
 
 K_WORK_DEFINE(lumi_panel_refresh_work, lumi_panel_refresh_work_handler);
