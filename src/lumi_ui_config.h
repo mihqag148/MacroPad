@@ -30,6 +30,7 @@ void lumi_ui_set_sleep_timeout(uint32_t seconds);
 void lumi_ui_sleep_now(void);
 void lumi_ui_wake_now(void);
 void lumi_ui_set_screensaver_delay(uint32_t seconds);
+void lumi_ui_set_screensaver_source(bool pc_monitor);
 void lumi_ui_show_screensaver_now(void);
 void lumi_ui_note_activity(void);
 void lumi_ui_set_media_active(bool active);
@@ -48,6 +49,7 @@ void lumi_ui_pc_monitor_update(
     uint32_t net_up_kbps,
     int16_t fps);
 void lumi_ui_pc_monitor_clear(void);
+void lumi_ui_pc_monitor_set_config_name(const char *name);
 
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms);
 bool lumi_ui_saver_anim_set_frame_interval(uint8_t index, uint16_t interval_ms);
