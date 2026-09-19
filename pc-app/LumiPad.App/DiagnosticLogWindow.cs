@@ -18,7 +18,7 @@ public sealed class DiagnosticLogWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
         Background =
-            System.Windows.System.Windows.Application.Current.TryFindResource("Bg") as System.Windows.Media.Brush ??
+            System.Windows.Application.Current.TryFindResource("Bg") as System.Windows.Media.Brush ??
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(8, 8, 8));
 
         var outer = new Border
