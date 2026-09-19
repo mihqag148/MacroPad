@@ -1433,9 +1433,10 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
         saver_media_index = 0U;
         saver_prefetch_valid = false;
-        (void)saver_flash_prefetch_frame(0U);
+        saver_prefetch_next_valid = false;
+        saver_static_drawn = false;
         saver_media_epoch_ms = lv_tick_get();
-        draw_custom_saver_frame(0U);
+        draw_custom_saver_frame(0U, 0U);
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
 
@@ -1462,19 +1463,31 @@ static void refresh_screensaver(lv_timer_t *timer) {
         return;
     }
 
+    if (saver_media_format == SAVER_FORMAT_RGB565_STATIC) {
+        draw_custom_saver_frame(0U, 0U);
+        return;
+    }
+
     uint32_t lv_now = lv_tick_get();
     uint32_t elapsed = (uint32_t)(lv_now - saver_media_epoch_ms);
     uint32_t loop_ms = MAX(saver_media_loop_ms, 1U);
     uint32_t loop_pos = elapsed % loop_ms;
 
-    /* Keep playback on the source GIF time line. Slow SPI writes may drop a
-     * stale frame, but they must not stretch the loop and make it slow down.
+    /* Output is fixed at 25 Hz, while the stored source timeline keeps the
+     * original loop duration. Blend toward the next stored frame on every
+     * 40 ms tick so a long GIF is not reduced to visibly choppy 11 FPS motion.
      */
     uint8_t desired_index = 0U;
     uint32_t boundary = 0U;
+    uint32_t frame_start = 0U;
+    uint32_t frame_duration = SAVER_MIN_FRAME_MS;
 
     for (uint8_t i = 0U; i < saver_media_frame_count; i++) {
-        boundary += saver_media_frame_intervals[i];
+        frame_start = boundary;
+        frame_duration = MAX(
+            (uint32_t)saver_media_frame_intervals[i],
+            (uint32_t)SAVER_MIN_FRAME_MS);
+        boundary += frame_duration;
         desired_index = i;
 
         if (loop_pos < boundary) {
@@ -1482,19 +1495,16 @@ static void refresh_screensaver(lv_timer_t *timer) {
         }
     }
 
-    if (desired_index != saver_media_index) {
-        saver_media_index = desired_index;
-        draw_custom_saver_frame(saver_media_index);
-    } else {
-        uint8_t next_index =
-            (uint8_t)((saver_media_index + 1U) % saver_media_frame_count);
+    uint32_t local_time =
+        loop_pos >= frame_start
+            ? loop_pos - frame_start
+            : 0U;
+    uint8_t blend = (uint8_t)MIN(
+        255U,
+        (local_time * 255U) / MAX(frame_duration, 1U));
 
-        if (!saver_prefetch_valid ||
-            saver_prefetched_index != next_index) {
-            (void)saver_flash_prefetch_frame(next_index);
-        }
-    }
-
+    saver_media_index = desired_index;
+    draw_custom_saver_frame(saver_media_index, blend);
 }
 
 bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
