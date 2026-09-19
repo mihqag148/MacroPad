@@ -79,6 +79,13 @@
             <Setter Property="FontFamily" Value="Segoe UI"/>
         </Style>
 
+        <!--
+             Keep the native WPF ComboBox template.
+             Previous custom templates updated the actual SelectedItem but left
+             the closed selection presenter visually stuck on the old item.
+             Native selection rendering is reliable; dynamic resource setters
+             keep it readable in both dark and light themes.
+        -->
         <Style TargetType="ComboBox">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -86,102 +93,11 @@
             <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Padding" Value="8,5"/>
             <Setter Property="MinHeight" Value="34"/>
             <Setter Property="MaxDropDownHeight" Value="300"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid SnapsToDevicePixels="True">
-                            <Border x:Name="ComboBorder"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="7"/>
-
-                            <ToggleButton x:Name="ToggleButton"
-                                          Focusable="False"
-                                          ClickMode="Press"
-                                          Background="Transparent"
-                                          BorderThickness="0"
-                                          IsChecked="{Binding IsDropDownOpen,
-                                                              RelativeSource={RelativeSource TemplatedParent},
-                                                              Mode=TwoWay}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Grid Background="Transparent">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition/>
-                                                <ColumnDefinition Width="30"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Path Grid.Column="1"
-                                                  Fill="{DynamicResource TextPrimary}"
-                                                  Opacity="0.78"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"
-                                                  Data="M 0 0 L 4 4 L 8 0 Z"/>
-                                        </Grid>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-
-                            <TextBlock x:Name="SelectionText"
-                                       Margin="{TemplateBinding Padding}"
-                                       IsHitTestVisible="False"
-                                       VerticalAlignment="Center"
-                                       HorizontalAlignment="Left"
-                                       Foreground="{DynamicResource TextPrimary}"
-                                       TextTrimming="CharacterEllipsis"
-                                       Text="{Binding SelectedItem.Content,
-                                                      RelativeSource={RelativeSource TemplatedParent},
-                                                      Mode=OneWay,
-                                                      UpdateSourceTrigger=PropertyChanged}"/>
-
-                            <Popup x:Name="PART_Popup"
-                                   Placement="Bottom"
-                                   IsOpen="{TemplateBinding IsDropDownOpen}"
-                                   AllowsTransparency="True"
-                                   Focusable="False"
-                                   PopupAnimation="Fade">
-                                <Border Background="{DynamicResource Card2}"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1"
-                                        CornerRadius="7"
-                                        MinWidth="{Binding ActualWidth,
-                                                           RelativeSource={RelativeSource TemplatedParent}}">
-                                    <ScrollViewer Margin="2"
-                                                  SnapsToDevicePixels="True"
-                                                  VerticalScrollBarVisibility="Auto">
-                                        <ItemsPresenter/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ComboBorder"
-                                        Property="BorderBrush"
-                                        Value="{DynamicResource Accent}"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="ComboBorder"
-                                        Property="BorderBrush"
-                                        Value="{DynamicResource Accent}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ComboBorder"
-                                        Property="Opacity"
-                                        Value="0.55"/>
-                                <Setter TargetName="SelectionText"
-                                        Property="Opacity"
-                                        Value="0.7"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
 
         <Style TargetType="ComboBoxItem">
@@ -190,44 +106,19 @@
             <Setter Property="Background" Value="{DynamicResource Card2}"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="ItemBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                CornerRadius="5"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder"
-                                        Property="Background"
-                                        Value="{DynamicResource Selection}"/>
-                                <Setter Property="Foreground"
-                                        Value="{DynamicResource TextPrimary}"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder"
-                                        Property="BorderBrush"
-                                        Value="{DynamicResource Accent}"/>
-                                <Setter TargetName="ItemBorder"
-                                        Property="Background"
-                                        Value="{DynamicResource Selection}"/>
-                                <Setter Property="Foreground"
-                                        Value="{DynamicResource TextPrimary}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ItemBorder"
-                                        Property="Opacity"
-                                        Value="0.55"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource Selection}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource Selection}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.55"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style TargetType="TextBox">
