@@ -43,8 +43,18 @@ public partial class MainWindow : Window
     private readonly List<string> _logLines = new();
     private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
+    private const int RgbLedCount = 4;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
+    private bool _rgbPixelMode;
+    private int _selectedRgbLed = -1;
+    private MediaColor[] _rgbLedColors =
+    [
+        MediaColor.FromRgb(255, 120, 0),
+        MediaColor.FromRgb(255, 120, 0),
+        MediaColor.FromRgb(255, 120, 0),
+        MediaColor.FromRgb(255, 120, 0),
+    ];
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
     private int _rgbBrightness = 25;
@@ -280,6 +290,11 @@ public partial class MainWindow : Window
         ["Brightness"] = "Độ sáng",
         ["Effect Speed"] = "Tốc độ hiệu ứng",
         ["Selected color"] = "Màu đã chọn",
+        ["LED MAP"] = "SƠ ĐỒ LED",
+        ["All LEDs"] = "Tất cả LED",
+        ["All LEDs selected"] = "Đang chọn tất cả LED",
+        ["Per-LED Static"] = "Tĩnh từng LED",
+        ["Tip: select LED 1–4 on the board, then choose a color."] = "Mẹo: chọn LED 1–4 trên bàn phím rồi chọn màu.",
         ["ZMK Studio"] = "ZMK Studio",
         ["Embedded zmk.studio"] = "ZMK Studio tích hợp",
         ["Reload"] = "Tải lại",
@@ -490,21 +505,38 @@ public partial class MainWindow : Window
             "LumiPad",
             "settings.json");
 
+    private sealed class RgbLedColorSetting
+    {
+        public byte R { get; set; }
+        public byte G { get; set; }
+        public byte B { get; set; }
+    }
+
     private sealed class RgbProfileSetting
     {
         public int Effect { get; set; }
         public byte R { get; set; }
         public byte G { get; set; }
         public byte B { get; set; }
+        public bool PixelMode { get; set; }
+        public RgbLedColorSetting[]? Pixels { get; set; }
     }
+
+    private static RgbLedColorSetting[] SolidPixelSettings(
+        byte r,
+        byte g,
+        byte b) =>
+        Enumerable.Range(0, RgbLedCount)
+            .Select(_ => new RgbLedColorSetting { R = r, G = g, B = b })
+            .ToArray();
 
     private static RgbProfileSetting[] CreateDefaultRgbProfiles() =>
     [
-        new() { Effect = 0, R = 255, G = 120, B = 0 },
-        new() { Effect = 1, R = 180, G = 40, B = 255 },
-        new() { Effect = 2, R = 255, G = 90, B = 0 },
-        new() { Effect = 3, R = 0, G = 170, B = 255 },
-        new() { Effect = 3, R = 80, G = 255, B = 100 },
+        new() { Effect = 0, R = 255, G = 120, B = 0, Pixels = SolidPixelSettings(255, 120, 0) },
+        new() { Effect = 1, R = 180, G = 40, B = 255, Pixels = SolidPixelSettings(180, 40, 255) },
+        new() { Effect = 2, R = 255, G = 90, B = 0, Pixels = SolidPixelSettings(255, 90, 0) },
+        new() { Effect = 3, R = 0, G = 170, B = 255, Pixels = SolidPixelSettings(0, 170, 255) },
+        new() { Effect = 3, R = 80, G = 255, B = 100, Pixels = SolidPixelSettings(80, 255, 100) },
     ];
 
     private sealed class AppSettings
@@ -517,6 +549,8 @@ public partial class MainWindow : Window
         public byte R { get; set; } = 255;
         public byte G { get; set; } = 120;
         public byte B { get; set; }
+        public bool RgbPixelMode { get; set; }
+        public RgbLedColorSetting[]? RgbLedColors { get; set; }
         public RgbProfileSetting[]? RgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
@@ -545,6 +579,22 @@ public partial class MainWindow : Window
             _r = settings.R;
             _g = settings.G;
             _b = settings.B;
+            _rgbPixelMode = settings.RgbPixelMode;
+
+            if (settings.RgbLedColors is { Length: >= RgbLedCount })
+            {
+                _rgbLedColors = settings.RgbLedColors
+                    .Take(RgbLedCount)
+                    .Select(p => MediaColor.FromRgb(p.R, p.G, p.B))
+                    .ToArray();
+            }
+            else
+            {
+                _rgbLedColors =
+                    Enumerable.Range(0, RgbLedCount)
+                        .Select(_ => MediaColor.FromRgb(_r, _g, _b))
+                        .ToArray();
+            }
 
             if (settings.RgbProfiles is { Length: >= 5 })
             {
@@ -555,7 +605,18 @@ public partial class MainWindow : Window
                         Effect = Math.Clamp(p.Effect, 0, 4),
                         R = p.R,
                         G = p.G,
-                        B = p.B
+                        B = p.B,
+                        PixelMode = p.PixelMode,
+                        Pixels = p.Pixels is { Length: >= RgbLedCount }
+                            ? p.Pixels.Take(RgbLedCount)
+                                .Select(px => new RgbLedColorSetting
+                                {
+                                    R = px.R,
+                                    G = px.G,
+                                    B = px.B
+                                })
+                                .ToArray()
+                            : SolidPixelSettings(p.R, p.G, p.B)
                     })
                     .ToArray();
             }
@@ -588,13 +649,32 @@ public partial class MainWindow : Window
                 R = _r,
                 G = _g,
                 B = _b,
+                RgbPixelMode = _rgbPixelMode,
+                RgbLedColors = _rgbLedColors
+                    .Select(px => new RgbLedColorSetting
+                    {
+                        R = px.R,
+                        G = px.G,
+                        B = px.B
+                    })
+                    .ToArray(),
                 RgbProfiles = _rgbProfiles
                     .Select(p => new RgbProfileSetting
                     {
                         Effect = p.Effect,
                         R = p.R,
                         G = p.G,
-                        B = p.B
+                        B = p.B,
+                        PixelMode = p.PixelMode,
+                        Pixels = (p.Pixels ?? SolidPixelSettings(p.R, p.G, p.B))
+                            .Take(RgbLedCount)
+                            .Select(px => new RgbLedColorSetting
+                            {
+                                R = px.R,
+                                G = px.G,
+                                B = px.B
+                            })
+                            .ToArray()
                     })
                     .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
@@ -628,6 +708,8 @@ public partial class MainWindow : Window
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         UpdateRgbReadout();
+        UpdateRgbLedPreviewUi();
+        UpdateRgbProfileTabs();
     }
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
