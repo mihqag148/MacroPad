@@ -683,7 +683,7 @@ static void handle_artchunk(char *save) {
     }
 
     size_t offset = (size_t)strtoul(offset_s, NULL, 10);
-    uint8_t chunk[192];
+    uint8_t chunk[256];
     size_t decoded_len = 0U;
     int rc = base64_decode(
         chunk, sizeof(chunk), &decoded_len,
