@@ -30,6 +30,7 @@ public sealed class SerialLink : IDisposable
     private DateTimeOffset _lastNowPlayingSent = DateTimeOffset.MinValue;
     private readonly object _pendingNowPlayingLock = new();
     private NowPlayingData? _pendingNowPlaying;
+    private int _mediaGeneration;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
@@ -422,7 +423,10 @@ public sealed class SerialLink : IDisposable
         _lastNowPlayingKey = "";
         _lastNowPlayingSent = DateTimeOffset.MinValue;
         lock (_pendingNowPlayingLock)
+        {
             _pendingNowPlaying = null;
+            _mediaGeneration++;
+        }
     }
 
     public void SendNowPlaying(NowPlayingData data)
@@ -431,9 +435,20 @@ public sealed class SerialLink : IDisposable
             return;
 
         string key = $"{data.SourceName}\u001F{data.Title}\u001F{data.Artist}";
+        bool trackChanged =
+            !string.Equals(key, _lastNowPlayingKey, StringComparison.Ordinal);
         bool important =
-            !string.Equals(key, _lastNowPlayingKey, StringComparison.Ordinal) ||
+            trackChanged ||
             data.IsPlaying != _lastNowPlayingPlaying;
+
+        int generation;
+        lock (_pendingNowPlayingLock)
+        {
+            if (trackChanged)
+                _mediaGeneration++;
+
+            generation = _mediaGeneration;
+        }
 
         if (!important &&
             DateTimeOffset.UtcNow - _lastNowPlayingSent <
@@ -452,10 +467,13 @@ public sealed class SerialLink : IDisposable
             return;
         }
 
-        _ = SendNowPlayingAsync(data, key);
+        _ = SendNowPlayingAsync(data, key, generation);
     }
 
-    private async Task SendNowPlayingAsync(NowPlayingData data, string key)
+    private async Task SendNowPlayingAsync(
+        NowPlayingData data,
+        string key,
+        int generation)
     {
         try
         {
@@ -480,7 +498,8 @@ public sealed class SerialLink : IDisposable
             {
                 if (await SendUnicodeBitmapsAsync(
                         data.Title ?? "",
-                        data.Artist ?? ""))
+                        data.Artist ?? "",
+                        generation))
                 {
                     _lastBitmapKey = bitmapKey;
                 }
@@ -489,7 +508,7 @@ public sealed class SerialLink : IDisposable
             if (data.ArtworkRgb332 is { Length: 5776 } artwork &&
                 !string.Equals(bitmapKey, _lastArtworkKey, StringComparison.Ordinal))
             {
-                if (await SendArtworkAsync(artwork))
+                if (await SendArtworkAsync(artwork, generation))
                     _lastArtworkKey = bitmapKey;
             }
 
@@ -514,7 +533,16 @@ public sealed class SerialLink : IDisposable
         }
     }
 
-    private async Task<bool> SendUnicodeBitmapsAsync(string title, string artist)
+    private bool IsMediaGenerationCurrent(int generation)
+    {
+        lock (_pendingNowPlayingLock)
+            return generation == _mediaGeneration;
+    }
+
+    private async Task<bool> SendUnicodeBitmapsAsync(
+        string title,
+        string artist,
+        int generation)
     {
         try
         {
@@ -523,8 +551,10 @@ public sealed class SerialLink : IDisposable
             var artistBitmap = TextBitmapRenderer.RenderScrollable(
                 artist, 206, 360, 20, 13, false);
 
-            if (!await SendTextBitmapAsync("T", titleBitmap, 24) ||
-                !await SendTextBitmapAsync("A", artistBitmap, 20))
+            if (!await SendTextBitmapAsync(
+                    "T", titleBitmap, 24, generation) ||
+                !await SendTextBitmapAsync(
+                    "A", artistBitmap, 20, generation))
             {
                 return false;
             }
@@ -543,7 +573,8 @@ public sealed class SerialLink : IDisposable
     private async Task<bool> SendTextBitmapAsync(
         string kind,
         RenderedTextBitmap bitmap,
-        int height)
+        int height,
+        int generation)
     {
         byte[] packed = Convert.FromHexString(bitmap.Hex);
         const int rawChunk = 360;
@@ -556,6 +587,9 @@ public sealed class SerialLink : IDisposable
 
         for (int offset = 0; offset < packed.Length; offset += rawChunk)
         {
+            if (!IsMediaGenerationCurrent(generation))
+                return false;
+
             int len = Math.Min(rawChunk, packed.Length - offset);
             string hex = Convert.ToHexString(packed, offset, len);
             if (!await SendRealtimeLineAsync(
@@ -568,16 +602,21 @@ public sealed class SerialLink : IDisposable
         return await SendRealtimeLineAsync($"TXTEND|{kind}");
     }
 
-    private async Task<bool> SendArtworkAsync(byte[] artwork)
+    private async Task<bool> SendArtworkAsync(
+        byte[] artwork,
+        int generation)
     {
         try
         {
-            const int rawChunk = 540;
+            const int rawChunk = 240;
             if (!await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}"))
                 return false;
 
             for (int offset = 0; offset < artwork.Length; offset += rawChunk)
             {
+                if (!IsMediaGenerationCurrent(generation))
+                    return false;
+
                 int len = Math.Min(rawChunk, artwork.Length - offset);
                 string base64 = Convert.ToBase64String(artwork, offset, len);
 
