@@ -51,27 +51,44 @@ public static class ScreensaverMediaService
         using var image = Drawing.Image.FromFile(path);
         var dimension = new FrameDimension(image.FrameDimensionsList[0]);
         int total = image.GetFrameCount(dimension);
-        int count = Math.Min(MaxFrames, Math.Max(1, total));
 
         int[] sourceDelaysMs = ReadGifFrameDelaysMs(image, total);
         int sourceLoopMs = Math.Max(1, sourceDelaysMs.Sum());
 
+        // Keep the source loop duration, but never schedule more than 25 FPS
+        // and never store more than MaxFrames. If the source is already within
+        // both limits, preserve its exact per-frame timings. Otherwise sample
+        // the source on its time axis so the animation speed stays unchanged.
+        bool exactTimingFits =
+            total <= MaxFrames &&
+            sourceDelaysMs.All(delay => delay >= MinFrameIntervalMs);
+
+        int maxFramesByRate =
+            Math.Max(1, sourceLoopMs / MinFrameIntervalMs);
+        int count = exactTimingFits
+            ? Math.Max(1, total)
+            : Math.Min(
+                Math.Max(1, total),
+                Math.Min(MaxFrames, maxFramesByRate));
+
         var frameDurations = new List<int>(count);
         var sourceIndices = new List<int>(count);
 
-        if (total <= MaxFrames)
+        if (exactTimingFits)
         {
             for (int i = 0; i < total; i++)
             {
                 sourceIndices.Add(i);
-                frameDurations.Add(Math.Clamp(sourceDelaysMs[i], MinFrameIntervalMs, 5000));
+                frameDurations.Add(sourceDelaysMs[i]);
             }
         }
         else
         {
-            // Reduce long GIFs on the time axis instead of raw frame index.
-            // The reduced loop keeps the same overall duration as the source.
-            int outputLoopMs = Math.Max(sourceLoopMs, count * MinFrameIntervalMs);
+            // A loop shorter than 40 ms cannot be represented at <=25 FPS.
+            // In that edge case the shortest valid loop is one 40 ms frame.
+            int outputLoopMs = Math.Max(
+                sourceLoopMs,
+                count * MinFrameIntervalMs);
             int baseDelay = outputLoopMs / count;
             int remainder = outputLoopMs % count;
 
@@ -150,10 +167,7 @@ public static class ScreensaverMediaService
                     // appears in Windows or a browser.
                     delays[i] = delayCs <= 1
                         ? 100
-                        : Math.Clamp(
-                            delayCs * 10,
-                            MinFrameIntervalMs,
-                            5000);
+                        : Math.Clamp(delayCs * 10, 10, 5000);
                 }
             }
         }
