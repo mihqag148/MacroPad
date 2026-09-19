@@ -139,6 +139,8 @@ static lv_obj_t *pc_net_up;
 static lv_obj_t *pc_fps_value;
 static lv_obj_t *pc_monitor_status;
 static bool pc_monitor_selected;
+static bool pc_monitor_saver_active;
+static char pc_monitor_config_name[20] = "MY PC";
 
 struct pc_monitor_state {
     uint8_t cpu_load;
@@ -174,6 +176,7 @@ static bool saver_style_dirty = true;
 static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
+static bool saver_source_pc_monitor = false;
 static void refresh_pc_monitor_labels(void) {
     if (!pc_monitor_overlay || !pc_cpu_value ||
         !pc_gpu_value || !pc_ram_value) {
@@ -200,7 +203,10 @@ static void refresh_pc_monitor_labels(void) {
         lv_label_set_text(pc_net_down, "DL --");
         lv_label_set_text(pc_net_up, "UL --");
         lv_label_set_text(pc_fps_value, "FPS --");
-        lv_label_set_text(pc_monitor_status, "PC OFFLINE");
+        lv_label_set_text_fmt(
+            pc_monitor_status,
+            "%s  OFFLINE",
+            pc_monitor_config_name);
         return;
     }
 
@@ -281,7 +287,10 @@ static void refresh_pc_monitor_labels(void) {
         lv_label_set_text(pc_fps_value, "FPS --");
     }
 
-    lv_label_set_text(pc_monitor_status, "LIVE PC DATA");
+    lv_label_set_text_fmt(
+        pc_monitor_status,
+        "%s  LIVE",
+        pc_monitor_config_name);
 }
 
 static void pc_monitor_work_handler(struct k_work *work) {
@@ -337,14 +346,30 @@ void lumi_ui_pc_monitor_clear(void) {
         &pc_monitor_work);
 }
 
-static void set_pc_monitor_selected(bool selected) {
-    pc_monitor_selected = selected;
+void lumi_ui_pc_monitor_set_config_name(const char *name) {
+    if (!name) {
+        name = "MY PC";
+    }
 
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    snprintf(
+        pc_monitor_config_name,
+        sizeof(pc_monitor_config_name),
+        "%.18s",
+        name);
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    k_work_submit_to_queue(
+        zmk_display_work_q(),
+        &pc_monitor_work);
+}
+
+static void update_pc_monitor_visibility(void) {
     if (!pc_monitor_overlay) {
         return;
     }
 
-    if (selected) {
+    if (pc_monitor_selected || pc_monitor_saver_active) {
         refresh_pc_monitor_labels();
         lv_obj_clear_flag(
             pc_monitor_overlay,
@@ -355,6 +380,11 @@ static void set_pc_monitor_selected(bool selected) {
             pc_monitor_overlay,
             LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+static void set_pc_monitor_selected(bool selected) {
+    pc_monitor_selected = selected;
+    update_pc_monitor_visibility();
 }
 
 
@@ -1623,10 +1653,12 @@ static void refresh_screensaver(lv_timer_t *timer) {
 
     bool current_media_active;
     bool current_soft_sleep;
+    bool use_pc_monitor;
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     current_media_active = media_active;
     current_soft_sleep = soft_sleep;
+    use_pc_monitor = saver_source_pc_monitor;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     bool force_show;
@@ -1634,14 +1666,35 @@ static void refresh_screensaver(lv_timer_t *timer) {
     force_show = saver_force_show;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    bool should_show = enabled &&
-                       !current_soft_sleep &&
-                       saver_media_valid &&
-                       (force_show ||
-                        (!current_media_active &&
-                         !pc_monitor_selected &&
-                         delay > 0U &&
-                         (uint32_t)(now_uptime - ui_last_activity_ms) >= delay));
+    bool idle_trigger =
+        enabled &&
+        !current_soft_sleep &&
+        (force_show ||
+         (!current_media_active &&
+          !pc_monitor_selected &&
+          delay > 0U &&
+          (uint32_t)(now_uptime - ui_last_activity_ms) >= delay));
+
+    bool should_show_pc =
+        idle_trigger && use_pc_monitor;
+
+    bool should_show =
+        idle_trigger &&
+        !use_pc_monitor &&
+        saver_media_valid;
+
+    if (pc_monitor_saver_active != should_show_pc) {
+        pc_monitor_saver_active = should_show_pc;
+        update_pc_monitor_visibility();
+    }
+
+    if (should_show_pc && screensaver_visible) {
+        screensaver_visible = false;
+        lv_disp_enable_invalidation(NULL, true);
+        if (root_screen) {
+            lv_obj_invalidate(root_screen);
+        }
+    }
 
     if (should_show && !screensaver_visible) {
         screensaver_visible = true;
@@ -1679,6 +1732,10 @@ static void refresh_screensaver(lv_timer_t *timer) {
         } else {
             lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
         }
+    }
+
+    if (should_show_pc) {
+        return;
     }
 
     if (!screensaver_visible) {
@@ -1988,7 +2045,13 @@ void lumi_ui_note_activity(void) {
 }
 
 void lumi_ui_show_screensaver_now(void) {
-    if (!saver_flash_load_metadata()) {
+    bool use_pc_monitor;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    use_pc_monitor = saver_source_pc_monitor;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (!use_pc_monitor && !saver_flash_load_metadata()) {
         return;
     }
 
@@ -2052,6 +2115,17 @@ void lumi_ui_set_screensaver_delay(uint32_t seconds) {
     saver_delay_ms = seconds * 1000U;
     saver_enabled = seconds > 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
+    lumi_ui_note_activity();
+}
+
+void lumi_ui_set_screensaver_source(bool pc_monitor) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_source_pc_monitor = pc_monitor;
+    saver_force_show = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    pc_monitor_saver_active = false;
+    update_pc_monitor_visibility();
     lumi_ui_note_activity();
 }
 
@@ -2265,7 +2339,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_monitor_status =
         pc_monitor_label(
             network,
-            "PC OFFLINE",
+            "MY PC  OFFLINE",
             &lv_font_montserrat_12,
             0x8E8E93);
     lv_obj_set_pos(pc_monitor_status, 10, 22);
@@ -2278,7 +2352,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
 static void refresh_pc_monitor_timer(lv_timer_t *timer) {
     ARG_UNUSED(timer);
 
-    if (pc_monitor_selected) {
+    if (pc_monitor_selected || pc_monitor_saver_active) {
         refresh_pc_monitor_labels();
     }
 }
