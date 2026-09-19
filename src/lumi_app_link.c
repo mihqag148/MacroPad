@@ -713,6 +713,22 @@ static void handle_mem(bool from_usb) {
     }
 }
 
+static void handle_panel_info(bool from_usb) {
+    /* ST7789 frame-rate control (FRCTRL2/C6) is intentionally left at the
+     * controller default. On this panel that is nominally about 60 Hz.
+     * The TFT SPI bus is configured at 32 MHz and GIF playback is capped at
+     * 25 FPS by the app/firmware timing pipeline.
+     */
+    const char *response = "PANEL|ST7789|60|32000000|25";
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_line(char *line, bool from_usb) {
     char *save = NULL;
     char *root = strtok_r(line, "|", &save);
@@ -724,6 +740,8 @@ static void handle_line(char *line, bool from_usb) {
         }
     } else if (strcmp(root, "MEM") == 0) {
         handle_mem(from_usb);
+    } else if (strcmp(root, "PANEL") == 0) {
+        handle_panel_info(from_usb);
     } else if (strcmp(root, "LOG") == 0) {
         handle_diag_log(save, from_usb);
     } else if (strcmp(root, "NP") == 0) {
@@ -830,6 +848,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
      */
     const char *status = lumi_status;
     if (strncmp(lumi_status, "MEM|", 4) != 0 &&
+        strncmp(lumi_status, "PANEL|", 6) != 0 &&
         strncmp(lumi_status, "LOG|", 4) != 0 &&
         strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
         strstr(lumi_status, "SAVER:ERROR") == NULL) {
@@ -841,7 +860,8 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     ssize_t rc = bt_gatt_attr_read(conn, attr, buf, len, offset,
                                     status, strlen(status));
 
-    if (strncmp(lumi_status, "MEM|", 4) == 0) {
+    if (strncmp(lumi_status, "MEM|", 4) == 0 ||
+        strncmp(lumi_status, "PANEL|", 6) == 0) {
         snprintf(
             lumi_status,
             sizeof(lumi_status),
