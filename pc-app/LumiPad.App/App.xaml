@@ -127,15 +127,17 @@
                                 </ToggleButton.Template>
                             </ToggleButton>
 
-                            <ContentPresenter x:Name="ContentSite"
-                                              Margin="{TemplateBinding Padding}"
-                                              IsHitTestVisible="False"
-                                              VerticalAlignment="Center"
-                                              HorizontalAlignment="Left"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                              TextElement.Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock x:Name="SelectionText"
+                                       Margin="{TemplateBinding Padding}"
+                                       IsHitTestVisible="False"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource TextPrimary}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="{Binding SelectedItem.Content,
+                                                      RelativeSource={RelativeSource TemplatedParent},
+                                                      Mode=OneWay,
+                                                      UpdateSourceTrigger=PropertyChanged}"/>
 
                             <Popup x:Name="PART_Popup"
                                    Placement="Bottom"
@@ -172,7 +174,7 @@
                                 <Setter TargetName="ComboBorder"
                                         Property="Opacity"
                                         Value="0.55"/>
-                                <Setter TargetName="ContentSite"
+                                <Setter TargetName="SelectionText"
                                         Property="Opacity"
                                         Value="0.7"/>
                             </Trigger>
