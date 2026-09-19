@@ -72,9 +72,6 @@ public sealed class SerialLink : IDisposable
     public async Task<string?> PromoteToUsbIfAvailableAsync(
         CancellationToken cancellationToken = default)
     {
-        if (_port?.IsOpen == true)
-            return _connectionName;
-
         // Do not tear down BLE in the middle of a Now Playing/artwork packet.
         // Wait for both media and normal command writers to become idle, then
         // switch transports atomically from the app's point of view.
@@ -85,7 +82,26 @@ public sealed class SerialLink : IDisposable
             try
             {
                 if (_port?.IsOpen == true)
-                    return _connectionName;
+                {
+                    string usbName = $"USB · {_port.PortName}";
+
+                    if (_bleDevice is not null)
+                    {
+                        _bleDevice.ConnectionStatusChanged -=
+                            OnBleConnectionStatusChanged;
+                    }
+
+                    _bleCharacteristic = null;
+                    _blePayloadSize = 20;
+                    _bleService?.Dispose();
+                    _bleService = null;
+                    _bleDevice?.Dispose();
+                    _bleDevice = null;
+                    _connectionName = usbName;
+
+                    Log("INFO", $"Promoted companion link to {usbName}");
+                    return usbName;
+                }
 
                 string previousName = _connectionName;
                 string? usb = await TryUsbAsync(cancellationToken);
