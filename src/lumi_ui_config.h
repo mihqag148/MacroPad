@@ -16,6 +16,10 @@ enum lumi_screensaver_style {
 #define LUMI_SAVER_FRAME_BYTES (LUMI_SAVER_FRAME_W * LUMI_SAVER_FRAME_H)
 #define LUMI_SAVER_MAX_FRAMES 25
 
+#define LUMI_SAVER_IMAGE_W 320
+#define LUMI_SAVER_IMAGE_H 172
+#define LUMI_SAVER_IMAGE_BYTES (LUMI_SAVER_IMAGE_W * LUMI_SAVER_IMAGE_H * 2U)
+
 void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
                            uint8_t r2, uint8_t g2, uint8_t b2);
 void lumi_ui_set_screensaver(bool enabled, uint8_t style,
@@ -35,5 +39,11 @@ void lumi_ui_saver_anim_frame(uint8_t index, const uint8_t *data, size_t len);
 bool lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len);
 bool lumi_ui_saver_anim_end(void);
+
+bool lumi_ui_saver_image_begin(size_t total_bytes);
+bool lumi_ui_saver_image_chunk(uint32_t offset,
+                               const uint8_t *data, size_t len);
+bool lumi_ui_saver_image_end(void);
+
 bool lumi_ui_saver_anim_is_valid(void);
 void lumi_ui_saver_anim_clear(void);
