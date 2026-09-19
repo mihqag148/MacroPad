@@ -68,7 +68,9 @@ static lv_color_t saver_rgb332_lut[256];
 static bool saver_rgb332_lut_ready;
 
 #define SAVER_FLASH_MAGIC 0x4C534156U /* "LSAV" */
-#define SAVER_FLASH_VERSION 1U
+#define SAVER_FLASH_VERSION 2U
+#define SAVER_FORMAT_RGB332 0U
+#define SAVER_FORMAT_RGB565_STATIC 1U
 #define SAVER_FLASH_DATA_OFFSET 0x1000U
 #define SAVER_FLASH_PAGE_SIZE 0x1000U
 #define SAVER_FLASH_MAX_PAGES 86U
@@ -80,9 +82,9 @@ struct saver_flash_header {
     uint16_t version;
     uint16_t width;
     uint16_t height;
-    uint16_t frame_bytes;
+    uint32_t frame_bytes;
     uint8_t frame_count;
-    uint8_t reserved;
+    uint8_t format;
     uint16_t interval_ms;
     uint32_t data_size;
 };
@@ -100,11 +102,18 @@ static const struct flash_area *saver_flash;
 static bool saver_flash_checked;
 static uint32_t saver_flash_erased_pages[3];
 static uint8_t saver_media_frame_buffer[LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_media_next_frame_buffer[LUMI_SAVER_FRAME_BYTES];
+static uint8_t saver_image_row_buffer[LUMI_SAVER_IMAGE_W * 2U];
 static uint8_t saver_prefetched_index;
+static uint8_t saver_prefetched_next_index;
 static bool saver_prefetch_valid;
+static bool saver_prefetch_next_valid;
 static uint8_t saver_media_frame_count;
+static uint8_t saver_media_format = SAVER_FORMAT_RGB332;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
+static uint32_t saver_image_received_bytes;
+static bool saver_static_drawn;
 static uint16_t saver_media_interval_ms = 40;
 static uint16_t saver_media_frame_intervals[LUMI_SAVER_MAX_FRAMES];
 static uint32_t saver_media_loop_ms = 40U;
