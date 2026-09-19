@@ -192,7 +192,7 @@ public sealed class NowPlayingService : IDisposable
 
             try
             {
-                await Task.Delay(800, token);
+                await Task.Delay(250, token);
             }
             catch (TaskCanceledException)
             {
