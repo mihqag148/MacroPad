@@ -232,6 +232,48 @@ static void handle_rgb(char *save) {
                 (uint8_t)atoi(g),
                 (uint8_t)atoi(b));
         }
+    } else if (strcmp(cmd, "PMODE") == 0) {
+        char *enabled = strtok_r(NULL, "|", &save);
+        if (enabled) {
+            lumi_rgb_set_pixel_mode(atoi(enabled) != 0);
+        }
+    } else if (strcmp(cmd, "PIX") == 0) {
+        char *index = strtok_r(NULL, "|", &save);
+        char *r = strtok_r(NULL, "|", &save);
+        char *g = strtok_r(NULL, "|", &save);
+        char *b = strtok_r(NULL, "|", &save);
+
+        if (index && r && g && b) {
+            lumi_rgb_set_pixel(
+                (uint8_t)atoi(index),
+                (uint8_t)atoi(r),
+                (uint8_t)atoi(g),
+                (uint8_t)atoi(b));
+        }
+    } else if (strcmp(cmd, "PPMODE") == 0) {
+        char *profile = strtok_r(NULL, "|", &save);
+        char *enabled = strtok_r(NULL, "|", &save);
+
+        if (profile && enabled) {
+            lumi_rgb_set_profile_pixel_mode(
+                (uint8_t)atoi(profile),
+                atoi(enabled) != 0);
+        }
+    } else if (strcmp(cmd, "PPIX") == 0) {
+        char *profile = strtok_r(NULL, "|", &save);
+        char *index = strtok_r(NULL, "|", &save);
+        char *r = strtok_r(NULL, "|", &save);
+        char *g = strtok_r(NULL, "|", &save);
+        char *b = strtok_r(NULL, "|", &save);
+
+        if (profile && index && r && g && b) {
+            lumi_rgb_set_profile_pixel(
+                (uint8_t)atoi(profile),
+                (uint8_t)atoi(index),
+                (uint8_t)atoi(r),
+                (uint8_t)atoi(g),
+                (uint8_t)atoi(b));
+        }
     } else if (strcmp(cmd, "STATE") == 0) {
         char *enabled = strtok_r(NULL, "|", &save);
         char *brightness = strtok_r(NULL, "|", &save);
