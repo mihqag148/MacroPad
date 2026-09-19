@@ -1,6 +1,6 @@
 ---
 # final PC Monitor release build · Lumi Macropad v1.5.0
-# Lumi Macropad v1.4.0 PC Monitor BLE telemetry verification 1.5.0
+# Lumi Macropad v1.4.0 multi-GPU screensaver verification 1.6.0
 # LumiPad v1.3.3 app integration verification 2 (no firmware setting change)
 include:
   - board: nice_nano_v2

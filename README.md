@@ -125,3 +125,10 @@ giao diện điều khiển DIAL DESK.
 
 Firmware DIAL DESK hiển thị splash **LUMI3D / DIAL DESK** cùng thanh loading
 khoảng 2 giây khi màn hình khởi động, sau đó mới chuyển sang giao diện phím.
+
+
+### PC Monitor v1.6
+
+PC Monitor hỗ trợ nhiều GPU: **Auto** tự chọn GPU có tải realtime cao nhất (ưu tiên GPU rời NVIDIA/AMD khi tải bằng nhau), hoặc người dùng chọn thủ công từng GPU theo đúng tên model. App lưu lựa chọn GPU và tên cấu hình PC.
+
+Screensaver có thể chọn **GIF / Image** hoặc **PC Monitor**. Khi chọn PC Monitor, DIAL DESK hiển thị telemetry realtime khi hết thời gian chờ thay vì chạy GIF. Tab PC Monitor nằm ngay sau Action.
