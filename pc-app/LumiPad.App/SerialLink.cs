@@ -400,7 +400,7 @@ public sealed class SerialLink : IDisposable
                             $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : candidate.Name)}";
 
                         if (string.IsNullOrWhiteSpace(_connectionName.TrimEnd()))
-                            _connectionName = "Bluetooth · Lumi MacroPad";
+                            _connectionName = "Bluetooth · DIAL DESK";
 
                         Log("INFO",
                             $"Connected {_connectionName}; {FirmwareHello}; BLE payload={_blePayloadSize} bytes");

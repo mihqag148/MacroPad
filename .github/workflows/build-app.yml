@@ -1,4 +1,4 @@
-name: Build LumiPad Windows app
+name: Build Lumi Macropad Windows app
 
 on:
   push:
