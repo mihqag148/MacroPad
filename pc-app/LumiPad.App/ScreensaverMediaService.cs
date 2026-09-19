@@ -21,6 +21,7 @@ public enum ScreensaverScaleMode
 public sealed record ScreensaverAnimation(
     string FileName,
     int FrameIntervalMs,
+    IReadOnlyList<int> FrameDurationsMs,
     IReadOnlyList<byte[]> Frames);
 
 public static class ScreensaverMediaService
@@ -50,36 +51,53 @@ public static class ScreensaverMediaService
         int total = image.GetFrameCount(dimension);
         int count = Math.Min(MaxFrames, Math.Max(1, total));
 
-        // Preserve the GIF's original loop speed. The firmware stores one
-        // interval for the reduced loop, so resample by source time rather
-        // than by raw frame index.
         int[] sourceDelaysMs = ReadGifFrameDelaysMs(image, total);
-        int totalDurationMs = Math.Max(1, sourceDelaysMs.Sum());
-        int delayMs = Math.Clamp(
-            (int)Math.Round(totalDurationMs / (double)count),
-            33,
-            5000);
+        int sourceLoopMs = Math.Max(1, sourceDelaysMs.Sum());
 
-        var cumulative = new int[total];
-        int running = 0;
-        for (int i = 0; i < total; i++)
+        var frameDurations = new List<int>(count);
+        var sourceIndices = new List<int>(count);
+
+        if (total <= MaxFrames)
         {
-            running += sourceDelaysMs[i];
-            cumulative[i] = running;
+            for (int i = 0; i < total; i++)
+            {
+                sourceIndices.Add(i);
+                frameDurations.Add(Math.Clamp(sourceDelaysMs[i], 33, 5000));
+            }
+        }
+        else
+        {
+            // Reduce long GIFs on the time axis instead of raw frame index.
+            // The reduced loop keeps the same overall duration as the source.
+            int outputLoopMs = Math.Max(sourceLoopMs, count * 33);
+            int baseDelay = outputLoopMs / count;
+            int remainder = outputLoopMs % count;
+
+            var cumulative = new int[total];
+            int running = 0;
+            for (int i = 0; i < total; i++)
+            {
+                running += sourceDelaysMs[i];
+                cumulative[i] = running;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                frameDurations.Add(baseDelay + (i < remainder ? 1 : 0));
+
+                double sourceTime = i * (sourceLoopMs / (double)count);
+                int srcIndex = 0;
+                while (srcIndex < total - 1 && sourceTime >= cumulative[srcIndex])
+                    srcIndex++;
+
+                sourceIndices.Add(srcIndex);
+            }
         }
 
         var frames = new List<byte[]>(count);
 
-        for (int i = 0; i < count; i++)
+        foreach (int srcIndex in sourceIndices)
         {
-            double sampleMs = count == 1
-                ? 0.0
-                : i * (totalDurationMs / (double)count);
-
-            int srcIndex = 0;
-            while (srcIndex < total - 1 && sampleMs >= cumulative[srcIndex])
-                srcIndex++;
-
             image.SelectActiveFrame(dimension, srcIndex);
 
             using var bitmap = new Drawing.Bitmap(
@@ -96,9 +114,14 @@ public static class ScreensaverMediaService
             frames.Add(ToRgb332(bitmap, scaleMode));
         }
 
+        int averageDelayMs = Math.Max(
+            33,
+            (int)Math.Round(frameDurations.Average()));
+
         return new ScreensaverAnimation(
             Path.GetFileName(path),
-            delayMs,
+            averageDelayMs,
+            frameDurations,
             frames);
     }
 
@@ -118,8 +141,14 @@ public static class ScreensaverMediaService
                 for (int i = 0; i < entries; i++)
                 {
                     int delayCs = BitConverter.ToInt32(item.Value, i * 4);
-                    delayCs = Math.Max(2, delayCs);
-                    delays[i] = delayCs * 10;
+
+                    // Desktop/browser GIF players commonly show 0/1 cs
+                    // frames for about 100 ms. Matching that behaviour
+                    // avoids a preview that runs much faster than the file
+                    // appears in Windows or a browser.
+                    delays[i] = delayCs <= 1
+                        ? 100
+                        : Math.Clamp(delayCs * 10, 20, 5000);
                 }
             }
         }
@@ -176,6 +205,7 @@ public static class ScreensaverMediaService
         return new ScreensaverAnimation(
             Path.GetFileName(path),
             intervalMs,
+            Enumerable.Repeat(intervalMs, frames.Count).ToArray(),
             frames);
     }
 
