@@ -42,6 +42,9 @@ struct music_state {
     bool artist_bitmap_valid;
 
     uint8_t artwork[LUMI_ARTWORK_BYTES];
+    uint16_t artwork_width;
+    uint16_t artwork_height;
+    size_t artwork_len;
     bool artwork_valid;
 
     uint16_t title_scroll;
@@ -119,18 +122,50 @@ static void draw_1bit_window(lv_obj_t *canvas, lv_color_t *dst,
 }
 
 static void draw_artwork_locked(void) {
-    if (!state.artwork_valid) {
+    if (!state.artwork_valid ||
+        state.artwork_width == 0U ||
+        state.artwork_height == 0U ||
+        state.artwork_len <
+            (size_t)state.artwork_width * state.artwork_height) {
         lv_obj_clear_flag(album_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(album_canvas, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
-    for (size_t i = 0; i < LUMI_ARTWORK_BYTES; i++) {
-        uint8_t v = state.artwork[i];
-        uint8_t r = (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
-        uint8_t g = (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
-        uint8_t b = (uint8_t)(((v & 0x03U) * 255U) / 3U);
-        album_canvas_buf[i] = lv_color_make(r, g, b);
+    /*
+     * The transport may send a smaller RGB332 album image over BLE.
+     * Expand it into the existing 76x76 canvas here so the music-page
+     * layout stays identical while wireless transfers are much smaller.
+     */
+    for (uint16_t y = 0U; y < LUMI_ARTWORK_H; y++) {
+        uint16_t sy =
+            (uint16_t)(((uint32_t)y * state.artwork_height) /
+                       LUMI_ARTWORK_H);
+        if (sy >= state.artwork_height) {
+            sy = state.artwork_height - 1U;
+        }
+
+        for (uint16_t x = 0U; x < LUMI_ARTWORK_W; x++) {
+            uint16_t sx =
+                (uint16_t)(((uint32_t)x * state.artwork_width) /
+                           LUMI_ARTWORK_W);
+            if (sx >= state.artwork_width) {
+                sx = state.artwork_width - 1U;
+            }
+
+            size_t src =
+                (size_t)sy * state.artwork_width + sx;
+            uint8_t v = state.artwork[src];
+            uint8_t r =
+                (uint8_t)((((v >> 5) & 0x07U) * 255U) / 7U);
+            uint8_t g =
+                (uint8_t)((((v >> 2) & 0x07U) * 255U) / 7U);
+            uint8_t b =
+                (uint8_t)(((v & 0x03U) * 255U) / 3U);
+
+            album_canvas_buf[(size_t)y * LUMI_ARTWORK_W + x] =
+                lv_color_make(r, g, b);
+        }
     }
 
     lv_obj_add_flag(album_card, LV_OBJ_FLAG_HIDDEN);
@@ -414,13 +449,29 @@ void lumi_now_playing_set_bitmap(bool title_bitmap, uint16_t width,
     }
 }
 
-void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
-    if (!data || len != LUMI_ARTWORK_BYTES) {
+void lumi_now_playing_set_artwork_scaled(
+    const uint8_t *data,
+    size_t len,
+    uint16_t width,
+    uint16_t height) {
+
+    size_t expected = (size_t)width * height;
+
+    if (!data ||
+        width == 0U ||
+        height == 0U ||
+        width > LUMI_ARTWORK_W ||
+        height > LUMI_ARTWORK_H ||
+        len != expected ||
+        len > LUMI_ARTWORK_BYTES) {
         return;
     }
 
     k_mutex_lock(&state_lock, K_FOREVER);
-    memcpy(state.artwork, data, LUMI_ARTWORK_BYTES);
+    memcpy(state.artwork, data, len);
+    state.artwork_width = width;
+    state.artwork_height = height;
+    state.artwork_len = len;
     state.artwork_valid = true;
 
     if (state.playing) {
@@ -432,6 +483,14 @@ void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
     if (ui_ready) {
         k_work_submit_to_queue(zmk_display_work_q(), &music_work);
     }
+}
+
+void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
+    lumi_now_playing_set_artwork_scaled(
+        data,
+        len,
+        LUMI_ARTWORK_W,
+        LUMI_ARTWORK_H);
 }
 
 void lumi_now_playing_user_activity(void) {
