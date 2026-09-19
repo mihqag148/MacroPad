@@ -78,7 +78,7 @@ public sealed class DiagnosticLogWindow : Window
 
         var buttons = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right
         };
 
