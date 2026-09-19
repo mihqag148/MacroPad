@@ -223,7 +223,7 @@
                             <TextBlock Text="SCREENSAVER MEDIA" FontSize="12"
                                        Foreground="{DynamicResource Muted}"
                                        FontWeight="SemiBold"/>
-                            <TextBlock Text="GIF / MP4 local" FontSize="22"
+                            <TextBlock Text="GIF / Image local" FontSize="22"
                                        FontWeight="SemiBold" Margin="0,7,0,12"/>
 
                             <Border Height="150"
@@ -237,7 +237,7 @@
                                            Stretch="Uniform"
                                            Visibility="Collapsed"/>
                                     <TextBlock x:Name="ScreensaverPreviewHint"
-                                               Text="Choose a GIF or MP4"
+                                               Text="Choose a GIF or image"
                                                Foreground="{DynamicResource Muted}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
@@ -275,7 +275,7 @@
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal">
-                                <Button Content="Choose GIF / MP4"
+                                <Button Content="Choose GIF / Image"
                                         Click="ChooseScreensaverMedia_Click"/>
                                 <Button x:Name="SendScreensaverButton"
                                         Content="Send to LumiPad"
