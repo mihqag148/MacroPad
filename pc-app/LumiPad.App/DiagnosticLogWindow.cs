@@ -18,8 +18,8 @@ public sealed class DiagnosticLogWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
         Background =
-            System.Windows.Application.Current.TryFindResource("Bg") as Brush ??
-            new SolidColorBrush(Color.FromRgb(8, 8, 8));
+            System.Windows.System.Windows.Application.Current.TryFindResource("Bg") as System.Windows.Media.Brush ??
+            new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(8, 8, 8));
 
         var outer = new Border
         {
@@ -27,11 +27,11 @@ public sealed class DiagnosticLogWindow : Window
             Padding = new Thickness(18),
             CornerRadius = new CornerRadius(20),
             Background =
-                Application.Current.TryFindResource("Card") as Brush ??
-                new SolidColorBrush(Color.FromRgb(21, 21, 21)),
+                System.Windows.Application.Current.TryFindResource("Card") as System.Windows.Media.Brush ??
+                new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 21, 21)),
             BorderBrush =
-                Application.Current.TryFindResource("Line") as Brush ??
-                new SolidColorBrush(Color.FromRgb(58, 58, 60)),
+                System.Windows.Application.Current.TryFindResource("Line") as System.Windows.Media.Brush ??
+                new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(58, 58, 60)),
             BorderThickness = new Thickness(1)
         };
 
@@ -49,7 +49,7 @@ public sealed class DiagnosticLogWindow : Window
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
             Foreground =
-                Application.Current.TryFindResource("Muted") as Brush
+                System.Windows.Application.Current.TryFindResource("Muted") as System.Windows.Media.Brush
         });
         heading.Children.Add(new TextBlock
         {
@@ -69,7 +69,7 @@ public sealed class DiagnosticLogWindow : Window
             TextWrapping = TextWrapping.NoWrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            FontFamily = new FontFamily("Consolas"),
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
             FontSize = 12,
             Padding = new Thickness(12)
         };
@@ -79,7 +79,7 @@ public sealed class DiagnosticLogWindow : Window
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
         };
 
         var copy = new System.Windows.Controls.Button { Content = "Copy log" };
