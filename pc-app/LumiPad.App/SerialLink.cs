@@ -909,13 +909,97 @@ public sealed class SerialLink : IDisposable
         return (seq, parts[2], parts[3]);
     }
 
-    public async Task<bool> IsScreensaverReadyAsync()
+    public async Task<string?> GetScreensaverStateAsync()
     {
-        if (_bleCharacteristic is null)
-            return false;
+        try
+        {
+            if (_port?.IsOpen == true)
+            {
+                await _writeGate.WaitAsync();
+                try
+                {
+                    _port.ReadTimeout = 900;
+                    _port.DiscardInBuffer();
 
-        string status = await ReadBleStatusAsync();
-        return status.Contains("SAVER:READY", StringComparison.Ordinal);
+                    byte[] data =
+                        Encoding.UTF8.GetBytes("SAVERSTATE\n");
+                    _port.Write(data, 0, data.Length);
+
+                    string response =
+                        await Task.Run(() => _port.ReadLine().Trim());
+
+                    if (response.StartsWith(
+                            "SAVERSTATE|",
+                            StringComparison.Ordinal))
+                    {
+                        return response["SAVERSTATE|".Length..];
+                    }
+
+                    Log("WARN",
+                        $"Unexpected USB saver state response: {response}");
+                    return null;
+                }
+                finally
+                {
+                    _writeGate.Release();
+                }
+            }
+
+            if (_bleCharacteristic is not null)
+            {
+                await _writeGate.WaitAsync();
+                try
+                {
+                    var characteristic = _bleCharacteristic;
+                    if (characteristic is null)
+                        return null;
+
+                    byte[] data =
+                        Encoding.UTF8.GetBytes("SAVERSTATE\n");
+
+                    using var writer = new DataWriter();
+                    writer.WriteBytes(data);
+
+                    var writeStatus =
+                        await characteristic.WriteValueAsync(
+                            writer.DetachBuffer(),
+                            GattWriteOption.WriteWithResponse);
+
+                    if (writeStatus != GattCommunicationStatus.Success)
+                    {
+                        Log("WARN",
+                            $"BLE saver state write failed: {writeStatus}");
+                        return null;
+                    }
+
+                    // Keep the write/read pair under one gate so MEM/PANEL/LOG
+                    // requests cannot overwrite the single GATT status slot.
+                    await Task.Delay(35);
+
+                    string response = await ReadBleStatusAsync();
+                    if (response.StartsWith(
+                            "SAVERSTATE|",
+                            StringComparison.Ordinal))
+                    {
+                        return response["SAVERSTATE|".Length..];
+                    }
+
+                    Log("WARN",
+                        $"Unexpected BLE saver state response: {response}");
+                    return null;
+                }
+                finally
+                {
+                    _writeGate.Release();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("WARN", $"Read screensaver state failed: {ex.Message}");
+        }
+
+        return null;
     }
 
     public void ShowScreensaverNow() =>
