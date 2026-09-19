@@ -1858,6 +1858,14 @@ void lumi_ui_sleep_now(void) {
     k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
 }
 
+void lumi_ui_wake_now(void) {
+    /* Reuse the normal activity wake path so panel, RGB, idle timers and
+     * screensaver state are restored exactly like a physical key wake.
+     */
+    lumi_diag_report('I', "Manual wake requested");
+    lumi_ui_note_activity();
+}
+
 static void lumi_sleep_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
 
