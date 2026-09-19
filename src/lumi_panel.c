@@ -6,6 +6,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
 #include "lumi_panel.h"
+#include "lumi_diag.h"
 
 LOG_MODULE_REGISTER(lumi_panel, CONFIG_ZMK_LOG_LEVEL);
 #define PANEL DT_CHOSEN(zephyr_display)
@@ -18,6 +19,7 @@ int lumi_panel_init(void) {
      * feedback wired, so forcing FRCTRL2/porch cannot synchronize RAMWR.
      */
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
+        lumi_diag_report('E', "Panel init: SPI/DC not ready");
         return -ENODEV;
     }
 
@@ -31,12 +33,17 @@ int lumi_panel_init(void) {
     }
     if (err) {
         LOG_ERR("Panel inversion setup failed: %d", err);
+        lumi_diag_report('E', "Panel INVON failed rc=%d", err);
+    } else {
+        lumi_diag_report('I', "Panel init OK");
     }
     return err;
 }
 
 int lumi_panel_set_sleep(bool sleeping) {
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
+        lumi_diag_report('E', "Panel %s: SPI/DC not ready",
+                         sleeping ? "off" : "on");
         return -ENODEV;
     }
 
@@ -54,9 +61,12 @@ int lumi_panel_set_sleep(bool sleeping) {
     }
     if (err) {
         LOG_ERR("Panel %s failed: %d", sleeping ? "off" : "on", err);
+        lumi_diag_report('E', "Panel %s failed rc=%d",
+                         sleeping ? "off" : "on", err);
         return err;
     }
 
     k_msleep(sleeping ? 5 : 10);
+    lumi_diag_report('I', "Panel display %s", sleeping ? "OFF" : "ON");
     return 0;
 }

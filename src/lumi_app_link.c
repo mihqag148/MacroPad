@@ -20,6 +20,7 @@
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
 #include "lumi_ui_config.h"
+#include "lumi_diag.h"
 
 LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
@@ -60,7 +61,7 @@ static uint8_t diag_count;
 static uint32_t diag_seq;
 K_MUTEX_DEFINE(diag_lock);
 
-static void diag_push(char level, const char *fmt, ...) {
+void lumi_diag_report(char level, const char *fmt, ...) {
     k_mutex_lock(&diag_lock, K_FOREVER);
 
     struct lumi_diag_entry *entry = &diag_entries[diag_head];
@@ -170,7 +171,7 @@ static void handle_np(char *save) {
     char *artist = strtok_r(NULL, "|", &save);
 
     if (!pos_s || !dur_s || !playing_s || !source || !title || !artist) {
-        diag_push('E', "NP invalid payload");
+        lumi_diag_report('E', "NP invalid payload");
         return;
     }
 
@@ -274,7 +275,7 @@ static void handle_art(char *save) {
         strlen(base64));
 
     if (rc != 0 || decoded_len != LUMI_ARTWORK_BYTES) {
-        diag_push('E', "ART decode rc=%d len=%u", rc, (unsigned int)decoded_len);
+        lumi_diag_report('E', "ART decode rc=%d len=%u", rc, (unsigned int)decoded_len);
         return;
     }
 
@@ -326,13 +327,13 @@ static void handle_cfg(char *save) {
             lumi_ui_set_screensaver_delay((uint32_t)strtoul(seconds, NULL, 10));
         }
     } else if (strcmp(cmd, "SAVERNOW") == 0) {
-        diag_push('I', "Screensaver show now");
+        lumi_diag_report('I', "Screensaver show now");
         lumi_ui_show_screensaver_now();
     } else if (strcmp(cmd, "SLEEP") == 0) {
         char *seconds = strtok_r(NULL, "|", &save);
         if (seconds) {
             uint32_t value = (uint32_t)strtoul(seconds, NULL, 10);
-            diag_push('I', "Sleep timeout=%us", (unsigned int)value);
+            lumi_diag_report('I', "Sleep timeout=%us", (unsigned int)value);
             lumi_ui_set_sleep_timeout(value);
         }
     }
@@ -345,11 +346,11 @@ static void handle_sys(char *save) {
     }
 
     if (strcmp(cmd, "RESTART") == 0) {
-        diag_push('I', "System restart requested");
+        lumi_diag_report('I', "System restart requested");
         k_sleep(K_MSEC(80));
         sys_reboot(SYS_REBOOT_WARM);
     } else if (strcmp(cmd, "DFU") == 0) {
-        diag_push('I', "DFU requested");
+        lumi_diag_report('I', "DFU requested");
         /* nice!nano v2 uses the Adafruit nRF52 bootloader magic reset value. */
         k_sleep(K_MSEC(80));
         sys_reboot(0x57);
@@ -374,7 +375,7 @@ static void handle_savbegin(char *save) {
                  ? "LUMIPAD|2|SAVER:UPLOADING:0/%u"
                  : "LUMIPAD|2|SAVER:ERROR",
              (unsigned int)count);
-    diag_push(ok ? 'I' : 'E', "SAVBEGIN frames=%u interval=%u %s",
+    lumi_diag_report(ok ? 'I' : 'E', "SAVBEGIN frames=%u interval=%u %s",
               (unsigned int)count, (unsigned int)atoi(interval_s),
               ok ? "OK" : "ERROR");
 }
@@ -386,7 +387,7 @@ static void handle_savchunk(char *save) {
 
     if (!index_s || !offset_s || !base64) {
         snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
-        diag_push('E', "SAVCHUNK missing field");
+        lumi_diag_report('E', "SAVCHUNK missing field");
         return;
     }
 
@@ -400,7 +401,7 @@ static void handle_savchunk(char *save) {
 
     if (rc != 0 || decoded_len == 0U) {
         snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
-        diag_push('E', "SAVCHUNK base64 rc=%d len=%u", rc, (unsigned int)decoded_len);
+        lumi_diag_report('E', "SAVCHUNK base64 rc=%d len=%u", rc, (unsigned int)decoded_len);
         return;
     }
 
@@ -410,7 +411,7 @@ static void handle_savchunk(char *save) {
     if (!lumi_ui_saver_anim_chunk(
             index, offset, saver_chunk_tmp, decoded_len)) {
         snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
-        diag_push('E', "SAVCHUNK write frame=%u off=%u len=%u",
+        lumi_diag_report('E', "SAVCHUNK write frame=%u off=%u len=%u",
                   (unsigned int)index, (unsigned int)offset,
                   (unsigned int)decoded_len);
         return;
@@ -420,7 +421,7 @@ static void handle_savchunk(char *save) {
         snprintf(lumi_status, sizeof(lumi_status),
                  "LUMIPAD|2|SAVER:UPLOADING:%u",
                  (unsigned int)(index + 1U));
-        diag_push('I', "Saver frame %u complete", (unsigned int)(index + 1U));
+        lumi_diag_report('I', "Saver frame %u complete", (unsigned int)(index + 1U));
     }
 }
 
@@ -543,7 +544,7 @@ static void handle_line(char *line, bool from_usb) {
                  saver_ok
                      ? "LUMIPAD|2|SAVER:READY"
                      : "LUMIPAD|2|SAVER:ERROR");
-        diag_push(saver_ok ? 'I' : 'E',
+        lumi_diag_report(saver_ok ? 'I' : 'E',
                   saver_ok ? "SAVEND READY" : "SAVEND ERROR");
         if (from_usb) {
             write_text_usb(
@@ -557,7 +558,7 @@ static void handle_line(char *line, bool from_usb) {
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     } else {
-        diag_push('W', "Unknown command: %.20s", root);
+        lumi_diag_report('W', "Unknown command: %.20s", root);
     }
 }
 
@@ -581,7 +582,7 @@ static void feed_bytes(char *line, size_t *line_len,
         if (*line_len < LINE_MAX - 1) {
             line[(*line_len)++] = (char)c;
         } else {
-            diag_push('E', "RX line overflow");
+            lumi_diag_report('E', "RX line overflow");
             *line_len = 0;
         }
     }
@@ -652,7 +653,7 @@ static void lumi_app_thread(void) {
         k_sleep(K_MSEC(100));
     }
 
-    diag_push('I', "Firmware diagnostics online");
+    lumi_diag_report('I', "Firmware diagnostics online");
 
     for (;;) {
         unsigned char c;

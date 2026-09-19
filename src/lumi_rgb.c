@@ -16,6 +16,7 @@
 #include <zmk/keymap.h>
 
 #include "lumi_rgb.h"
+#include "lumi_diag.h"
 
 LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 
@@ -61,6 +62,7 @@ static uint8_t manual_effect = LUMI_RGB_EFFECT_RAINBOW;
 static uint8_t user_brightness = DEFAULT_BRIGHTNESS;
 static uint8_t user_speed_percent = 50;
 static uint8_t reactive_level;
+static bool rgb_update_error_reported;
 static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
 static uint8_t profile_effect[RGB_PROFILE_COUNT] = {
     LUMI_RGB_EFFECT_RAINBOW,
@@ -264,6 +266,7 @@ static void lumi_rgb_refresh_now(void) {
 
 void lumi_rgb_set_enabled(bool enabled) {
     led_enabled = enabled;
+    lumi_diag_report('I', "RGB %s", enabled ? "enabled" : "disabled");
     lumi_rgb_refresh_now();
 }
 
@@ -294,6 +297,7 @@ void lumi_rgb_set_auto(bool enabled) {
     if (enabled) {
         led_enabled = true;
     }
+    lumi_diag_report('I', "RGB auto-layer %s", enabled ? "ON" : "OFF");
     lumi_rgb_refresh_now();
 }
 
@@ -305,6 +309,7 @@ void lumi_rgb_set_effect(uint8_t effect) {
     manual_effect = effect;
     auto_by_layer = false;
     led_enabled = true;
+    lumi_diag_report('I', "RGB effect=%u", (unsigned int)effect);
     lumi_rgb_refresh_now();
 }
 
@@ -331,6 +336,9 @@ void lumi_rgb_set_profile(uint8_t index, uint8_t effect,
 }
 
 void lumi_rgb_set_suspended(bool suspended) {
+    if (led_suspended != suspended) {
+        lumi_diag_report('I', "RGB %s", suspended ? "suspended" : "resumed");
+    }
     led_suspended = suspended;
     lumi_rgb_refresh_now();
 }
@@ -360,6 +368,13 @@ static void lumi_rgb_work_handler(struct k_work *work) {
 
     if (err < 0) {
         LOG_ERR("WS2812B update failed: %d", err);
+        if (!rgb_update_error_reported) {
+            rgb_update_error_reported = true;
+            lumi_diag_report('E', "WS2812 update failed rc=%d", err);
+        }
+    } else if (rgb_update_error_reported) {
+        rgb_update_error_reported = false;
+        lumi_diag_report('I', "WS2812 update recovered");
     }
 
     uint32_t frame_ms = 140U - ((uint32_t)user_speed_percent * 100U / 100U);
@@ -392,6 +407,7 @@ ZMK_SUBSCRIPTION(lumi_rgb_position, zmk_position_state_changed);
 static int lumi_rgb_init(void) {
     if (!device_is_ready(strip)) {
         LOG_ERR("WS2812B strip is not ready");
+        lumi_diag_report('E', "WS2812 strip not ready");
         return -ENODEV;
     }
 
@@ -399,6 +415,9 @@ static int lumi_rgb_init(void) {
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
     if (err < 0) {
         LOG_ERR("Initial WS2812B update failed: %d", err);
+        lumi_diag_report('E', "WS2812 init update rc=%d", err);
+    } else {
+        lumi_diag_report('I', "WS2812 RGB online LEDs=%u", (unsigned int)LED_COUNT);
     }
 
     k_work_schedule(&lumi_rgb_work, K_MSEC(250));

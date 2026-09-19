@@ -33,6 +33,7 @@
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
 #include "lumi_ui_config.h"
+#include "lumi_diag.h"
 
 #define KEY_COUNT 12
 #define COLS 4
@@ -702,6 +703,7 @@ static int saver_flash_open_once(void) {
 
     if (rc != 0 || !saver_flash) {
         saver_flash = NULL;
+        lumi_diag_report('E', "Saver flash open rc=%d", rc);
         return rc != 0 ? rc : -ENODEV;
     }
 
@@ -710,6 +712,9 @@ static int saver_flash_open_once(void) {
         (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES;
 
     if (saver_flash->fa_size < required) {
+        lumi_diag_report('E', "Saver flash too small have=%u need=%u",
+                         (unsigned int)saver_flash->fa_size,
+                         (unsigned int)required);
         return -ENOSPC;
     }
 
@@ -729,7 +734,9 @@ static bool saver_flash_load_metadata(void) {
     }
 
     struct saver_flash_header header = {0};
-    if (flash_area_read(saver_flash, 0, &header, sizeof(header)) != 0) {
+    int read_rc = flash_area_read(saver_flash, 0, &header, sizeof(header));
+    if (read_rc != 0) {
+        lumi_diag_report('E', "Saver header read rc=%d", read_rc);
         return false;
     }
 
@@ -743,6 +750,10 @@ static bool saver_flash_load_metadata(void) {
         header.interval_ms < 33U ||
         header.data_size !=
             (uint32_t)header.frame_count * LUMI_SAVER_FRAME_BYTES) {
+        lumi_diag_report('W', "Saver metadata invalid magic=%08x frames=%u interval=%u",
+                         (unsigned int)header.magic,
+                         (unsigned int)header.frame_count,
+                         (unsigned int)header.interval_ms);
         return false;
     }
 
@@ -751,6 +762,9 @@ static bool saver_flash_load_metadata(void) {
     saver_media_index = 0U;
     saver_media_last_ms = 0U;
     saver_media_valid = true;
+    lumi_diag_report('I', "Saver metadata OK frames=%u interval=%ums",
+                     (unsigned int)saver_media_frame_count,
+                     (unsigned int)saver_media_interval_ms);
     return true;
 }
 
@@ -997,6 +1011,8 @@ static void draw_custom_saver_frame(uint8_t frame_index) {
             saver_stripe_buf);
 
         if (rc != 0) {
+            lumi_diag_report('E', "Saver display_write rc=%d y=%u",
+                             rc, (unsigned int)(src_y * 2U));
             break;
         }
     }
@@ -1276,6 +1292,7 @@ void lumi_ui_note_activity(void) {
     lumi_rgb_set_suspended(false);
 
     if (was_sleeping) {
+        lumi_diag_report('I', "Wake requested by activity");
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_wake_work);
     }
 }
@@ -1382,6 +1399,8 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         soft_sleep = true;
         k_mutex_unlock(&lumi_ui_config_lock);
 
+        lumi_diag_report('I', "Entering soft sleep timeout=%us",
+                         (unsigned int)(timeout / 1000U));
         lumi_rgb_set_suspended(true);
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
     }
