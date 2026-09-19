@@ -59,6 +59,7 @@ static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
 #define SAVER_STRIPE_SRC_ROWS 4U
 #define SAVER_STRIPE_DST_ROWS (SAVER_STRIPE_SRC_ROWS * 2U)
+#define SAVER_MIN_FRAME_MS 40U /* 25 FPS maximum playback rate */
 
 static const struct device *const saver_display =
     DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
@@ -711,7 +712,7 @@ static void saver_timing_recalculate(void) {
     for (uint8_t i = 0U; i < saver_media_frame_count; i++) {
         uint16_t interval =
             CLAMP(saver_media_frame_intervals[i],
-                  (uint16_t)33U,
+                  (uint16_t)SAVER_MIN_FRAME_MS,
                   (uint16_t)5000U);
         saver_media_frame_intervals[i] = interval;
         total += interval;
@@ -723,7 +724,7 @@ static void saver_timing_recalculate(void) {
         saver_media_interval_ms =
             (uint16_t)CLAMP(
                 saver_media_loop_ms / saver_media_frame_count,
-                33U,
+                SAVER_MIN_FRAME_MS,
                 5000U);
     }
 }
@@ -733,7 +734,9 @@ static void saver_timing_set_uniform(
     uint16_t interval_ms) {
 
     interval_ms =
-        CLAMP(interval_ms, (uint16_t)33U, (uint16_t)5000U);
+        CLAMP(interval_ms,
+              (uint16_t)SAVER_MIN_FRAME_MS,
+              (uint16_t)5000U);
 
     memset(
         saver_media_frame_intervals,
@@ -1305,7 +1308,9 @@ bool lumi_ui_saver_anim_set_frame_interval(
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_frame_intervals[index] =
-        CLAMP(interval_ms, (uint16_t)33U, (uint16_t)5000U);
+        CLAMP(interval_ms,
+              (uint16_t)SAVER_MIN_FRAME_MS,
+              (uint16_t)5000U);
     saver_timing_recalculate();
     k_mutex_unlock(&lumi_ui_config_lock);
 
