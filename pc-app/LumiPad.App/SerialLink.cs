@@ -65,83 +65,152 @@ public sealed class SerialLink : IDisposable
 
     private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
     {
-        try
+        // Windows can expose a BLE HID keyboard through different device
+        // interfaces depending on whether it is already connected, merely
+        // paired, or cached. Probe paired devices first, then the complete BLE
+        // device set. This fixes cases where the keyboard works as HID but the
+        // companion app cannot see the custom GATT service.
+        string[] selectors =
+        [
+            BluetoothLEDevice.GetDeviceSelectorFromPairingState(true),
+            BluetoothLEDevice.GetDeviceSelector()
+        ];
+
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string selector in selectors)
         {
-            string selector = BluetoothLEDevice.GetDeviceSelectorFromPairingState(true);
-            DeviceInformationCollection devices = await DeviceInformation.FindAllAsync(selector);
-
-            foreach (var info in devices)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                DeviceInformationCollection devices =
+                    await DeviceInformation.FindAllAsync(selector);
 
-                BluetoothLEDevice? candidate = null;
-                try
+                Log("INFO", $"BLE scan returned {devices.Count} device(s)");
+
+                foreach (var info in devices)
                 {
-                    candidate = await BluetoothLEDevice.FromIdAsync(info.Id);
-                    if (candidate is null)
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!seenIds.Add(info.Id))
                         continue;
 
-                    var services = await candidate.GetGattServicesForUuidAsync(
-                        ServiceUuid, BluetoothCacheMode.Uncached);
+                    BluetoothLEDevice? candidate = null;
+                    GattDeviceService? service = null;
 
-                    if (services.Status != GattCommunicationStatus.Success ||
-                        services.Services.Count == 0)
+                    try
                     {
-                        candidate.Dispose();
-                        continue;
+                        candidate = await BluetoothLEDevice.FromIdAsync(info.Id);
+                        if (candidate is null)
+                            continue;
+
+                        var services = await candidate.GetGattServicesForUuidAsync(
+                            ServiceUuid,
+                            BluetoothCacheMode.Uncached);
+
+                        if (services.Status != GattCommunicationStatus.Success ||
+                            services.Services.Count == 0)
+                        {
+                            candidate.Dispose();
+                            continue;
+                        }
+
+                        service = services.Services[0];
+                        var chars = await service.GetCharacteristicsForUuidAsync(
+                            CharacteristicUuid,
+                            BluetoothCacheMode.Uncached);
+
+                        if (chars.Status != GattCommunicationStatus.Success ||
+                            chars.Characteristics.Count == 0)
+                        {
+                            service.Dispose();
+                            candidate.Dispose();
+                            continue;
+                        }
+
+                        var characteristic = chars.Characteristics[0];
+                        var props = characteristic.CharacteristicProperties;
+                        bool canWrite =
+                            (props & GattCharacteristicProperties.Write) != 0 ||
+                            (props & GattCharacteristicProperties.WriteWithoutResponse) != 0;
+
+                        if (!canWrite)
+                        {
+                            Log("WARN", $"BLE characteristic is not writable: {info.Name}");
+                            service.Dispose();
+                            candidate.Dispose();
+                            continue;
+                        }
+
+                        // Do not reject a valid LumiPad service just because a
+                        // one-shot status read is temporarily unavailable. The
+                        // service + characteristic UUID pair uniquely identifies
+                        // this firmware. Read the hello/status opportunistically.
+                        string hello = "LUMIPAD|2";
+                        if ((props & GattCharacteristicProperties.Read) != 0)
+                        {
+                            try
+                            {
+                                var read = await characteristic.ReadValueAsync(
+                                    BluetoothCacheMode.Uncached);
+
+                                if (read.Status == GattCommunicationStatus.Success)
+                                {
+                                    using var reader = DataReader.FromBuffer(read.Value);
+                                    string value =
+                                        reader.ReadString(reader.UnconsumedBufferLength)
+                                              .Trim('\0', '\r', '\n', ' ');
+
+                                    if (!string.IsNullOrWhiteSpace(value))
+                                        hello = value;
+                                }
+                                else
+                                {
+                                    Log("WARN", $"BLE status read: {read.Status}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log("WARN", $"BLE status read failed: {ex.Message}");
+                            }
+                        }
+
+                        try
+                        {
+                            service.Session.MaintainConnection = true;
+                        }
+                        catch
+                        {
+                            // Older Windows builds can reject MaintainConnection;
+                            // normal GATT operations still keep the link usable.
+                        }
+
+                        _bleDevice = candidate;
+                        _bleService = service;
+                        _bleCharacteristic = characteristic;
+                        candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
+
+                        FirmwareHello = hello;
+                        _connectionName =
+                            $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : candidate.Name)}";
+
+                        if (string.IsNullOrWhiteSpace(_connectionName.TrimEnd()))
+                            _connectionName = "Bluetooth · Lumi MacroPad";
+
+                        Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
+                        return _connectionName;
                     }
-
-                    var service = services.Services[0];
-                    var chars = await service.GetCharacteristicsForUuidAsync(
-                        CharacteristicUuid, BluetoothCacheMode.Uncached);
-
-                    if (chars.Status != GattCommunicationStatus.Success ||
-                        chars.Characteristics.Count == 0)
+                    catch (Exception ex)
                     {
-                        service.Dispose();
-                        candidate.Dispose();
-                        continue;
+                        Log("WARN", $"BLE probe {info.Name}: {ex.Message}");
+                        service?.Dispose();
+                        candidate?.Dispose();
                     }
-
-                    var characteristic = chars.Characteristics[0];
-
-                    var read = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
-                    if (read.Status != GattCommunicationStatus.Success)
-                    {
-                        service.Dispose();
-                        candidate.Dispose();
-                        continue;
-                    }
-
-                    using var reader = DataReader.FromBuffer(read.Value);
-                    string hello = reader.ReadString(reader.UnconsumedBufferLength);
-                    if (!hello.StartsWith("LUMIPAD|", StringComparison.Ordinal))
-                    {
-                        service.Dispose();
-                        candidate.Dispose();
-                        continue;
-                    }
-
-                    _bleDevice = candidate;
-                    _bleService = service;
-                    _bleCharacteristic = characteristic;
-                    candidate.ConnectionStatusChanged += OnBleConnectionStatusChanged;
-
-                    FirmwareHello = hello;
-                    _connectionName = $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : "LumiPad")}";
-                    Log("INFO", $"Connected {_connectionName}; {FirmwareHello}");
-                    return _connectionName;
-                }
-                catch (Exception ex)
-                {
-                    Log("WARN", $"BLE probe {info.Name}: {ex.Message}");
-                    candidate?.Dispose();
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Log("ERROR", $"Bluetooth discovery failed: {ex.Message}");
+            catch (Exception ex)
+            {
+                Log("WARN", $"Bluetooth selector failed: {ex.Message}");
+            }
         }
 
         Log("WARN", "Bluetooth LumiPad service not found");
@@ -656,6 +725,59 @@ public sealed class SerialLink : IDisposable
 
     public void ShowScreensaverNow() =>
         _ = SendLineAsync("CFG|SAVERNOW");
+
+    public async Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
+        ReadPanelInfoAsync()
+    {
+        string response;
+
+        try
+        {
+            if (_port?.IsOpen == true)
+            {
+                await _writeGate.WaitAsync();
+                try
+                {
+                    _port.ReadTimeout = 800;
+                    _port.DiscardInBuffer();
+                    byte[] data = Encoding.UTF8.GetBytes("PANEL\n");
+                    _port.Write(data, 0, data.Length);
+                    response = await Task.Run(() => _port.ReadLine().Trim());
+                }
+                finally
+                {
+                    _writeGate.Release();
+                }
+            }
+            else if (_bleCharacteristic is not null)
+            {
+                await SendLineAsync("PANEL");
+                await Task.Delay(40);
+                response = await ReadBleStatusAsync();
+            }
+            else
+            {
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("WARN", $"Read panel info failed: {ex.Message}");
+            return null;
+        }
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 5 ||
+            parts[0] != "PANEL" ||
+            !int.TryParse(parts[2], out int refreshHz) ||
+            !int.TryParse(parts[3], out int spiHz) ||
+            !int.TryParse(parts[4], out int gifMaxFps))
+        {
+            return null;
+        }
+
+        return (parts[1], refreshHz, spiHz, gifMaxFps);
+    }
 
     public async Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
         ReadMemoryUsageAsync()
