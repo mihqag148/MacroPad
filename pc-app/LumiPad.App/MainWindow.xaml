@@ -10,12 +10,28 @@
         SnapsToDevicePixels="True">
     <Window.Resources>
         <Style TargetType="{x:Type ToolTip}">
-            <Setter Property="Background" Value="#252527"/>
             <Setter Property="Foreground" Value="#F5F5F7"/>
+            <Setter Property="Background" Value="#252527"/>
             <Setter Property="BorderBrush" Value="#4A4A4D"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="9,5"/>
+            <Setter Property="Padding" Value="0"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToolTip}">
+                        <Border Background="#252527"
+                                BorderBrush="#4A4A4D"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="9,5">
+                            <ContentPresenter
+                                TextElement.Foreground="#F5F5F7"
+                                TextElement.FontFamily="Segoe UI"
+                                TextElement.FontSize="12"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
     <Grid Margin="24">
@@ -301,7 +317,7 @@
                                     Background="{DynamicResource Line}"
                                     Margin="0,14,0,12"/>
 
-                            <Grid x:Name="DeviceTimingPanel" IsEnabled="False">
+                            <Grid x:Name="DeviceTimingPanel" IsEnabled="True">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition/>
                                     <ColumnDefinition Width="14"/>
