@@ -197,13 +197,14 @@ public static class ScreensaverMediaService
                 {
                     int delayCs = BitConverter.ToInt32(item.Value, i * 4);
 
-                    // Desktop/browser GIF players commonly show 0/1 cs
-                    // frames for about 100 ms. Matching that behaviour
-                    // avoids a preview that runs much faster than the file
-                    // appears in Windows or a browser.
-                    delays[i] = delayCs <= 1
-                        ? 100
-                        : Math.Clamp(delayCs * 10, 10, 5000);
+                    // Preserve the GIF's real source timing. Very short
+                    // source delays are handled by the 25 FPS resampler below;
+                    // do not inflate 1 cs (10 ms) to 100 ms, which previously
+                    // made smooth GIFs appear to be only ~10-11 FPS.
+                    int sourceDelayMs =
+                        Math.Max(1, delayCs) * 10;
+                    delays[i] =
+                        Math.Clamp(sourceDelayMs, 10, 5000);
                 }
             }
         }
