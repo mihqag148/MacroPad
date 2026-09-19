@@ -12,7 +12,7 @@
 #include "lumi_now_playing.h"
 #include "lumi_ui_config.h"
 
-#define MUSIC_TIMEOUT_MS 30000
+#define MUSIC_TIMEOUT_MS 60000
 #define USER_ACTIVITY_HIDE_MS 10000
 #define SCROLL_STEP_MS 75
 #define SCROLL_HOLD_MS 650
@@ -432,7 +432,17 @@ void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
 
 void lumi_now_playing_user_activity(void) {
     k_mutex_lock(&state_lock, K_FOREVER);
-    state.suppress_until_ms = k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
+
+    /* While music is actually playing, keyboard/encoder activity should not
+     * kick the user back to the main page. Only allow the temporary hide
+     * behavior while paused/stopped.
+     */
+    if (state.playing) {
+        state.suppress_until_ms = 0U;
+    } else {
+        state.suppress_until_ms = k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
+    }
+
     k_mutex_unlock(&state_lock);
 
     if (ui_ready) {
