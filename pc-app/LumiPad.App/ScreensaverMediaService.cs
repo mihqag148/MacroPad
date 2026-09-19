@@ -18,8 +18,17 @@ public enum ScreensaverScaleMode
     Span = 5,
 }
 
+public enum ScreensaverPixelFormat
+{
+    Rgb332 = 0,
+    Rgb565 = 1,
+}
+
 public sealed record ScreensaverAnimation(
     string FileName,
+    int Width,
+    int Height,
+    ScreensaverPixelFormat PixelFormat,
     int FrameIntervalMs,
     IReadOnlyList<int> FrameDurationsMs,
     IReadOnlyList<byte[]> Frames);
@@ -28,6 +37,8 @@ public static class ScreensaverMediaService
 {
     public const int Width = 160;
     public const int Height = 86;
+    public const int StaticWidth = 320;
+    public const int StaticHeight = 172;
     public const int MaxFrames = 25;
     public const int MaxPlaybackFps = 25;
     public const int MinFrameIntervalMs = 1000 / MaxPlaybackFps;
@@ -53,12 +64,16 @@ public static class ScreensaverMediaService
         ScreensaverScaleMode scaleMode)
     {
         using var bitmap = new Drawing.Bitmap(path);
-        byte[] frame = ToRgb332(bitmap, scaleMode);
+        byte[] frame = ToRgb565(bitmap, scaleMode);
 
-        // A static image is stored as one frame. The interval is irrelevant
-        // visually, but keep it valid for the common firmware timing format.
+        // Static images use the panel's full 320x172 resolution and RGB565
+        // depth. They are drawn once from flash, so there is no animation RAM
+        // or bandwidth penalty for keeping the extra detail.
         return new ScreensaverAnimation(
             Path.GetFileName(path),
+            StaticWidth,
+            StaticHeight,
+            ScreensaverPixelFormat.Rgb565,
             1000,
             new[] { 1000 },
             new[] { frame });
@@ -157,6 +172,9 @@ public static class ScreensaverMediaService
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
+            Width,
+            Height,
+            ScreensaverPixelFormat.Rgb332,
             averageDelayMs,
             frameDurations,
             frames);
@@ -241,6 +259,9 @@ public static class ScreensaverMediaService
 
         return new ScreensaverAnimation(
             Path.GetFileName(path),
+            Width,
+            Height,
+            ScreensaverPixelFormat.Rgb332,
             intervalMs,
             Enumerable.Repeat(intervalMs, frames.Count).ToArray(),
             frames);
@@ -254,6 +275,125 @@ public static class ScreensaverMediaService
         var bytes = new byte[loaded];
         reader.ReadBytes(bytes);
         return bytes;
+    }
+
+    private static byte[] ToRgb565(
+        Drawing.Bitmap source,
+        ScreensaverScaleMode scaleMode)
+    {
+        using var resized = new Drawing.Bitmap(
+            StaticWidth,
+            StaticHeight,
+            PixelFormat.Format24bppRgb);
+
+        using (var g = Drawing.Graphics.FromImage(resized))
+        {
+            g.Clear(Drawing.Color.Black);
+            g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality;
+            g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality;
+            g.SmoothingMode = Drawing2D.SmoothingMode.HighQuality;
+
+            switch (scaleMode)
+            {
+                case ScreensaverScaleMode.Stretch:
+                    g.DrawImage(source, 0, 0, StaticWidth, StaticHeight);
+                    break;
+
+                case ScreensaverScaleMode.Fit:
+                {
+                    double scale = Math.Min(
+                        StaticWidth / (double)source.Width,
+                        StaticHeight / (double)source.Height);
+                    int drawW = Math.Max(1, (int)Math.Round(source.Width * scale));
+                    int drawH = Math.Max(1, (int)Math.Round(source.Height * scale));
+                    int dx = (StaticWidth - drawW) / 2;
+                    int dy = (StaticHeight - drawH) / 2;
+                    g.DrawImage(source, dx, dy, drawW, drawH);
+                    break;
+                }
+
+                case ScreensaverScaleMode.Center:
+                {
+                    int drawW = Math.Min(source.Width, StaticWidth);
+                    int drawH = Math.Min(source.Height, StaticHeight);
+                    int sx = Math.Max(0, (source.Width - drawW) / 2);
+                    int sy = Math.Max(0, (source.Height - drawH) / 2);
+                    int dx = (StaticWidth - drawW) / 2;
+                    int dy = (StaticHeight - drawH) / 2;
+                    g.DrawImage(
+                        source,
+                        new Drawing.Rectangle(dx, dy, drawW, drawH),
+                        new Drawing.Rectangle(sx, sy, drawW, drawH),
+                        Drawing.GraphicsUnit.Pixel);
+                    break;
+                }
+
+                case ScreensaverScaleMode.Tile:
+                {
+                    double scale = Math.Min(
+                        0.5,
+                        Math.Min(
+                            StaticWidth / (double)source.Width,
+                            StaticHeight / (double)source.Height));
+                    int tileW = Math.Max(8, (int)Math.Round(source.Width * scale));
+                    int tileH = Math.Max(8, (int)Math.Round(source.Height * scale));
+
+                    using var tile = new Drawing.Bitmap(tileW, tileH);
+                    using (var tg = Drawing.Graphics.FromImage(tile))
+                    {
+                        tg.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBilinear;
+                        tg.DrawImage(source, 0, 0, tileW, tileH);
+                    }
+
+                    using var brush =
+                        new Drawing.TextureBrush(tile, Drawing2D.WrapMode.Tile);
+                    g.FillRectangle(brush, 0, 0, StaticWidth, StaticHeight);
+                    break;
+                }
+
+                case ScreensaverScaleMode.Span:
+                case ScreensaverScaleMode.Fill:
+                default:
+                {
+                    double scale = Math.Max(
+                        StaticWidth / (double)source.Width,
+                        StaticHeight / (double)source.Height);
+
+                    if (scaleMode == ScreensaverScaleMode.Span)
+                        scale *= 1.08;
+
+                    int drawW =
+                        Math.Max(1, (int)Math.Ceiling(source.Width * scale));
+                    int drawH =
+                        Math.Max(1, (int)Math.Ceiling(source.Height * scale));
+                    int dx = (StaticWidth - drawW) / 2;
+                    int dy = (StaticHeight - drawH) / 2;
+                    g.DrawImage(source, dx, dy, drawW, drawH);
+                    break;
+                }
+            }
+        }
+
+        var output = new byte[StaticWidth * StaticHeight * 2];
+
+        for (int y = 0; y < StaticHeight; y++)
+        {
+            for (int x = 0; x < StaticWidth; x++)
+            {
+                Drawing.Color p = resized.GetPixel(x, y);
+                ushort rgb565 = (ushort)(
+                    ((p.R & 0xF8) << 8) |
+                    ((p.G & 0xFC) << 3) |
+                    (p.B >> 3));
+
+                int o = (y * StaticWidth + x) * 2;
+                output[o] = (byte)(rgb565 & 0xFF);
+                output[o + 1] = (byte)(rgb565 >> 8);
+            }
+        }
+
+        return output;
     }
 
     private static byte[] ToRgb332(
