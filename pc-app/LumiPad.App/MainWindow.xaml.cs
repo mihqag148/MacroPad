@@ -448,7 +448,7 @@ public partial class MainWindow : Window
         var body = new Border
         {
             Width = 278,
-            Height = 186,
+            Height = 220,
             CornerRadius = new CornerRadius(26),
             Background = new SolidColorBrush(
                 MediaColor.FromRgb(12, 12, 14)),
@@ -462,20 +462,35 @@ public partial class MainWindow : Window
 
         var device = new Grid
         {
-            Margin = new Thickness(18)
+            Width = 222,
+            Height = 184,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
         };
-        device.ColumnDefinitions.Add(new ColumnDefinition());
-        device.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(58)
-        });
-
-        var left = new Grid();
-        left.RowDefinitions.Add(new RowDefinition
+        device.RowDefinitions.Add(new RowDefinition
         {
             Height = new GridLength(58)
         });
-        left.RowDefinitions.Add(new RowDefinition());
+        device.RowDefinitions.Add(new RowDefinition
+        {
+            Height = new GridLength(10)
+        });
+        device.RowDefinitions.Add(new RowDefinition());
+
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(154)
+        });
+        top.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(10)
+        });
+        top.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(58)
+        });
 
         var display = new Border
         {
@@ -483,8 +498,7 @@ public partial class MainWindow : Window
             Background = new LinearGradientBrush(
                 MediaColor.FromRgb(25, 40, 75),
                 MediaColor.FromRgb(80, 42, 93),
-                90),
-            Margin = new Thickness(0, 0, 10, 8)
+                90)
         };
         display.Child = new TextBlock
         {
@@ -496,15 +510,33 @@ public partial class MainWindow : Window
                 System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        left.Children.Add(display);
+        top.Children.Add(display);
+
+        var dial = new Ellipse
+        {
+            Width = 50,
+            Height = 50,
+            Fill = new LinearGradientBrush(
+                MediaColor.FromRgb(95, 95, 102),
+                MediaColor.FromRgb(30, 30, 34),
+                45),
+            Stroke = new SolidColorBrush(
+                MediaColor.FromRgb(145, 145, 150)),
+            StrokeThickness = 1,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(dial, 2);
+        top.Children.Add(dial);
+        device.Children.Add(top);
 
         var keys = new System.Windows.Controls.Primitives.UniformGrid
         {
-            Rows = 2,
-            Columns = 4,
-            Margin = new Thickness(0, 0, 10, 0)
+            Rows = 3,
+            Columns = 4
         };
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 12; i++)
         {
             keys.Children.Add(new Border
             {
@@ -517,41 +549,8 @@ public partial class MainWindow : Window
                 Margin = new Thickness(3)
             });
         }
-        Grid.SetRow(keys, 1);
-        left.Children.Add(keys);
-        device.Children.Add(left);
-
-        var dialArea = new Grid();
-        dialArea.Children.Add(new Ellipse
-        {
-            Width = 48,
-            Height = 48,
-            Fill = new LinearGradientBrush(
-                MediaColor.FromRgb(95, 95, 102),
-                MediaColor.FromRgb(30, 30, 34),
-                45),
-            Stroke = new SolidColorBrush(
-                MediaColor.FromRgb(145, 145, 150)),
-            StrokeThickness = 1,
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 5, 0, 0)
-        });
-        dialArea.Children.Add(new TextBlock
-        {
-            Text = "L3D",
-            Foreground = new SolidColorBrush(
-                MediaColor.FromRgb(210, 210, 215)),
-            FontSize = 9,
-            FontWeight = FontWeights.Bold,
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, 0, 10)
-        });
-        Grid.SetColumn(dialArea, 1);
-        device.Children.Add(dialArea);
+        Grid.SetRow(keys, 2);
+        device.Children.Add(keys);
 
         body.Child = device;
         container.Children.Add(body);
@@ -4032,6 +4031,24 @@ public partial class MainWindow : Window
                 "SAVER",
                 $"Automatic screensaver state check failed: {ex.Message}");
             // Keep the keyboard connection alive even if state verification fails.
+        }
+    }
+
+    private void OpenShopee_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://shopee.vn/lumi3d.hn",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AddLog("WARN", "SHOP", $"Open Shopee failed: {ex.Message}");
         }
     }
 

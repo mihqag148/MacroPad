@@ -57,29 +57,6 @@
                         Click="BackToProducts_Click"
                         VerticalAlignment="Center"
                         Margin="0,0,12,0"/>
-                <Border Width="142" Height="48" CornerRadius="10"
-                        Background="Black" Margin="0,0,12,0"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                        Padding="9,4">
-                    <Viewbox Stretch="Uniform">
-                        <Grid Width="180" Height="54">
-                            <TextBlock Text="Lumi3D"
-                                       Foreground="#E8E5E1"
-                                       FontFamily="Arial"
-                                       FontWeight="Bold"
-                                       FontSize="40"
-                                       VerticalAlignment="Top"/>
-                            <TextBlock Text="ESTD 2025"
-                                       Foreground="#E8E5E1"
-                                       FontFamily="Arial"
-                                       FontWeight="SemiBold"
-                                       FontSize="9"
-                                       Margin="3,43,0,0"
-                                       VerticalAlignment="Top"/>
-                        </Grid>
-                    </Viewbox>
-                </Border>
-
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="WorkspaceProductTitle"
                                Text="DIAL DESK"
@@ -993,422 +970,455 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Settings">
+            <TabItem Header="Action">
                 <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="330"/>
-                        <ColumnDefinition Width="18"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                    <Border Grid.Column="0"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="24">
-                        <StackPanel>
-                            <TextBlock Text="SETTINGS"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"/>
-                            <TextBlock Text="Appearance &amp; device"
-                                       FontSize="22"
-                                       FontWeight="SemiBold"
-                                       Margin="0,7,0,22"/>
+                    <StackPanel>
+                        <TextBlock Text="ACTION / SCRIPT ENGINE"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Muted}"/>
+                        <TextBlock Text="Lumi Action"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Margin="0,6,0,0"/>
+                        <TextBlock Text="Create actions and assign them to DIAL DESK keys."
+                                   Foreground="{DynamicResource Muted}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
 
-                            <TextBlock Text="Language"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,0,0,6"/>
-                            <ComboBox x:Name="LanguageCombo"
-                                      SelectionChanged="LanguageCombo_SelectionChanged"
-                                      Margin="0,0,0,18">
-                                <ComboBoxItem Content="EN  English" Tag="en" IsSelected="True"/>
-                                <ComboBoxItem Content="VI  Tiếng Việt" Tag="vi"/>
-                            </ComboBox>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="280"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="Appearance"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,0,0,6"/>
-                            <Button x:Name="ThemeButton"
-                                    Content="Light mode"
-                                    Click="ThemeButton_Click"
-                                    HorizontalAlignment="Left"
-                                    Margin="0,0,0,22"/>
+                        <Border Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="12"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
 
-                            <Border Height="1"
-                                    Background="{DynamicResource Line}"
-                                    Margin="0,0,0,18"/>
+                                <TextBlock Text="Scripts"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
 
-                            <TextBlock Text="VERSION"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"/>
+                                <ListBox x:Name="ActionScriptsList"
+                                         Grid.Row="2"
+                                         SelectionChanged="ActionScriptsList_SelectionChanged"/>
 
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Lumi Macropad"/>
-                                <TextBlock x:Name="AppVersionText"
-                                           Grid.Column="1"
-                                           Text="--"
-                                           Foreground="{DynamicResource Muted}"/>
+                                <StackPanel Grid.Row="4"
+                                            Orientation="Horizontal">
+                                    <Button Content="New"
+                                            Click="NewActionScript_Click"/>
+                                    <Button Content="Delete"
+                                            Click="DeleteActionScript_Click"
+                                            Margin="0"/>
+                                </StackPanel>
                             </Grid>
+                        </Border>
 
-                            <Grid Margin="0,9,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Firmware"/>
-                                <TextBlock x:Name="FirmwareVersionText"
-                                           Grid.Column="1"
-                                           Text="--"
-                                           Foreground="{DynamicResource Muted}"/>
-                            </Grid>
+                        <Border Grid.Column="2"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
 
-                            <Grid Margin="0,9,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Connection"/>
-                                <TextBlock x:Name="ConnectionInfoText"
-                                           Grid.Column="1"
-                                           Text="Disconnected"
-                                           Foreground="{DynamicResource Muted}"/>
-                            </Grid>
+                                <StackPanel>
+                                    <TextBlock Text="SCRIPT EDITOR"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock x:Name="ActionEditorTitle"
+                                               Text="Select or create a script"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="ActionScriptIdText"
+                                               Text="Lumi Action —"
+                                               Foreground="{DynamicResource Accent}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
 
-                            <Border Background="{DynamicResource Card2}"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="10"
-                                    Margin="0,12,0,0">
-                                <Grid>
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Name"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox x:Name="ActionScriptNameText"
+                                             Grid.Column="1"
+                                             TextChanged="ActionScriptNameText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Grid.Row="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="ActionStepTypeCombo"
+                                              SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
+                                        <ComboBoxItem Content="Key combination" Tag="Keys"/>
+                                        <ComboBoxItem Content="Type text" Tag="Text"/>
+                                        <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
+                                        <ComboBoxItem Content="Media key" Tag="Media"/>
+                                    </ComboBox>
+
+                                    <TextBox x:Name="ActionStepValueText"
+                                             Grid.Column="2"
+                                             ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
+
+                                    <Button Grid.Column="3"
+                                            Content="Add Step"
+                                            Click="AddActionStep_Click"
+                                            Margin="10,0,0,0"/>
+                                </Grid>
+
+                                <ListBox x:Name="ActionStepsList"
+                                         Grid.Row="6"/>
+
+                                <Grid Grid.Row="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse x:Name="DeviceDot"
-                                                     Width="9" Height="9"
-                                                     Fill="#66666A"
-                                                     VerticalAlignment="Center"
-                                                     Margin="0,0,8,0"/>
-                                            <TextBlock x:Name="DeviceStatus"
-                                                       Text="Not connected"
-                                                       FontWeight="SemiBold"
-                                                       VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <TextBlock x:Name="BottomStatus"
-                                                   Text="Auto connect · USB first · Bluetooth fallback"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   Margin="17,4,8,0"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Remove Step"
+                                                Click="RemoveActionStep_Click"/>
+                                        <Button Content="Move Up"
+                                                Click="MoveActionStepUp_Click"/>
+                                        <Button Content="Move Down"
+                                                Click="MoveActionStepDown_Click"
+                                                Margin="0"/>
                                     </StackPanel>
 
-                                    <Button x:Name="DisconnectButton"
-                                            Grid.Column="1"
-                                            Width="38" Height="38"
-                                            Padding="7"
-                                            ToolTip="Disconnect"
-                                            Click="DisconnectButton_Click"
-                                            IsEnabled="False"
-                                            Margin="8,0,0,0">
-                                        <Viewbox Width="20" Height="20">
-                                            <Canvas Width="24" Height="24">
-                                                <Path Stroke="{DynamicResource TextPrimary}"
-                                                      StrokeThickness="2"
-                                                      StrokeStartLineCap="Round"
-                                                      StrokeEndLineCap="Round"
-                                                      Data="M8,8 L5,5 M16,16 L19,19 M9,15 L7,17 C5,19 3,19 2,18 C1,17 1,15 3,13 L6,10 M15,9 L17,7 C19,5 21,5 22,6 C23,7 23,9 21,11 L18,14"/>
-                                                <Path Stroke="{DynamicResource TextPrimary}"
-                                                      StrokeThickness="2"
-                                                      StrokeStartLineCap="Round"
-                                                      Data="M8,16 L16,8"/>
-                                            </Canvas>
-                                        </Viewbox>
-                                    </Button>
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal">
+                                        <TextBlock x:Name="ActionScriptStatusText"
+                                                   Text="Ready"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"/>
+                                        <Button Content="Key Map"
+                                                Click="AssignActionKey_Click"/>
+                                        <Button Content="Save"
+                                                Click="SaveActionScript_Click"/>
+                                        <Button Content="Run Test"
+                                                Click="RunActionScript_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
                                 </Grid>
-                            </Border>
-
-                            <Border Height="1"
-                                    Background="{DynamicResource Line}"
-                                    Margin="0,18,0,16"/>
-
-                            <TextBlock Text="SYSTEM"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"/>
-
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Flash usage"/>
-                                <TextBlock x:Name="FlashUsageText"
-                                           Grid.Column="1"
-                                           Text="FLASH --"
-                                           Foreground="{DynamicResource Muted}"/>
                             </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
 
-                            <Grid Margin="0,9,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="RAM usage"/>
-                                <TextBlock x:Name="RamUsageText"
-                                           Grid.Column="1"
-                                           Text="RAM --"
-                                           Foreground="{DynamicResource Muted}"/>
-                            </Grid>
+            <TabItem Header="Settings">
+                <ScrollViewer Margin="0,14,0,0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="0,0,6,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="1*"/>
+                        </Grid.ColumnDefinitions>
 
-                            <StackPanel Orientation="Horizontal"
-                                        Margin="0,16,0,0">
-                                <Button x:Name="RestartKeyboardButton"
-                                        Content="Restart keyboard"
-                                        Click="RestartKeyboard_Click"
-                                        IsEnabled="False"/>
-                                <Button x:Name="KeyboardDfuButton"
-                                        Content="Keyboard DFU"
-                                        Click="KeyboardDfu_Click"
-                                        IsEnabled="False"
-                                        Margin="0"/>
-                            </StackPanel>
-
-                            <Border Height="1"
-                                    Background="{DynamicResource Line}"
-                                    Margin="0,18,0,16"/>
-
-                            <TextBlock Text="DISPLAY"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"/>
-                            <TextBlock Text="Panel timing"
-                                       FontSize="15"
-                                       FontWeight="SemiBold"
-                                       Margin="0,5,0,8"/>
-                            <Border Background="{DynamicResource ControlBg}"
+                        <StackPanel Grid.Column="0">
+                            <Border Background="{DynamicResource Card}"
                                     BorderBrush="{DynamicResource Line}"
                                     BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="10">
-                                <TextBlock x:Name="PanelInfoText"
-                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           TextWrapping="Wrap"/>
+                                    CornerRadius="20"
+                                    Padding="22"
+                                    Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="GENERAL"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="App settings"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,18"/>
+
+                                    <TextBlock Text="Language"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <ComboBox x:Name="LanguageCombo"
+                                              SelectionChanged="LanguageCombo_SelectionChanged"
+                                              Margin="0,0,0,16">
+                                        <ComboBoxItem Content="EN  English" Tag="en" IsSelected="True"/>
+                                        <ComboBoxItem Content="VI  Tiếng Việt" Tag="vi"/>
+                                    </ComboBox>
+
+                                    <TextBlock Text="Appearance"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <Button x:Name="ThemeButton"
+                                            Content="Light mode"
+                                            Click="ThemeButton_Click"
+                                            HorizontalAlignment="Left"
+                                            Margin="0"/>
+                                </StackPanel>
                             </Border>
 
-                            <TextBlock Text="DIAGNOSTIC LOG"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,16,0,0"/>
-                            <TextBlock Text="App + firmware events and errors"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Margin="0,4,0,10"/>
+                            <Border Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="22">
+                                <StackPanel>
+                                    <TextBlock Text="DEVICE"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="DIAL DESK status"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,18"/>
 
-                            <StackPanel Orientation="Horizontal">
-                                <Button x:Name="ViewLogButton"
-                                        Content="View log"
-                                        Click="ToggleLog_Click"/>
-                                <Button Content="Save log"
-                                        Click="SaveLog_Click"
-                                        Margin="0"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="2"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="20">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <StackPanel>
-                                <TextBlock Text="ACTION / SCRIPT ENGINE"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="Actions"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Margin="0,6,0,0"/>
-                            </StackPanel>
-
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="250"/>
-                                    <ColumnDefinition Width="16"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <Border Background="{DynamicResource Card2}"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1"
-                                        CornerRadius="16"
-                                        Padding="14">
                                     <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="10"/>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="12"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-
-                                        <TextBlock Text="Scripts"
-                                                   FontSize="17"
-                                                   FontWeight="SemiBold"/>
-
-                                        <ListBox x:Name="ActionScriptsList"
-                                                 Grid.Row="2"
-                                                 SelectionChanged="ActionScriptsList_SelectionChanged"/>
-
-                                        <StackPanel Grid.Row="4"
-                                                    Orientation="Horizontal">
-                                            <Button Content="New"
-                                                    Click="NewActionScript_Click"/>
-                                            <Button Content="Delete"
-                                                    Click="DeleteActionScript_Click"
-                                                    Margin="0"/>
-                                        </StackPanel>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Firmware"/>
+                                        <TextBlock x:Name="FirmwareVersionText"
+                                                   Grid.Column="1"
+                                                   Text="--"
+                                                   Foreground="{DynamicResource Muted}"/>
                                     </Grid>
-                                </Border>
 
-                                <Border Grid.Column="2"
-                                        Background="{DynamicResource Card2}"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1"
-                                        CornerRadius="16"
-                                        Padding="16">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="12"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="14"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="12"/>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="14"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
+                                    <Grid Margin="0,9,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Connection"/>
+                                        <TextBlock x:Name="ConnectionInfoText"
+                                                   Grid.Column="1"
+                                                   Text="Disconnected"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
 
-                                        <StackPanel>
-                                            <TextBlock Text="SCRIPT EDITOR"
-                                                       FontSize="11"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource Muted}"/>
-                                            <TextBlock x:Name="ActionEditorTitle"
-                                                       Text="Select or create a script"
-                                                       FontSize="20"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,4,0,0"/>
-                                            <TextBlock x:Name="ActionScriptIdText"
-                                                       Text="Lumi Action —"
-                                                       Foreground="{DynamicResource Accent}"
-                                                       FontSize="12"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,4,0,0"/>
-                                        </StackPanel>
-
-                                        <Grid Grid.Row="2">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="70"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Name"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBox x:Name="ActionScriptNameText"
-                                                     Grid.Column="1"
-                                                     TextChanged="ActionScriptNameText_TextChanged"/>
-                                        </Grid>
-
-                                        <Grid Grid.Row="4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="145"/>
-                                                <ColumnDefinition Width="10"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-
-                                            <ComboBox x:Name="ActionStepTypeCombo"
-                                                      SelectedValuePath="Tag">
-                                                <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
-                                                <ComboBoxItem Content="Key combination" Tag="Keys"/>
-                                                <ComboBoxItem Content="Type text" Tag="Text"/>
-                                                <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
-                                                <ComboBoxItem Content="Media key" Tag="Media"/>
-                                            </ComboBox>
-
-                                            <TextBox x:Name="ActionStepValueText"
-                                                     Grid.Column="2"
-                                                     ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
-
-                                            <Button Grid.Column="3"
-                                                    Content="Add Step"
-                                                    Click="AddActionStep_Click"
-                                                    Margin="10,0,0,0"/>
-                                        </Grid>
-
-                                        <ListBox x:Name="ActionStepsList"
-                                                 Grid.Row="6"/>
-
-                                        <Grid Grid.Row="8">
+                                    <Border Background="{DynamicResource Card2}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="12"
+                                            Padding="12"
+                                            Margin="0,14,0,0">
+                                        <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-
-                                            <StackPanel Orientation="Horizontal">
-                                                <Button Content="Remove Step"
-                                                        Click="RemoveActionStep_Click"/>
-                                                <Button Content="Move Up"
-                                                        Click="MoveActionStepUp_Click"/>
-                                                <Button Content="Move Down"
-                                                        Click="MoveActionStepDown_Click"
-                                                        Margin="0"/>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="1"
-                                                        Orientation="Horizontal">
-                                                <TextBlock x:Name="ActionScriptStatusText"
-                                                           Text="Ready"
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse x:Name="DeviceDot"
+                                                             Width="9"
+                                                             Height="9"
+                                                             Fill="#66666A"
+                                                             VerticalAlignment="Center"
+                                                             Margin="0,0,8,0"/>
+                                                    <TextBlock x:Name="DeviceStatus"
+                                                               Text="Not connected"
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock x:Name="BottomStatus"
+                                                           Text="Auto connect · USB first · Bluetooth fallback"
                                                            Foreground="{DynamicResource Muted}"
-                                                           VerticalAlignment="Center"
-                                                           Margin="0,0,12,0"/>
-                                                <Button Content="Key Map"
-                                                        Click="AssignActionKey_Click"/>
-                                                <Button Content="Save"
-                                                        Click="SaveActionScript_Click"/>
-                                                <Button Content="Run Test"
-                                                        Click="RunActionScript_Click"
-                                                        Margin="0"/>
+                                                           FontSize="11"
+                                                           TextWrapping="Wrap"
+                                                           Margin="17,4,8,0"/>
                                             </StackPanel>
+
+                                            <Button x:Name="DisconnectButton"
+                                                    Grid.Column="1"
+                                                    Content="Disconnect"
+                                                    Click="DisconnectButton_Click"
+                                                    IsEnabled="False"
+                                                    Margin="8,0,0,0"/>
                                         </Grid>
+                                    </Border>
+
+                                    <StackPanel Orientation="Horizontal"
+                                                Margin="0,16,0,0">
+                                        <Button x:Name="RestartKeyboardButton"
+                                                Content="Restart keyboard"
+                                                Click="RestartKeyboard_Click"
+                                                IsEnabled="False"/>
+                                        <Button x:Name="KeyboardDfuButton"
+                                                Content="Keyboard DFU"
+                                                Click="KeyboardDfu_Click"
+                                                IsEnabled="False"
+                                                Margin="0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <Border Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="22"
+                                    Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="SYSTEM"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="Device information"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,18"/>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Lumi Macropad"/>
+                                        <TextBlock x:Name="AppVersionText"
+                                                   Grid.Column="1"
+                                                   Text="--"
+                                                   Foreground="{DynamicResource Muted}"/>
                                     </Grid>
-                                </Border>
-                            </Grid>
-                        </Grid>
-                    </Border>
-                </Grid>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Flash usage"/>
+                                        <TextBlock x:Name="FlashUsageText"
+                                                   Grid.Column="1"
+                                                   Text="FLASH --"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
+
+                                    <Grid Margin="0,9,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="RAM usage"/>
+                                        <TextBlock x:Name="RamUsageText"
+                                                   Grid.Column="1"
+                                                   Text="RAM --"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
+
+                                    <TextBlock Text="Display"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,18,0,6"/>
+                                    <Border Background="{DynamicResource ControlBg}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10">
+                                        <TextBlock x:Name="PanelInfoText"
+                                                   Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   TextWrapping="Wrap"/>
+                                    </Border>
+
+                                    <TextBlock Text="Diagnostic log"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,18,0,8"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="ViewLogButton"
+                                                Content="View log"
+                                                Click="ToggleLog_Click"/>
+                                        <Button Content="Save log"
+                                                Click="SaveLog_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="22">
+                                <StackPanel>
+                                    <TextBlock Text="SHOP &amp; SUPPORT"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="Lumi3D"
+                                               FontSize="22"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,14"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110"/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Phone"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="096 527 6752"
+                                                   FontWeight="SemiBold"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110"/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Shopee"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <Button Grid.Column="1"
+                                                Content="shopee.vn/lumi3d.hn"
+                                                Click="OpenShopee_Click"
+                                                HorizontalAlignment="Left"
+                                                Margin="0"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
 
@@ -1433,33 +1443,6 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal">
-                        <Border Width="136"
-                                Height="46"
-                                CornerRadius="10"
-                                Background="Black"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                Padding="9,4"
-                                Margin="0,0,13,0">
-                            <Viewbox Stretch="Uniform">
-                                <Grid Width="180" Height="54">
-                                    <TextBlock Text="Lumi3D"
-                                               Foreground="#E8E5E1"
-                                               FontFamily="Arial"
-                                               FontWeight="Bold"
-                                               FontSize="40"
-                                               VerticalAlignment="Top"/>
-                                    <TextBlock Text="ESTD 2025"
-                                               Foreground="#E8E5E1"
-                                               FontFamily="Arial"
-                                               FontWeight="SemiBold"
-                                               FontSize="9"
-                                               Margin="3,43,0,0"
-                                               VerticalAlignment="Top"/>
-                                </Grid>
-                            </Viewbox>
-                        </Border>
-
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="Lumi Macropad"
                                        FontSize="27"

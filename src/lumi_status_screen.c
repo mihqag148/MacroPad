@@ -1925,16 +1925,15 @@ static void refresh_boot_splash(lv_timer_t *timer) {
         return;
     }
 
-    lv_obj_add_flag(
-        boot_overlay,
-        LV_OBJ_FLAG_HIDDEN);
+    lv_obj_del(boot_overlay);
     boot_overlay = NULL;
     boot_progress = NULL;
     lv_timer_del(timer);
 }
 
 static void init_boot_splash(lv_obj_t *screen) {
-    boot_overlay = lv_obj_create(screen);
+    ARG_UNUSED(screen);
+    boot_overlay = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(boot_overlay);
     lv_obj_set_pos(boot_overlay, 0, 0);
     lv_obj_set_size(boot_overlay, 320, 172);
@@ -1950,40 +1949,36 @@ static void init_boot_splash(lv_obj_t *screen) {
         boot_overlay,
         LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *logo =
+    lv_obj_t *product =
         make_label(
             boot_overlay,
             &lv_font_montserrat_20);
-    lv_label_set_text(logo, "LUMI3D");
+    lv_label_set_text(product, "DIAL DESK");
     lv_obj_set_style_text_color(
-        logo,
+        product,
         lv_color_hex(0xFFFFFF),
         0);
     lv_obj_set_style_text_letter_space(
-        logo,
+        product,
         2,
         0);
     lv_obj_align(
-        logo,
+        product,
         LV_ALIGN_CENTER,
         0,
         -30);
 
-    lv_obj_t *product =
+    lv_obj_t *designed =
         make_label(
             boot_overlay,
-            &lv_font_montserrat_14);
-    lv_label_set_text(product, "DIAL DESK");
+            &lv_font_montserrat_12);
+    lv_label_set_text(designed, "Designed by Lumi3D");
     lv_obj_set_style_text_color(
-        product,
+        designed,
         lv_color_hex(0xA8A8AD),
         0);
-    lv_obj_set_style_text_letter_space(
-        product,
-        1,
-        0);
     lv_obj_align(
-        product,
+        designed,
         LV_ALIGN_CENTER,
         0,
         -4);
@@ -2053,6 +2048,12 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Put boot UI on LVGL's top layer before creating the main menu.
+     * This prevents the main menu from flashing for one frame at startup.
+     */
+    init_boot_splash(screen);
+
     for (uint8_t i = 0; i < KEY_COUNT; i++) {
         tiles[i] = lv_obj_create(screen);
         lv_obj_remove_style_all(tiles[i]);
@@ -2318,8 +2319,6 @@ lv_obj_add_flag(
     lv_obj_set_style_bg_opa(sleep_overlay, LV_OPA_COVER, 0);
     lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
-
-    init_boot_splash(screen);
 
 k_work_schedule(&page_poll_work, K_MSEC(500));
 
