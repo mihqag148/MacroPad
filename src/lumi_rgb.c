@@ -64,6 +64,13 @@ static uint8_t user_speed_percent = 50;
 static uint8_t reactive_level;
 static bool rgb_update_error_reported;
 static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
+static bool manual_pixel_mode;
+static struct led_rgb manual_pixels[LED_COUNT] = {
+    {.r = 255, .g = 120, .b = 0},
+    {.r = 255, .g = 120, .b = 0},
+    {.r = 255, .g = 120, .b = 0},
+    {.r = 255, .g = 120, .b = 0},
+};
 static uint8_t profile_effect[RGB_PROFILE_COUNT] = {
     LUMI_RGB_EFFECT_RAINBOW,
     LUMI_RGB_EFFECT_PURPLE_PINGPONG,
@@ -77,6 +84,29 @@ static struct led_rgb profile_color[RGB_PROFILE_COUNT] = {
     {.r = 255, .g = 90, .b = 0},
     {.r = 0, .g = 170, .b = 255},
     {.r = 80, .g = 255, .b = 100},
+};
+static bool profile_pixel_mode[RGB_PROFILE_COUNT];
+static struct led_rgb profile_pixels[RGB_PROFILE_COUNT][LED_COUNT] = {
+    {
+        {.r = 255, .g = 120, .b = 0}, {.r = 255, .g = 120, .b = 0},
+        {.r = 255, .g = 120, .b = 0}, {.r = 255, .g = 120, .b = 0},
+    },
+    {
+        {.r = 180, .g = 40, .b = 255}, {.r = 180, .g = 40, .b = 255},
+        {.r = 180, .g = 40, .b = 255}, {.r = 180, .g = 40, .b = 255},
+    },
+    {
+        {.r = 255, .g = 90, .b = 0}, {.r = 255, .g = 90, .b = 0},
+        {.r = 255, .g = 90, .b = 0}, {.r = 255, .g = 90, .b = 0},
+    },
+    {
+        {.r = 0, .g = 170, .b = 255}, {.r = 0, .g = 170, .b = 255},
+        {.r = 0, .g = 170, .b = 255}, {.r = 0, .g = 170, .b = 255},
+    },
+    {
+        {.r = 80, .g = 255, .b = 100}, {.r = 80, .g = 255, .b = 100},
+        {.r = 80, .g = 255, .b = 100}, {.r = 80, .g = 255, .b = 100},
+    },
 };
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
@@ -154,13 +184,29 @@ static void render_fusion360(void) {
 }
 
 static void render_solid(void) {
+    if (manual_pixel_mode) {
+        for (int i = 0; i < LED_COUNT; i++) {
+            pixels[i] = scale_rgb(manual_pixels[i], user_brightness);
+        }
+        return;
+    }
+
     fill(scale_rgb(manual_color, user_brightness));
 }
 
 static void render_reactive(void) {
     if (reactive_level > 0U) {
-        fill(scale_rgb(manual_color,
-                       (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U)));
+        uint8_t level =
+            (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U);
+
+        if (manual_pixel_mode) {
+            for (int i = 0; i < LED_COUNT; i++) {
+                pixels[i] = scale_rgb(manual_pixels[i], level);
+            }
+        } else {
+            fill(scale_rgb(manual_color, level));
+        }
+
         reactive_level = reactive_level > 22U ? reactive_level - 22U : 0U;
     } else {
         fill((struct led_rgb){0});
@@ -210,16 +256,34 @@ static void render_auto_profile(void) {
     uint8_t effect = profile_effect[index];
 
     if (effect == LUMI_RGB_EFFECT_SOLID) {
-        fill(scale_rgb(profile_color[index], user_brightness));
+        if (profile_pixel_mode[index]) {
+            for (int i = 0; i < LED_COUNT; i++) {
+                pixels[i] =
+                    scale_rgb(profile_pixels[index][i], user_brightness);
+            }
+        } else {
+            fill(scale_rgb(profile_color[index], user_brightness));
+        }
         return;
     }
 
     if (effect == LUMI_RGB_EFFECT_REACTIVE) {
         if (reactive_level > 0U) {
-            fill(scale_rgb(
-                profile_color[index],
-                (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U)));
-            reactive_level = reactive_level > 22U ? reactive_level - 22U : 0U;
+            uint8_t level =
+                (uint8_t)(((uint16_t)user_brightness * reactive_level) / 255U);
+
+            if (profile_pixel_mode[index]) {
+                for (int i = 0; i < LED_COUNT; i++) {
+                    pixels[i] =
+                        scale_rgb(profile_pixels[index][i], level);
+                }
+            } else {
+                fill(scale_rgb(profile_color[index], level));
+            }
+
+            reactive_level = reactive_level > 22U
+                ? reactive_level - 22U
+                : 0U;
         } else {
             fill((struct led_rgb){0});
         }
@@ -315,6 +379,34 @@ void lumi_rgb_set_effect(uint8_t effect) {
 
 void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
     manual_color = (struct led_rgb){.r = r, .g = g, .b = b};
+    manual_pixel_mode = false;
+
+    for (int i = 0; i < LED_COUNT; i++) {
+        manual_pixels[i] = manual_color;
+    }
+
+    manual_effect = LUMI_RGB_EFFECT_SOLID;
+    auto_by_layer = false;
+    led_enabled = true;
+    lumi_rgb_refresh_now();
+}
+
+void lumi_rgb_set_pixel_mode(bool enabled) {
+    manual_pixel_mode = enabled;
+    manual_effect = LUMI_RGB_EFFECT_SOLID;
+    auto_by_layer = false;
+    led_enabled = true;
+    lumi_diag_report('I', "RGB per-LED mode %s", enabled ? "ON" : "OFF");
+    lumi_rgb_refresh_now();
+}
+
+void lumi_rgb_set_pixel(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
+    if (index >= LED_COUNT) {
+        return;
+    }
+
+    manual_pixels[index] = (struct led_rgb){.r = r, .g = g, .b = b};
+    manual_pixel_mode = true;
     manual_effect = LUMI_RGB_EFFECT_SOLID;
     auto_by_layer = false;
     led_enabled = true;
@@ -330,7 +422,41 @@ void lumi_rgb_set_profile(uint8_t index, uint8_t effect,
     profile_effect[index] = effect;
     profile_color[index] = (struct led_rgb){.r = r, .g = g, .b = b};
 
+    if (!profile_pixel_mode[index]) {
+        for (int i = 0; i < LED_COUNT; i++) {
+            profile_pixels[index][i] = profile_color[index];
+        }
+    }
+
     if (auto_by_layer && current_profile_index() == index) {
+        lumi_rgb_refresh_now();
+    }
+}
+
+void lumi_rgb_set_profile_pixel_mode(uint8_t profile, bool enabled) {
+    if (profile >= RGB_PROFILE_COUNT) {
+        return;
+    }
+
+    profile_pixel_mode[profile] = enabled;
+
+    if (auto_by_layer && current_profile_index() == profile) {
+        lumi_rgb_refresh_now();
+    }
+}
+
+void lumi_rgb_set_profile_pixel(uint8_t profile, uint8_t index,
+                                uint8_t r, uint8_t g, uint8_t b) {
+    if (profile >= RGB_PROFILE_COUNT || index >= LED_COUNT) {
+        return;
+    }
+
+    profile_pixels[profile][index] =
+        (struct led_rgb){.r = r, .g = g, .b = b};
+
+    if (auto_by_layer &&
+        current_profile_index() == profile &&
+        profile_pixel_mode[profile]) {
         lumi_rgb_refresh_now();
     }
 }
