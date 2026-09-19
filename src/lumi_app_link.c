@@ -18,6 +18,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zmk/keymap.h>
 
+#include "lumi_app_link.h"
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
 #include "lumi_ui_config.h"
@@ -51,7 +52,7 @@ static size_t text_upload_received;
 
 static size_t artwork_upload_total;
 static size_t artwork_upload_received;
-static char lumi_status[96] = "LUMIPAD|2|SAVER:EMPTY";
+static char lumi_status[96] = "LUMIPAD|3|SAVER:EMPTY";
 K_MUTEX_DEFINE(bitmap_lock);
 
 #define DIAG_CAPACITY 16
@@ -70,6 +71,61 @@ static uint8_t diag_head;
 static uint8_t diag_count;
 static uint32_t diag_seq;
 K_MUTEX_DEFINE(diag_lock);
+
+#define ACTION_CAPACITY 8
+
+struct lumi_action_event {
+    uint32_t seq;
+    uint16_t action_id;
+    uint16_t position;
+};
+
+static struct lumi_action_event action_events[ACTION_CAPACITY];
+static uint8_t action_head;
+static uint8_t action_count;
+static uint32_t action_seq;
+K_MUTEX_DEFINE(action_lock);
+
+void lumi_app_action_emit(uint16_t action_id, uint32_t position) {
+    k_mutex_lock(&action_lock, K_FOREVER);
+
+    struct lumi_action_event *entry = &action_events[action_head];
+    entry->seq = ++action_seq;
+    entry->action_id = action_id;
+    entry->position = (uint16_t)position;
+
+    action_head = (uint8_t)((action_head + 1U) % ACTION_CAPACITY);
+    if (action_count < ACTION_CAPACITY) {
+        action_count++;
+    }
+
+    k_mutex_unlock(&action_lock);
+}
+
+static bool action_next_after(
+    uint32_t after,
+    struct lumi_action_event *out) {
+    bool found = false;
+
+    k_mutex_lock(&action_lock, K_FOREVER);
+    uint8_t start =
+        (uint8_t)((action_head + ACTION_CAPACITY - action_count) %
+                  ACTION_CAPACITY);
+
+    for (uint8_t i = 0U; i < action_count; i++) {
+        struct lumi_action_event *entry =
+            &action_events[(uint8_t)((start + i) % ACTION_CAPACITY)];
+
+        if (entry->seq > after) {
+            *out = *entry;
+            found = true;
+            break;
+        }
+    }
+
+    k_mutex_unlock(&action_lock);
+    return found;
+}
 
 void lumi_diag_report(char level, const char *fmt, ...) {
     k_mutex_lock(&diag_lock, K_FOREVER);
@@ -123,6 +179,50 @@ static void handle_diag_log(char *save, bool from_usb) {
     } else {
         snprintf(response, sizeof(response), "LOG|NONE|%u",
                  (unsigned int)diag_seq);
+    }
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
+static void handle_caps(bool from_usb) {
+    const char *response =
+        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION";
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
+static void handle_action_poll(char *save, bool from_usb) {
+    char *after_s = strtok_r(NULL, "|", &save);
+    uint32_t after =
+        after_s ? (uint32_t)strtoul(after_s, NULL, 10) : 0U;
+
+    struct lumi_action_event entry = {0};
+    char response[96];
+
+    if (action_next_after(after, &entry)) {
+        snprintf(
+            response,
+            sizeof(response),
+            "ACTION|%u|%u|%u",
+            (unsigned int)entry.seq,
+            (unsigned int)entry.action_id,
+            (unsigned int)entry.position);
+    } else {
+        snprintf(
+            response,
+            sizeof(response),
+            "ACTION|NONE|%u",
+            (unsigned int)action_seq);
     }
 
     if (from_usb) {
@@ -431,8 +531,8 @@ static void handle_savbegin(char *save) {
 
     snprintf(lumi_status, sizeof(lumi_status),
              ok
-                 ? "LUMIPAD|2|SAVER:UPLOADING:0/%u"
-                 : "LUMIPAD|2|SAVER:ERROR",
+                 ? "LUMIPAD|3|SAVER:UPLOADING:0/%u"
+                 : "LUMIPAD|3|SAVER:ERROR",
              (unsigned int)count);
     lumi_diag_report(ok ? 'I' : 'E', "SAVBEGIN frames=%u interval=%u %s",
               (unsigned int)count, (unsigned int)fallback_interval,
@@ -445,7 +545,7 @@ static void handle_savchunk(char *save) {
     char *base64 = strtok_r(NULL, "|", &save);
 
     if (!index_s || !offset_s || !base64) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK missing field");
         return;
     }
@@ -459,7 +559,7 @@ static void handle_savchunk(char *save) {
         strlen(base64));
 
     if (rc != 0 || decoded_len == 0U) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK base64 rc=%d len=%u", rc, (unsigned int)decoded_len);
         return;
     }
@@ -469,7 +569,7 @@ static void handle_savchunk(char *save) {
 
     if (!lumi_ui_saver_anim_chunk(
             index, offset, saver_chunk_tmp, decoded_len)) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK write frame=%u off=%u len=%u",
                   (unsigned int)index, (unsigned int)offset,
                   (unsigned int)decoded_len);
@@ -478,7 +578,7 @@ static void handle_savchunk(char *save) {
 
     if ((size_t)offset + decoded_len >= LUMI_SAVER_FRAME_BYTES) {
         snprintf(lumi_status, sizeof(lumi_status),
-                 "LUMIPAD|2|SAVER:UPLOADING:%u",
+                 "LUMIPAD|3|SAVER:UPLOADING:%u",
                  (unsigned int)(index + 1U));
         lumi_diag_report('I', "Saver frame %u complete", (unsigned int)(index + 1U));
     }
@@ -488,7 +588,7 @@ static void handle_savchunk(char *save) {
 static void handle_imgbegin(char *save) {
     char *total_s = strtok_r(NULL, "|", &save);
     if (!total_s) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         return;
     }
 
@@ -498,8 +598,8 @@ static void handle_imgbegin(char *save) {
     snprintf(
         lumi_status,
         sizeof(lumi_status),
-        ok ? "LUMIPAD|2|SAVER:UPLOADING:0/1"
-           : "LUMIPAD|2|SAVER:ERROR");
+        ok ? "LUMIPAD|3|SAVER:UPLOADING:0/1"
+           : "LUMIPAD|3|SAVER:ERROR");
 
     lumi_diag_report(
         ok ? 'I' : 'E',
@@ -513,7 +613,7 @@ static void handle_imgchunk(char *save) {
     char *payload = strtok_r(NULL, "|", &save);
 
     if (!offset_s || !payload) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         return;
     }
 
@@ -526,7 +626,7 @@ static void handle_imgchunk(char *save) {
         strlen(payload));
 
     if (rc != 0 || decoded_len == 0U) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report(
             'E',
             "IMGCHUNK base64 rc=%d len=%u",
@@ -541,7 +641,7 @@ static void handle_imgchunk(char *save) {
             offset,
             saver_chunk_tmp,
             decoded_len)) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report(
             'E',
             "IMGCHUNK write off=%u len=%u",
@@ -554,7 +654,7 @@ static void handle_imgchunk(char *save) {
         snprintf(
             lumi_status,
             sizeof(lumi_status),
-            "LUMIPAD|2|SAVER:UPLOADING:1/1");
+            "LUMIPAD|3|SAVER:UPLOADING:1/1");
         lumi_diag_report('I', "Static saver image complete");
     }
 }
@@ -853,8 +953,13 @@ static void handle_line(char *line, bool from_usb) {
 
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
-            write_text_usb("LUMIPAD|2\r\n");
+            write_text_usb(
+                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION\r\n");
         }
+    } else if (strcmp(root, "CAPS") == 0) {
+        handle_caps(from_usb);
+    } else if (strcmp(root, "ACTION") == 0) {
+        handle_action_poll(save, from_usb);
     } else if (strcmp(root, "MEM") == 0) {
         handle_mem(from_usb);
     } else if (strcmp(root, "PANEL") == 0) {
@@ -928,8 +1033,8 @@ static void handle_line(char *line, bool from_usb) {
             lumi_status,
             sizeof(lumi_status),
             saver_ok
-                ? "LUMIPAD|2|SAVER:READY"
-                : "LUMIPAD|2|SAVER:ERROR");
+                ? "LUMIPAD|3|SAVER:READY"
+                : "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report(
             saver_ok ? 'I' : 'E',
             saver_ok ? "IMGEND READY" : "IMGEND ERROR");
@@ -944,8 +1049,8 @@ static void handle_line(char *line, bool from_usb) {
                         lumi_ui_saver_anim_is_valid();
         snprintf(lumi_status, sizeof(lumi_status),
                  saver_ok
-                     ? "LUMIPAD|2|SAVER:READY"
-                     : "LUMIPAD|2|SAVER:ERROR");
+                     ? "LUMIPAD|3|SAVER:READY"
+                     : "LUMIPAD|3|SAVER:ERROR");
         lumi_diag_report(saver_ok ? 'I' : 'E',
                   saver_ok ? "SAVEND READY" : "SAVEND ERROR");
         if (from_usb) {
@@ -956,7 +1061,7 @@ static void handle_line(char *line, bool from_usb) {
         }
     } else if (strcmp(root, "SAVCLEAR") == 0) {
         lumi_ui_saver_anim_clear();
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|2|SAVER:EMPTY");
+        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:EMPTY");
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     } else {
@@ -1003,12 +1108,14 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     if (strncmp(lumi_status, "MEM|", 4) != 0 &&
         strncmp(lumi_status, "PANEL|", 6) != 0 &&
         strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
+        strncmp(lumi_status, "CAPS|", 5) != 0 &&
+        strncmp(lumi_status, "ACTION|", 7) != 0 &&
         strncmp(lumi_status, "LOG|", 4) != 0 &&
         strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
         strstr(lumi_status, "SAVER:ERROR") == NULL) {
         status = lumi_ui_saver_anim_is_valid()
-            ? "LUMIPAD|2|SAVER:READY"
-            : "LUMIPAD|2|SAVER:EMPTY";
+            ? "LUMIPAD|3|SAVER:READY"
+            : "LUMIPAD|3|SAVER:EMPTY";
     }
 
     ssize_t rc = bt_gatt_attr_read(conn, attr, buf, len, offset,
@@ -1016,13 +1123,15 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 
     if (strncmp(lumi_status, "MEM|", 4) == 0 ||
         strncmp(lumi_status, "PANEL|", 6) == 0 ||
-        strncmp(lumi_status, "SAVERSTATE|", 11) == 0) {
+        strncmp(lumi_status, "SAVERSTATE|", 11) == 0 ||
+        strncmp(lumi_status, "CAPS|", 5) == 0 ||
+        strncmp(lumi_status, "ACTION|", 7) == 0) {
         snprintf(
             lumi_status,
             sizeof(lumi_status),
             lumi_ui_saver_anim_is_valid()
-                ? "LUMIPAD|2|SAVER:READY"
-                : "LUMIPAD|2|SAVER:EMPTY");
+                ? "LUMIPAD|3|SAVER:READY"
+                : "LUMIPAD|3|SAVER:EMPTY");
     }
 
     return rc;
