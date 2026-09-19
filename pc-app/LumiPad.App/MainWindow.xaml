@@ -384,18 +384,23 @@
                                 </StackPanel>
                             </Grid>
 
-                            <Border Height="150"
+                            <!-- Physical DIAL DESK panel is 320x172.
+                                 Keep the app preview at exactly the same 1.8605:1
+                                 aspect ratio instead of approximating 16:9. -->
+                            <Border Width="360"
+                                    Height="193.5"
+                                    HorizontalAlignment="Center"
                                     Background="#050505"
                                     BorderBrush="{DynamicResource Line}"
                                     BorderThickness="1"
                                     CornerRadius="16"
                                     ClipToBounds="True">
-                                <Grid>
+                                <Grid Width="320" Height="172">
                                     <Image x:Name="ScreensaverPreviewImage"
-                                           Stretch="Uniform"
+                                           Stretch="Fill"
                                            Visibility="Collapsed"/>
                                     <TextBlock x:Name="ScreensaverPreviewHint"
-                                               Text="Choose a GIF or image"
+                                               Text="320 × 172 · Choose a GIF or image"
                                                Foreground="{DynamicResource Muted}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
