@@ -156,7 +156,7 @@
                         <ColumnDefinition Width="0.82*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Grid.ColumnSpan="3"
+                    <Border Grid.Column="0"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
                             CornerRadius="28" Padding="28">
@@ -244,7 +244,7 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                    <Border Grid.Column="2"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
                             CornerRadius="28" Padding="22">
