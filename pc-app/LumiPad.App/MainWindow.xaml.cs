@@ -88,7 +88,7 @@ public partial class MainWindow : Window
         _serial.Diagnostic += (level, message) =>
             Dispatcher.Invoke(() => AddLog(level, "APP", message));
 
-        DispatcherUnhandledException += (_, args) =>
+        Application.Current.DispatcherUnhandledException += (_, args) =>
         {
             AddLog("ERROR", "APP", $"Unhandled UI exception: {args.Exception}");
             args.Handled = true;
@@ -96,6 +96,13 @@ public partial class MainWindow : Window
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             Dispatcher.Invoke(() => AddLog("FATAL", "APP", $"Unhandled: {args.ExceptionObject}"));
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Dispatcher.Invoke(() =>
+                AddLog("ERROR", "APP", $"Unobserved task exception: {args.Exception}"));
+            args.SetObserved();
+        };
 
         Loaded += async (_, _) =>
         {
@@ -965,7 +972,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            Clipboard.SetText(string.Join(Environment.NewLine, _logLines));
+            System.Windows.Clipboard.SetText(string.Join(Environment.NewLine, _logLines));
             AddLog("INFO", "APP", "Log copied to clipboard");
         }
         catch (Exception ex)
