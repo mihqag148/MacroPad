@@ -148,6 +148,9 @@ public partial class MainWindow : Window
                 BottomStatus.Text = L($"Now Playing unavailable: {ex.Message}", $"Không dùng được Now Playing: {ex.Message}");
             }
 
+            _connectionPreference = "auto";
+            _autoReconnectEnabled = true;
+            AddLog("INFO", "APP", "Auto-connect enabled by default (USB first, Bluetooth fallback)");
             await DetectAsync();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
         };
@@ -191,6 +194,7 @@ public partial class MainWindow : Window
         ["Never"] = "Không bao giờ",
         ["Not connected"] = "Chưa kết nối",
         ["Bluetooth preferred; USB fallback."] = "Ưu tiên Bluetooth; USB dự phòng.",
+        ["Auto connect · USB first · Bluetooth fallback"] = "Tự động kết nối · ưu tiên USB · Bluetooth dự phòng",
         ["Connect"] = "Kết nối",
         ["Disconnect"] = "Ngắt kết nối",
         ["Restart keyboard"] = "Khởi động lại bàn phím",
@@ -1003,13 +1007,6 @@ public partial class MainWindow : Window
         RamUsageText.Text = $"RAM {ramPct:0.0}%";
     }
 
-    private async void DetectButton_Click(object sender, RoutedEventArgs e)
-    {
-        _connectionPreference = "auto";
-        _autoReconnectEnabled = true;
-        await DetectAsync();
-    }
-
     private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
     {
         _connectionPreference = "usb";
@@ -1026,7 +1023,8 @@ public partial class MainWindow : Window
 
     private async Task DetectAsync()
     {
-        DetectButton.IsEnabled = false;
+        ConnectUsbButton.IsEnabled = false;
+        ConnectBluetoothButton.IsEnabled = false;
         AddLog("INFO", "APP", $"Connect requested ({_connectionPreference})");
         DeviceStatus.Text = L("Detecting…", "Đang tìm…");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
@@ -1071,7 +1069,8 @@ public partial class MainWindow : Window
             await UpdateMemoryUsageAsync();
         }
 
-        DetectButton.IsEnabled = true;
+        ConnectUsbButton.IsEnabled = true;
+        ConnectBluetoothButton.IsEnabled = true;
     }
 
     private void DisconnectButton_Click(object sender, RoutedEventArgs e)
