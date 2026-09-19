@@ -807,6 +807,20 @@ static void handle_panel_info(bool from_usb) {
     }
 }
 
+static void handle_saver_state(bool from_usb) {
+    const char *response =
+        lumi_ui_saver_anim_is_valid()
+            ? "SAVERSTATE|READY"
+            : "SAVERSTATE|EMPTY";
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_line(char *line, bool from_usb) {
     char *save = NULL;
     char *root = strtok_r(line, "|", &save);
@@ -820,6 +834,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_mem(from_usb);
     } else if (strcmp(root, "PANEL") == 0) {
         handle_panel_info(from_usb);
+    } else if (strcmp(root, "SAVERSTATE") == 0) {
+        handle_saver_state(from_usb);
     } else if (strcmp(root, "LOG") == 0) {
         handle_diag_log(save, from_usb);
     } else if (strcmp(root, "NP") == 0) {
@@ -961,6 +977,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     const char *status = lumi_status;
     if (strncmp(lumi_status, "MEM|", 4) != 0 &&
         strncmp(lumi_status, "PANEL|", 6) != 0 &&
+        strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
         strncmp(lumi_status, "LOG|", 4) != 0 &&
         strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
         strstr(lumi_status, "SAVER:ERROR") == NULL) {
@@ -973,7 +990,8 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                     status, strlen(status));
 
     if (strncmp(lumi_status, "MEM|", 4) == 0 ||
-        strncmp(lumi_status, "PANEL|", 6) == 0) {
+        strncmp(lumi_status, "PANEL|", 6) == 0 ||
+        strncmp(lumi_status, "SAVERSTATE|", 11) == 0) {
         snprintf(
             lumi_status,
             sizeof(lumi_status),
