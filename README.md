@@ -101,3 +101,12 @@ Lưu ý: ZMK Studio hiện chưa gán lại hành vi xoay encoder. Muốn đổi
 13: encoder push
 
 Không đổi thứ tự matrix transform nếu không đổi dây phần cứng.
+
+
+### Gán Lumi Action vào phím
+
+Firmware có behavior `Lumi Action` với Action 1–32. Trong LumiPad, tạo/chọn script rồi
+bấm **Key Map**. Cửa sổ ZMK Studio riêng sẽ mở ngay trong app; chọn phím cần gán,
+chọn behavior **Lumi Action**, chọn đúng **Action N** của script rồi Save. Nếu Studio
+yêu cầu unlock, giữ đồng thời phím vật lý 1 + 12. Việc gán được lưu qua ZMK Studio,
+không phải một key map giả chỉ lưu trên PC.

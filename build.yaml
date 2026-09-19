@@ -1,5 +1,5 @@
 ---
-# LumiPad v1.3.2 integration verification 3 (no firmware setting change)
+# LumiPad v1.3.3 app integration verification (no firmware setting change)
 include:
   - board: nice_nano_v2
     shield: lumi_macropad

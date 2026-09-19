@@ -48,6 +48,8 @@ public partial class MainWindow : Window
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
+    private readonly Dictionary<string, ImageSource?> _applicationIconCache =
+        new(StringComparer.OrdinalIgnoreCase);
     private string? _lastForegroundAppPath;
     private int _lastAppliedAutoProfile = -1;
     private NowPlayingData? _currentNowPlaying;
@@ -58,6 +60,7 @@ public partial class MainWindow : Window
     private List<ActionScriptDefinition> _actionScripts = [];
     private bool _loadingActionScriptUi;
     private readonly HashSet<int> _runningActionIds = [];
+    private ActionKeymapWindow? _actionKeymapWindow;
     private uint _lastActionEventSeq;
     private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
@@ -381,6 +384,7 @@ public partial class MainWindow : Window
         ["Move Down"] = "Xuống",
         ["Save"] = "Lưu",
         ["Run Test"] = "Chạy thử",
+        ["Key Map"] = "Gán phím",
         ["Ready"] = "Sẵn sàng",
     };
 
@@ -2228,31 +2232,11 @@ public partial class MainWindow : Window
                 Width = GridLength.Auto
             });
 
-            string initial =
-                string.IsNullOrWhiteSpace(mapping.Name)
-                    ? "•"
-                    : mapping.Name.Trim()[0].ToString().ToUpperInvariant();
-
-            var icon = new Border
-            {
-                Width = 40,
-                Height = 40,
-                CornerRadius = new CornerRadius(10),
-                Background =
-                    TryFindResource("ControlBg") as System.Windows.Media.Brush,
-                BorderBrush =
-                    TryFindResource("Line") as System.Windows.Media.Brush,
-                BorderThickness = new Thickness(1),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            icon.Child = new TextBlock
-            {
-                Text = initial,
-                FontSize = 16,
-                FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
+            FrameworkElement icon =
+                CreateApplicationIcon(
+                    mapping.ExecutablePath,
+                    mapping.Name,
+                    40);
             grid.Children.Add(icon);
 
             var text = new StackPanel
@@ -2370,30 +2354,11 @@ public partial class MainWindow : Window
                 Width = GridLength.Auto
             });
 
-            string initial =
-                string.IsNullOrWhiteSpace(app.Name)
-                    ? "•"
-                    : app.Name.Trim()[0].ToString().ToUpperInvariant();
-
-            var icon = new Border
-            {
-                Width = 38,
-                Height = 38,
-                CornerRadius = new CornerRadius(9),
-                Background =
-                    TryFindResource("ControlBg") as System.Windows.Media.Brush,
-                BorderBrush =
-                    TryFindResource("Line") as System.Windows.Media.Brush,
-                BorderThickness = new Thickness(1),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            icon.Child = new TextBlock
-            {
-                Text = initial,
-                FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
+            FrameworkElement icon =
+                CreateApplicationIcon(
+                    app.ExecutablePath,
+                    app.Name,
+                    38);
             grid.Children.Add(icon);
 
             var text = new StackPanel
@@ -2451,6 +2416,96 @@ public partial class MainWindow : Window
                     TryFindResource("Muted") as System.Windows.Media.Brush
             });
         }
+    }
+
+    private FrameworkElement CreateApplicationIcon(
+        string executablePath,
+        string fallbackName,
+        double size)
+    {
+        var border = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(Math.Max(8, size * 0.24)),
+            Background =
+                TryFindResource("ControlBg") as System.Windows.Media.Brush,
+            BorderBrush =
+                TryFindResource("Line") as System.Windows.Media.Brush,
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            ClipToBounds = true
+        };
+
+        ImageSource? source = GetApplicationIcon(executablePath);
+        if (source is not null)
+        {
+            border.Child = new System.Windows.Controls.Image
+            {
+                Source = source,
+                Width = Math.Max(20, size - 8),
+                Height = Math.Max(20, size - 8),
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment =
+                    System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            return border;
+        }
+
+        string initial =
+            string.IsNullOrWhiteSpace(fallbackName)
+                ? "•"
+                : fallbackName.Trim()[0].ToString().ToUpperInvariant();
+
+        border.Child = new TextBlock
+        {
+            Text = initial,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment =
+                System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        return border;
+    }
+
+    private ImageSource? GetApplicationIcon(string executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return null;
+
+        if (_applicationIconCache.TryGetValue(
+                executablePath,
+                out ImageSource? cached))
+        {
+            return cached;
+        }
+
+        ImageSource? result = null;
+
+        try
+        {
+            using Drawing.Icon? icon =
+                Drawing.Icon.ExtractAssociatedIcon(executablePath);
+
+            if (icon is not null)
+            {
+                BitmapSource source =
+                    Imaging.CreateBitmapSourceFromHIcon(
+                        icon.Handle,
+                        Int32Rect.Empty,
+                        BitmapSizeOptions.FromWidthAndHeight(32, 32));
+                source.Freeze();
+                result = source;
+            }
+        }
+        catch
+        {
+        }
+
+        _applicationIconCache[executablePath] = result;
+        return result;
     }
 
     private void PollAutoProfile(bool force = false)
@@ -2833,6 +2888,51 @@ public partial class MainWindow : Window
         ActionScriptStore.Save(_actionScripts);
         LoadSelectedActionScriptUi(script);
         ActionStepsList.SelectedIndex = index + 1;
+    }
+
+    private void AssignActionKey_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ActionScriptDefinition? script = SelectedActionScript;
+        if (script is null || script.ActionId <= 0)
+        {
+            ActionScriptStatusText.Text =
+                L(
+                    "Create or select an Action first.",
+                    "Hãy tạo hoặc chọn một Action trước.");
+            return;
+        }
+
+        if (_actionKeymapWindow is null ||
+            !_actionKeymapWindow.IsLoaded)
+        {
+            _actionKeymapWindow =
+                new ActionKeymapWindow(
+                    script.ActionId,
+                    script.Name,
+                    _language)
+                {
+                    Owner = this
+                };
+
+            _actionKeymapWindow.Closed += (_, _) =>
+                _actionKeymapWindow = null;
+            _actionKeymapWindow.Show();
+        }
+        else
+        {
+            _actionKeymapWindow.SetAction(
+                script.ActionId,
+                script.Name,
+                _language);
+            _actionKeymapWindow.Activate();
+        }
+
+        ActionScriptStatusText.Text =
+            L(
+                $"Assign Lumi Action {script.ActionId} to a key in ZMK Studio.",
+                $"Gán Lumi Action {script.ActionId} vào phím trong ZMK Studio.");
     }
 
     private void SaveActionScript_Click(object sender, RoutedEventArgs e)

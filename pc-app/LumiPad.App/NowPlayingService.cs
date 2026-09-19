@@ -34,6 +34,7 @@ public sealed class NowPlayingService : IDisposable
     private CancellationTokenSource? _cts;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
     private bool _wasActive;
+    private bool _suppressedUntilPlaying;
     private DateTimeOffset? _inactiveSince;
     private NowPlayingData? _lastData;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -92,15 +93,19 @@ public sealed class NowPlayingService : IDisposable
         return "MUSIC";
     }
 
-    private void PublishCleared()
+    private void PublishCleared(bool suppressUntilPlaying = false)
     {
-        if (!_wasActive)
-            return;
+        bool shouldNotify = _wasActive || _lastData is not null;
 
         _wasActive = false;
-        _inactiveSince = null;
         _lastData = null;
-        Cleared?.Invoke();
+        _suppressedUntilPlaying = suppressUntilPlaying;
+
+        if (!suppressUntilPlaying)
+            _inactiveSince = null;
+
+        if (shouldNotify)
+            Cleared?.Invoke();
     }
 
     private void PublishInactiveGrace(DateTimeOffset now)
@@ -194,13 +199,33 @@ public sealed class NowPlayingService : IDisposable
                 playback.IsShuffleActive ?? false,
                 _cachedArtwork);
 
-            _lastData = data;
+            if (playing)
+            {
+                _suppressedUntilPlaying = false;
+                _inactiveSince = null;
+                _wasActive = true;
+                _lastData = data;
+                Updated?.Invoke(data);
+                return;
+            }
 
-            // A paused media session is still an active media session.
-            // Keep it on Home and publish the real playback state so the
-            // Play/Pause button follows changes made in Spotify/YouTube/etc.
-            _inactiveSince = null;
+            // Pause/Stop may leave a Windows media session alive forever.
+            // Keep Media visible for 10 seconds so Play can still be used,
+            // then return both the app/device UI to the normal main screen.
+            // Do not show the same paused session again until playback resumes.
+            if (_suppressedUntilPlaying)
+                return;
+
+            _lastData = data;
             _wasActive = true;
+            _inactiveSince ??= now;
+
+            if (now - _inactiveSince.Value >= StopGrace)
+            {
+                PublishCleared(suppressUntilPlaying: true);
+                return;
+            }
+
             Updated?.Invoke(data);
         }
         catch

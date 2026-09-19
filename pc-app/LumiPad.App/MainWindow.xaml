@@ -1383,6 +1383,8 @@
                                                            Foreground="{DynamicResource Muted}"
                                                            VerticalAlignment="Center"
                                                            Margin="0,0,12,0"/>
+                                                <Button Content="Key Map"
+                                                        Click="AssignActionKey_Click"/>
                                                 <Button Content="Save"
                                                         Click="SaveActionScript_Click"/>
                                                 <Button Content="Run Test"
