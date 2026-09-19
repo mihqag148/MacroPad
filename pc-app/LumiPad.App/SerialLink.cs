@@ -28,6 +28,8 @@ public sealed class SerialLink : IDisposable
     private string _lastNowPlayingKey = "";
     private bool _lastNowPlayingPlaying;
     private DateTimeOffset _lastNowPlayingSent = DateTimeOffset.MinValue;
+    private readonly object _pendingNowPlayingLock = new();
+    private NowPlayingData? _pendingNowPlaying;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
     public string ConnectionName => _connectionName;
@@ -419,6 +421,8 @@ public sealed class SerialLink : IDisposable
         _lastArtworkKey = "";
         _lastNowPlayingKey = "";
         _lastNowPlayingSent = DateTimeOffset.MinValue;
+        lock (_pendingNowPlayingLock)
+            _pendingNowPlaying = null;
     }
 
     public void SendNowPlaying(NowPlayingData data)
@@ -438,10 +442,15 @@ public sealed class SerialLink : IDisposable
             return;
         }
 
-        // Do not build a queue of stale media updates. If a previous BLE
-        // transmission is still running, keep the newest state for the next poll.
+        // If artwork/text from the previous track is still being sent,
+        // remember only the newest state. It will be pushed immediately when
+        // the current transfer completes instead of waiting for another poll.
         if (!_mediaGate.Wait(0))
+        {
+            lock (_pendingNowPlayingLock)
+                _pendingNowPlaying = data;
             return;
+        }
 
         _ = SendNowPlayingAsync(data, key);
     }
@@ -492,6 +501,16 @@ public sealed class SerialLink : IDisposable
         finally
         {
             _mediaGate.Release();
+
+            NowPlayingData? pending = null;
+            lock (_pendingNowPlayingLock)
+            {
+                pending = _pendingNowPlaying;
+                _pendingNowPlaying = null;
+            }
+
+            if (pending is not null && IsConnected)
+                SendNowPlaying(pending);
         }
     }
 
