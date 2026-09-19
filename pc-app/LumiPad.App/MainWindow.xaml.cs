@@ -72,8 +72,11 @@ public partial class MainWindow : Window
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
             if (_screensaverAnimation is null ||
+                _screensaverAnimation.PixelFormat != ScreensaverPixelFormat.Rgb332 ||
                 _screensaverAnimation.Frames.Count < 2)
+            {
                 return;
+            }
 
             int frameCount = _screensaverAnimation.Frames.Count;
             int loopMs =
@@ -87,6 +90,8 @@ public partial class MainWindow : Window
             int loopPosition =
                 (int)(_screensaverPreviewClock.ElapsedMilliseconds % loopMs);
             int desiredIndex = 0;
+            int frameStart = 0;
+            int frameDuration = _screensaverAnimation.FrameIntervalMs;
             int boundary = 0;
 
             for (int i = 0; i < frameCount; i++)
@@ -96,23 +101,35 @@ public partial class MainWindow : Window
                         ? _screensaverAnimation.FrameDurationsMs[i]
                         : _screensaverAnimation.FrameIntervalMs;
 
-                boundary += Math.Max(
+                duration = Math.Max(
                     ScreensaverMediaService.MinFrameIntervalMs,
                     duration);
+
+                frameStart = boundary;
+                boundary += duration;
                 desiredIndex = i;
+                frameDuration = duration;
 
                 if (loopPosition < boundary)
                     break;
             }
 
-            if (desiredIndex == _screensaverPreviewIndex)
-                return;
+            int nextIndex = (desiredIndex + 1) % frameCount;
+            double blend =
+                Math.Clamp(
+                    (loopPosition - frameStart) /
+                    (double)Math.Max(1, frameDuration),
+                    0.0,
+                    1.0);
 
             _screensaverPreviewIndex = desiredIndex;
-            ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
-                _screensaverAnimation.Frames[_screensaverPreviewIndex],
-                ScreensaverMediaService.Width,
-                ScreensaverMediaService.Height);
+            ScreensaverPreviewImage.Source =
+                CreateRgb332InterpolatedBitmap(
+                    _screensaverAnimation.Frames[desiredIndex],
+                    _screensaverAnimation.Frames[nextIndex],
+                    blend,
+                    _screensaverAnimation.Width,
+                    _screensaverAnimation.Height);
         };
 
         _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
@@ -869,6 +886,105 @@ public partial class MainWindow : Window
 
     private static BitmapSource CreateArtworkBitmap(byte[] rgb332) =>
         CreateRgb332Bitmap(rgb332, 76, 76);
+
+    private static BitmapSource CreateRgb332InterpolatedBitmap(
+        byte[] first,
+        byte[] second,
+        double blend,
+        int width,
+        int height)
+    {
+        if (first.Length != width * height ||
+            second.Length != width * height)
+        {
+            throw new ArgumentException(
+                "RGB332 buffers do not match dimensions.");
+        }
+
+        blend = Math.Clamp(blend, 0.0, 1.0);
+        int stride = width * 4;
+        byte[] bgra = new byte[stride * height];
+
+        for (int i = 0; i < width * height; i++)
+        {
+            byte a = first[i];
+            byte b = second[i];
+
+            int ar = (((a >> 5) & 0x07) * 255) / 7;
+            int ag = (((a >> 2) & 0x07) * 255) / 7;
+            int ab = ((a & 0x03) * 255) / 3;
+
+            int br = (((b >> 5) & 0x07) * 255) / 7;
+            int bg = (((b >> 2) & 0x07) * 255) / 7;
+            int bb = ((b & 0x03) * 255) / 3;
+
+            byte r = (byte)Math.Round(ar + (br - ar) * blend);
+            byte g = (byte)Math.Round(ag + (bg - ag) * blend);
+            byte bl = (byte)Math.Round(ab + (bb - ab) * blend);
+
+            int p = i * 4;
+            bgra[p] = bl;
+            bgra[p + 1] = g;
+            bgra[p + 2] = r;
+            bgra[p + 3] = 255;
+        }
+
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            bgra,
+            stride);
+
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static BitmapSource CreateRgb565Bitmap(
+        byte[] rgb565,
+        int width,
+        int height)
+    {
+        if (rgb565.Length != width * height * 2)
+            throw new ArgumentException(
+                "RGB565 buffer size does not match dimensions.");
+
+        int stride = width * 4;
+        byte[] bgra = new byte[stride * height];
+
+        for (int i = 0; i < width * height; i++)
+        {
+            ushort v = (ushort)(
+                rgb565[i * 2] |
+                (rgb565[i * 2 + 1] << 8));
+
+            byte r = (byte)((((v >> 11) & 0x1F) * 255) / 31);
+            byte g = (byte)((((v >> 5) & 0x3F) * 255) / 63);
+            byte b = (byte)(((v & 0x1F) * 255) / 31);
+
+            int p = i * 4;
+            bgra[p] = b;
+            bgra[p + 1] = g;
+            bgra[p + 2] = r;
+            bgra[p + 3] = 255;
+        }
+
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            bgra,
+            stride);
+
+        bitmap.Freeze();
+        return bitmap;
+    }
 
     private static BitmapSource CreateRgb332Bitmap(
         byte[] rgb332,
@@ -1784,30 +1900,33 @@ public partial class MainWindow : Window
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
 
-            if (_screensaverAnimation.Frames.Count == 1)
+            if (_screensaverAnimation.PixelFormat ==
+                ScreensaverPixelFormat.Rgb565)
             {
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"Static image · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · output {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                        $"Ảnh tĩnh · {ScreensaverMediaService.Width}×{ScreensaverMediaService.Height} · đầu ra {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
+                        $"Static image · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 high quality · {scaleMode}",
+                        $"Ảnh tĩnh · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 chất lượng cao · {scaleMode}");
+
+                ScreensaverPreviewImage.Source =
+                    CreateRgb565Bitmap(
+                        _screensaverAnimation.Frames[0],
+                        _screensaverAnimation.Width,
+                        _screensaverAnimation.Height);
             }
             else
             {
-                int playbackAverageFps =
-                    (int)Math.Round(
-                        1000.0 /
-                        Math.Max(1, _screensaverAnimation.FrameIntervalMs));
-
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"{_screensaverAnimation.Frames.Count} GIF frames · Playback avg {playbackAverageFps} FPS · output {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                        $"{_screensaverAnimation.Frames.Count} khung GIF · Playback avg {playbackAverageFps} FPS · đầu ra {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
-            }
+                        $"{_screensaverAnimation.Frames.Count} stored GIF frames · Playback avg {ScreensaverMediaService.MaxPlaybackFps} FPS · source timing preserved · {scaleMode}",
+                        $"{_screensaverAnimation.Frames.Count} khung GIF lưu · Playback avg {ScreensaverMediaService.MaxPlaybackFps} FPS · giữ tốc độ gốc · {scaleMode}");
 
-            ScreensaverPreviewImage.Source = CreateRgb332Bitmap(
-                _screensaverAnimation.Frames[0],
-                ScreensaverMediaService.Width,
-                ScreensaverMediaService.Height);
+                ScreensaverPreviewImage.Source =
+                    CreateRgb332Bitmap(
+                        _screensaverAnimation.Frames[0],
+                        _screensaverAnimation.Width,
+                        _screensaverAnimation.Height);
+            }
 
             ScreensaverPreviewImage.Visibility = Visibility.Visible;
             ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
