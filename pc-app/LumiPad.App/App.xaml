@@ -158,6 +158,67 @@
             </Style.Triggers>
         </Style>
 
+        <Style TargetType="TextBox">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+            <Setter Property="SelectionOpacity" Value="0.35"/>
+            <Setter Property="MinHeight" Value="34"/>
+        </Style>
+
+        <Style TargetType="ListBox">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder"
+                                        Property="Background"
+                                        Value="{DynamicResource Card2}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder"
+                                        Property="Background"
+                                        Value="{DynamicResource Selection}"/>
+                                <Setter TargetName="ItemBorder"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource Accent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="Slider">
             <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
         </Style>
