@@ -1514,14 +1514,19 @@ bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_valid = false;
+    saver_media_format = SAVER_FORMAT_RGB332;
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
+    saver_image_received_bytes = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_timing_set_uniform(
         frame_count,
         frame_interval_ms);
     saver_media_index = 0U;
     saver_media_epoch_ms = 0U;
+    saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    saver_static_drawn = false;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     if (saver_flash_prepare_upload() != 0) {
@@ -1611,6 +1616,77 @@ bool lumi_ui_saver_anim_end(void) {
         saver_media_index = 0U;
         saver_media_epoch_ms = 0U;
         saver_prefetch_valid = false;
+        saver_prefetch_next_valid = false;
+        saver_static_drawn = false;
+    } else {
+        saver_media_valid = false;
+    }
+
+    lumi_ui_note_activity();
+    return ok;
+}
+
+bool lumi_ui_saver_image_begin(size_t total_bytes) {
+    if (total_bytes != LUMI_SAVER_IMAGE_BYTES) {
+        return false;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_media_valid = false;
+    saver_media_format = SAVER_FORMAT_RGB565_STATIC;
+    saver_media_frame_count = 1U;
+    saver_media_received_mask = 0U;
+    saver_image_received_bytes = 0U;
+    saver_timing_set_uniform(1U, 1000U);
+    saver_media_index = 0U;
+    saver_media_epoch_ms = 0U;
+    saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    saver_static_drawn = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    return saver_flash_prepare_upload() == 0;
+}
+
+bool lumi_ui_saver_image_chunk(
+    uint32_t offset,
+    const uint8_t *data,
+    size_t len) {
+
+    if (!data ||
+        saver_media_format != SAVER_FORMAT_RGB565_STATIC ||
+        len == 0U ||
+        offset >= LUMI_SAVER_IMAGE_BYTES ||
+        (uint64_t)offset + len > LUMI_SAVER_IMAGE_BYTES) {
+        return false;
+    }
+
+    if (saver_flash_write_bytes(offset, data, len) != 0) {
+        return false;
+    }
+
+    uint32_t end = offset + (uint32_t)len;
+    if (end > saver_image_received_bytes) {
+        saver_image_received_bytes = end;
+    }
+
+    return true;
+}
+
+bool lumi_ui_saver_image_end(void) {
+    bool ok =
+        saver_media_format == SAVER_FORMAT_RGB565_STATIC &&
+        saver_image_received_bytes == LUMI_SAVER_IMAGE_BYTES &&
+        saver_flash_commit_header() == 0;
+
+    if (ok) {
+        saver_media_valid = true;
+        saver_media_frame_count = 1U;
+        saver_media_index = 0U;
+        saver_media_epoch_ms = 0U;
+        saver_prefetch_valid = false;
+        saver_prefetch_next_valid = false;
+        saver_static_drawn = false;
     } else {
         saver_media_valid = false;
     }
@@ -1627,9 +1703,13 @@ void lumi_ui_saver_anim_clear(void) {
     saver_flash_invalidate();
     saver_media_frame_count = 0U;
     saver_media_received_mask = 0U;
+    saver_image_received_bytes = 0U;
+    saver_media_format = SAVER_FORMAT_RGB332;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
     saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    saver_static_drawn = false;
     lumi_ui_note_activity();
 }
 
