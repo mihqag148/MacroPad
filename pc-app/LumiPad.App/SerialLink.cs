@@ -33,6 +33,8 @@ public sealed class SerialLink : IDisposable
     private int _mediaGeneration;
 
     public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
+    public bool IsUsbConnected => _port?.IsOpen == true;
+    public bool IsBluetoothConnected => _bleCharacteristic is not null;
     public string ConnectionName => _connectionName;
     public event Action<string>? LinkError;
     public event Action<string, string>? Diagnostic;
@@ -65,6 +67,38 @@ public sealed class SerialLink : IDisposable
     {
         Disconnect();
         return await TryBluetoothAsync(cancellationToken);
+    }
+
+    public async Task<string?> PromoteToUsbIfAvailableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_port?.IsOpen == true)
+            return _connectionName;
+
+        string previousName = _connectionName;
+        string? usb = await TryUsbAsync(cancellationToken);
+
+        if (usb is null)
+        {
+            _connectionName = previousName;
+            return null;
+        }
+
+        // USB becomes the active companion-app transport. Keep media state and
+        // cached artwork keys intact so switching cables does not restart the
+        // Now Playing pipeline.
+        if (_bleDevice is not null)
+            _bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
+
+        _bleCharacteristic = null;
+        _blePayloadSize = 20;
+        _bleService?.Dispose();
+        _bleService = null;
+        _bleDevice?.Dispose();
+        _bleDevice = null;
+
+        Log("INFO", $"Promoted companion link to {usb}");
+        return usb;
     }
 
     private async Task<string?> TryBluetoothAsync(CancellationToken cancellationToken)
@@ -508,8 +542,13 @@ public sealed class SerialLink : IDisposable
             if (data.ArtworkRgb332 is { Length: 5776 } artwork &&
                 !string.Equals(bitmapKey, _lastArtworkKey, StringComparison.Ordinal))
             {
-                if (await SendArtworkAsync(artwork, generation))
+                if (await SendArtworkAsync(
+                        artwork,
+                        generation,
+                        nowPlayingLine))
+                {
                     _lastArtworkKey = bitmapKey;
+                }
             }
 
             // Refresh the state after the heavier title/artwork transfer so
@@ -604,7 +643,8 @@ public sealed class SerialLink : IDisposable
 
     private async Task<bool> SendArtworkAsync(
         byte[] artwork,
-        int generation)
+        int generation,
+        string heartbeatLine)
     {
         try
         {
@@ -612,6 +652,7 @@ public sealed class SerialLink : IDisposable
             if (!await SendRealtimeLineAsync($"ARTBEGIN|{artwork.Length}"))
                 return false;
 
+            int chunkNumber = 0;
             for (int offset = 0; offset < artwork.Length; offset += rawChunk)
             {
                 if (!IsMediaGenerationCurrent(generation))
@@ -624,6 +665,15 @@ public sealed class SerialLink : IDisposable
                         $"ARTCHUNK|{offset}|{base64}"))
                 {
                     return false;
+                }
+
+                chunkNumber++;
+                if ((chunkNumber % 6) == 0)
+                {
+                    // Keep the firmware's media-session watchdog alive during
+                    // slower acknowledged BLE artwork transfers.
+                    if (!await SendRealtimeLineAsync(heartbeatLine))
+                        return false;
                 }
             }
 
@@ -1173,6 +1223,9 @@ public sealed class SerialLink : IDisposable
 
     public Task SleepKeyboardAsync() =>
         SendLineAsync("SYS|SLEEP");
+
+    public Task WakeKeyboardAsync() =>
+        SendLineAsync("SYS|WAKE");
 
     private async Task SendBulkLineAsync(string line)
     {
