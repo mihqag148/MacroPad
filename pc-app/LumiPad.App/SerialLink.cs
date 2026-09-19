@@ -622,12 +622,99 @@ public sealed class SerialLink : IDisposable
         // dedicated CDC port before a large upload. USB wins automatically
         // when present; Bluetooth remains the fallback.
         bool useUsb = await EnsureUsbForBulkAsync();
+
+        if (animation.PixelFormat == ScreensaverPixelFormat.Rgb565)
+        {
+            if (animation.Frames.Count != 1 ||
+                animation.Width != ScreensaverMediaService.StaticWidth ||
+                animation.Height != ScreensaverMediaService.StaticHeight)
+            {
+                throw new InvalidOperationException(
+                    "Invalid static screensaver image.");
+            }
+
+            byte[] image = animation.Frames[0];
+            int expectedBytes =
+                animation.Width * animation.Height * 2;
+
+            if (image.Length != expectedBytes)
+                throw new InvalidOperationException(
+                    "Invalid RGB565 static image size.");
+
+            int rawChunk = 240;
+            int totalChunks =
+                (image.Length + rawChunk - 1) / rawChunk;
+            int sent = 0;
+
+            Log(
+                "INFO",
+                $"Static saver upload: {animation.Width}x{animation.Height} RGB565, " +
+                $"{image.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
+
+            string begin = $"IMGBEGIN|{image.Length}";
+            if (useUsb)
+                await SendUsbSaverLineAsync(begin);
+            else
+                await SendLineAsync(begin);
+
+            for (int offset = 0; offset < image.Length; offset += rawChunk)
+            {
+                int len = Math.Min(rawChunk, image.Length - offset);
+                string payload =
+                    Convert.ToBase64String(image, offset, len);
+                string line = $"IMGCHUNK|{offset}|{payload}";
+
+                if (useUsb)
+                    await SendUsbSaverLineAsync(line);
+                else
+                    await SendBulkLineAsync(line);
+
+                if (!useUsb)
+                    await Task.Delay(2);
+
+                sent++;
+                progress?.Report(
+                    (int)Math.Round(sent * 100.0 / totalChunks));
+            }
+
+            if (useUsb)
+            {
+                string finalAck = await SendUsbSaverLineAsync("IMGEND");
+                if (!finalAck.EndsWith("|READY", StringComparison.Ordinal))
+                {
+                    Log("ERROR", $"Static saver final ACK not READY: {finalAck}");
+                    return false;
+                }
+
+                return true;
+            }
+
+            await SendLineAsync("IMGEND");
+            await Task.Delay(120);
+
+            if (_bleCharacteristic is not null)
+            {
+                string status = await ReadBleStatusAsync();
+                bool ready =
+                    status.Contains("SAVER:READY", StringComparison.Ordinal);
+                Log(
+                    ready ? "INFO" : "ERROR",
+                    $"BLE static saver verify: {status}");
+                return ready;
+            }
+
+            return false;
+        }
+
+        if (animation.PixelFormat != ScreensaverPixelFormat.Rgb332)
+            throw new InvalidOperationException("Unsupported screensaver format.");
+
         int loopMs = animation.FrameDurationsMs.Sum();
         Log("INFO", $"Screensaver upload: {animation.Frames.Count} frames, loop={loopMs} ms, avg={animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
 
         int rawChunkSize = useUsb ? 240 : 180;
         int frameBytes =
-            ScreensaverMediaService.Width * ScreensaverMediaService.Height;
+            animation.Width * animation.Height;
         int chunksPerFrame =
             (frameBytes + rawChunkSize - 1) / rawChunkSize;
         int totalChunks = chunksPerFrame * animation.Frames.Count;
