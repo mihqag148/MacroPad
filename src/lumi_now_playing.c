@@ -11,6 +11,7 @@
 
 #include "lumi_now_playing.h"
 #include "lumi_ui_config.h"
+#include "lumi_diag.h"
 
 /* If the companion app/transport disappears, do not pin the last track on
  * screen for a full minute. A healthy app refreshes NP state every ~250 ms.
