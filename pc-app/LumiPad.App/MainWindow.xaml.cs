@@ -1223,12 +1223,6 @@ public partial class MainWindow : Window
         const int maxLines = 1500;
         if (_logLines.Count > maxLines)
             _logLines.RemoveRange(0, _logLines.Count - maxLines);
-
-        if (LogTextBox is not null)
-        {
-            LogTextBox.Text = string.Join(Environment.NewLine, _logLines);
-            LogTextBox.ScrollToEnd();
-        }
     }
 
     private async Task PollFirmwareDiagnosticsAsync()
@@ -1257,8 +1251,6 @@ public partial class MainWindow : Window
     private void ClearLog_Click(object sender, RoutedEventArgs e)
     {
         _logLines.Clear();
-        if (LogTextBox is not null)
-            LogTextBox.Clear();
         AddLog("INFO", "APP", "Log cleared");
     }
 
@@ -1277,11 +1269,15 @@ public partial class MainWindow : Window
 
     private void ToggleLog_Click(object sender, RoutedEventArgs e)
     {
-        bool show = LogPanel.Visibility != Visibility.Visible;
-        LogPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        ViewLogButton.Content = show
-            ? L("Hide log", "Ẩn log")
-            : L("View log", "Xem log");
+        var window = new DiagnosticLogWindow(
+            string.Join(Environment.NewLine, _logLines),
+            L("App + firmware events and errors",
+              "Sự kiện và lỗi của app + firmware"))
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
     }
 
     private void SaveLog_Click(object sender, RoutedEventArgs e)
