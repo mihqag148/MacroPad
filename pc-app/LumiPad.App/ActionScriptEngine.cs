@@ -17,10 +17,12 @@ public sealed class ActionScriptStep
 public sealed class ActionScriptDefinition
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public int ActionId { get; set; }
     public string Name { get; set; } = "New Script";
     public List<ActionScriptStep> Steps { get; set; } = [];
 
-    public override string ToString() => Name;
+    public override string ToString() =>
+        ActionId > 0 ? $"#{ActionId:00}  {Name}" : Name;
 }
 
 public static class ActionScriptStore
@@ -38,8 +40,12 @@ public static class ActionScriptStore
             if (!File.Exists(ScriptsFilePath))
                 return [];
 
-            return JsonSerializer.Deserialize<List<ActionScriptDefinition>>(
-                       File.ReadAllText(ScriptsFilePath)) ?? [];
+            var scripts =
+                JsonSerializer.Deserialize<List<ActionScriptDefinition>>(
+                    File.ReadAllText(ScriptsFilePath)) ?? [];
+
+            NormalizeActionIds(scripts);
+            return scripts;
         }
         catch
         {
@@ -47,10 +53,56 @@ public static class ActionScriptStore
         }
     }
 
+    public static void NormalizeActionIds(
+        IList<ActionScriptDefinition> scripts)
+    {
+        var used = new HashSet<int>();
+
+        foreach (var script in scripts)
+        {
+            script.Steps ??= [];
+
+            if (script.ActionId is >= 1 and <= 32 &&
+                used.Add(script.ActionId))
+            {
+                continue;
+            }
+
+            for (int id = 1; id <= 32; id++)
+            {
+                if (!used.Add(id))
+                    continue;
+
+                script.ActionId = id;
+                break;
+            }
+        }
+    }
+
+    public static int NextAvailableActionId(
+        IEnumerable<ActionScriptDefinition> scripts)
+    {
+        var used = scripts
+            .Where(s => s.ActionId is >= 1 and <= 32)
+            .Select(s => s.ActionId)
+            .ToHashSet();
+
+        for (int id = 1; id <= 32; id++)
+        {
+            if (!used.Contains(id))
+                return id;
+        }
+
+        return 0;
+    }
+
     public static void Save(IEnumerable<ActionScriptDefinition> scripts)
     {
         try
         {
+            var list = scripts.ToList();
+            NormalizeActionIds(list);
+
             string? folder = Path.GetDirectoryName(ScriptsFilePath);
             if (!string.IsNullOrWhiteSpace(folder))
                 Directory.CreateDirectory(folder);
@@ -58,7 +110,7 @@ public static class ActionScriptStore
             File.WriteAllText(
                 ScriptsFilePath,
                 JsonSerializer.Serialize(
-                    scripts,
+                    list,
                     new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
