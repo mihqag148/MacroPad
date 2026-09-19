@@ -716,6 +716,9 @@ public sealed class SerialLink : IDisposable
             return generation == _mediaGeneration;
     }
 
+    private static bool ContainsNonBasicLatin(string value) =>
+        value.Any(ch => ch > 0x7F);
+
     private async Task<bool> SendUnicodeBitmapsAsync(
         string title,
         string artist,
@@ -728,16 +731,43 @@ public sealed class SerialLink : IDisposable
             var artistBitmap = TextBitmapRenderer.RenderScrollable(
                 artist, 206, 360, 20, 13, false);
 
-            if (!await SendTextBitmapAsync(
-                    "T", titleBitmap, 24, generation) ||
+            bool bluetooth = _bleCharacteristic is not null;
+
+            // On Bluetooth, short plain-ASCII titles can be rendered directly
+            // by the firmware's Montserrat labels. Avoiding bitmap transfer
+            // saves several KB on most track changes. Long/Unicode text still
+            // uses the bitmap path so scrolling and Vietnamese/Unicode remain
+            // correct.
+            bool sendTitle =
+                !bluetooth ||
+                titleBitmap.Width > 206 ||
+                ContainsNonBasicLatin(title);
+
+            bool sendArtist =
+                !bluetooth ||
+                artistBitmap.Width > 206 ||
+                ContainsNonBasicLatin(artist);
+
+            if (sendTitle &&
+                !await SendTextBitmapAsync(
+                    "T", titleBitmap, 24, generation))
+            {
+                return false;
+            }
+
+            if (sendArtist &&
                 !await SendTextBitmapAsync(
                     "A", artistBitmap, 20, generation))
             {
                 return false;
             }
 
-            Log("INFO",
-                $"Now Playing text sent: title={titleBitmap.Width}px, artist={artistBitmap.Width}px");
+            Log(
+                "INFO",
+                $"Now Playing text: title={(sendTitle ? "bitmap" : "native")} " +
+                $"{titleBitmap.Width}px, artist={(sendArtist ? "bitmap" : "native")} " +
+                $"{artistBitmap.Width}px");
+
             return true;
         }
         catch (Exception ex)
