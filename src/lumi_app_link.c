@@ -16,6 +16,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/base64.h>
 #include <zephyr/sys/reboot.h>
+#include <zmk/keymap.h>
 
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
@@ -344,6 +345,19 @@ static void handle_cfg(char *save) {
             uint32_t value = (uint32_t)strtoul(seconds, NULL, 10);
             lumi_diag_report('I', "Sleep timeout=%us", (unsigned int)value);
             lumi_ui_set_sleep_timeout(value);
+        }
+    } else if (strcmp(cmd, "PROFILE") == 0) {
+        char *profile_s = strtok_r(NULL, "|", &save);
+        if (profile_s) {
+            int profile = atoi(profile_s);
+            if (profile >= 0 && profile < 5) {
+                int rc = zmk_keymap_layer_to((zmk_keymap_layer_id_t)profile);
+                lumi_diag_report(
+                    rc == 0 ? 'I' : 'E',
+                    "Auto profile layer=%d rc=%d",
+                    profile,
+                    rc);
+            }
         }
     }
 }
