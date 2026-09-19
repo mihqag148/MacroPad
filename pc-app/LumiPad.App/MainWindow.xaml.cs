@@ -497,7 +497,7 @@ public partial class MainWindow : Window
         };
         left.Children.Add(display);
 
-        var keys = new UniformGrid
+        var keys = new System.Windows.Controls.Primitives.UniformGrid
         {
             Rows = 2,
             Columns = 4,
