@@ -1126,7 +1126,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int ComboSeconds(ComboBox combo, int fallback)
+    private static int ComboSeconds(System.Windows.Controls.ComboBox combo, int fallback)
     {
         if (combo.SelectedValue is not null &&
             int.TryParse(combo.SelectedValue.ToString(), out int seconds))
