@@ -123,6 +123,9 @@ static bool saver_media_valid;
 static bool screensaver_visible;
 static lv_obj_t *root_screen;
 static lv_obj_t *sleep_overlay;
+static lv_obj_t *boot_overlay;
+static lv_obj_t *boot_progress;
+static uint32_t boot_started_ms;
 
 K_MUTEX_DEFINE(lumi_ui_config_lock);
 static uint32_t ui_last_activity_ms;
@@ -1902,6 +1905,141 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
 }
 
+static void refresh_boot_splash(lv_timer_t *timer) {
+    if (!boot_overlay || !boot_progress) {
+        lv_timer_del(timer);
+        return;
+    }
+
+    uint32_t elapsed =
+        (uint32_t)(lv_tick_get() - boot_started_ms);
+    uint32_t progress =
+        MIN(100U, (elapsed * 100U) / 2000U);
+
+    lv_bar_set_value(
+        boot_progress,
+        (int32_t)progress,
+        LV_ANIM_OFF);
+
+    if (elapsed < 2000U) {
+        return;
+    }
+
+    lv_obj_add_flag(
+        boot_overlay,
+        LV_OBJ_FLAG_HIDDEN);
+    boot_overlay = NULL;
+    boot_progress = NULL;
+    lv_timer_del(timer);
+}
+
+static void init_boot_splash(lv_obj_t *screen) {
+    boot_overlay = lv_obj_create(screen);
+    lv_obj_remove_style_all(boot_overlay);
+    lv_obj_set_pos(boot_overlay, 0, 0);
+    lv_obj_set_size(boot_overlay, 320, 172);
+    lv_obj_set_style_bg_color(
+        boot_overlay,
+        lv_color_hex(0x000000),
+        0);
+    lv_obj_set_style_bg_opa(
+        boot_overlay,
+        LV_OPA_COVER,
+        0);
+    lv_obj_clear_flag(
+        boot_overlay,
+        LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *logo =
+        make_label(
+            boot_overlay,
+            &lv_font_montserrat_20);
+    lv_label_set_text(logo, "LUMI3D");
+    lv_obj_set_style_text_color(
+        logo,
+        lv_color_hex(0xFFFFFF),
+        0);
+    lv_obj_set_style_text_letter_space(
+        logo,
+        2,
+        0);
+    lv_obj_align(
+        logo,
+        LV_ALIGN_CENTER,
+        0,
+        -30);
+
+    lv_obj_t *product =
+        make_label(
+            boot_overlay,
+            &lv_font_montserrat_14);
+    lv_label_set_text(product, "DIAL DESK");
+    lv_obj_set_style_text_color(
+        product,
+        lv_color_hex(0xA8A8AD),
+        0);
+    lv_obj_set_style_text_letter_space(
+        product,
+        1,
+        0);
+    lv_obj_align(
+        product,
+        LV_ALIGN_CENTER,
+        0,
+        -4);
+
+    boot_progress = lv_bar_create(boot_overlay);
+    lv_obj_set_size(
+        boot_progress,
+        116,
+        4);
+    lv_obj_align(
+        boot_progress,
+        LV_ALIGN_CENTER,
+        0,
+        33);
+    lv_bar_set_range(
+        boot_progress,
+        0,
+        100);
+    lv_bar_set_value(
+        boot_progress,
+        0,
+        LV_ANIM_OFF);
+
+    lv_obj_set_style_bg_color(
+        boot_progress,
+        lv_color_hex(0x303034),
+        LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(
+        boot_progress,
+        LV_OPA_COVER,
+        LV_PART_MAIN);
+    lv_obj_set_style_radius(
+        boot_progress,
+        2,
+        LV_PART_MAIN);
+
+    lv_obj_set_style_bg_color(
+        boot_progress,
+        lv_color_hex(0xF5F5F7),
+        LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(
+        boot_progress,
+        LV_OPA_COVER,
+        LV_PART_INDICATOR);
+    lv_obj_set_style_radius(
+        boot_progress,
+        2,
+        LV_PART_INDICATOR);
+
+    boot_started_ms = lv_tick_get();
+    lv_timer_create(
+        refresh_boot_splash,
+        40,
+        NULL);
+}
+
 lv_obj_t *zmk_display_status_screen(void) {
     (void)lumi_panel_init();
     (void)saver_flash_load_metadata();
@@ -2180,6 +2318,8 @@ lv_obj_add_flag(
     lv_obj_set_style_bg_opa(sleep_overlay, LV_OPA_COVER, 0);
     lv_obj_clear_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+
+    init_boot_splash(screen);
 
 k_work_schedule(&page_poll_work, K_MSEC(500));
 

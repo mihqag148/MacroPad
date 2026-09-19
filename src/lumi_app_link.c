@@ -17,6 +17,7 @@
 #include <zephyr/sys/base64.h>
 #include <zephyr/sys/reboot.h>
 #include <zmk/keymap.h>
+#include <zmk/battery.h>
 
 #include "lumi_app_link.h"
 #include "lumi_now_playing.h"
@@ -193,7 +194,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR";
+        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT";
 
     if (from_usb) {
         write_text_usb(response);
@@ -966,6 +967,24 @@ static void handle_panel_info(bool from_usb) {
     }
 }
 
+static void handle_battery(bool from_usb) {
+    char response[24];
+    uint8_t percent = zmk_battery_state_of_charge();
+
+    snprintf(
+        response,
+        sizeof(response),
+        "BAT|%u",
+        (unsigned int)MIN(percent, 100U));
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_saver_state(bool from_usb) {
     const char *response =
         lumi_ui_saver_anim_is_valid()
@@ -988,7 +1007,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR\r\n");
+                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -998,6 +1017,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_mem(from_usb);
     } else if (strcmp(root, "PANEL") == 0) {
         handle_panel_info(from_usb);
+    } else if (strcmp(root, "BAT") == 0) {
+        handle_battery(from_usb);
     } else if (strcmp(root, "SAVERSTATE") == 0) {
         handle_saver_state(from_usb);
     } else if (strcmp(root, "LOG") == 0) {
@@ -1141,6 +1162,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     const char *status = lumi_status;
     if (strncmp(lumi_status, "MEM|", 4) != 0 &&
         strncmp(lumi_status, "PANEL|", 6) != 0 &&
+        strncmp(lumi_status, "BAT|", 4) != 0 &&
         strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
         strncmp(lumi_status, "CAPS|", 5) != 0 &&
         strncmp(lumi_status, "ACTION|", 7) != 0 &&
@@ -1157,6 +1179,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 
     if (strncmp(lumi_status, "MEM|", 4) == 0 ||
         strncmp(lumi_status, "PANEL|", 6) == 0 ||
+        strncmp(lumi_status, "BAT|", 4) == 0 ||
         strncmp(lumi_status, "SAVERSTATE|", 11) == 0 ||
         strncmp(lumi_status, "CAPS|", 5) == 0 ||
         strncmp(lumi_status, "ACTION|", 7) == 0) {
