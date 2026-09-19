@@ -71,6 +71,8 @@ static bool saver_rgb332_lut_ready;
 #define SAVER_FLASH_DATA_OFFSET 0x1000U
 #define SAVER_FLASH_PAGE_SIZE 0x1000U
 #define SAVER_FLASH_MAX_PAGES 86U
+#define SAVER_FLASH_TIMING_OFFSET 0x40U
+#define SAVER_FLASH_TIMING_MAGIC 0x4D495453U /* "STIM" */
 
 struct saver_flash_header {
     uint32_t magic;
@@ -84,6 +86,15 @@ struct saver_flash_header {
     uint32_t data_size;
 };
 
+struct saver_flash_timing {
+    uint32_t magic;
+    uint8_t frame_count;
+    uint8_t reserved0;
+    uint16_t reserved1;
+    uint16_t interval_ms[LUMI_SAVER_MAX_FRAMES];
+    uint16_t reserved2;
+};
+
 static const struct flash_area *saver_flash;
 static bool saver_flash_checked;
 static uint32_t saver_flash_erased_pages[3];
@@ -94,6 +105,8 @@ static uint8_t saver_media_frame_count;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
 static uint16_t saver_media_interval_ms = 40;
+static uint16_t saver_media_frame_intervals[LUMI_SAVER_MAX_FRAMES];
+static uint32_t saver_media_loop_ms = 40U;
 static uint8_t saver_media_index;
 static uint32_t saver_media_epoch_ms;
 static bool saver_media_valid;
@@ -692,6 +705,52 @@ static void init_screensaver(lv_obj_t *screen) {
 
 }
 
+static void saver_timing_recalculate(void) {
+    uint32_t total = 0U;
+
+    for (uint8_t i = 0U; i < saver_media_frame_count; i++) {
+        uint16_t interval =
+            CLAMP(saver_media_frame_intervals[i],
+                  (uint16_t)33U,
+                  (uint16_t)5000U);
+        saver_media_frame_intervals[i] = interval;
+        total += interval;
+    }
+
+    saver_media_loop_ms = MAX(total, 1U);
+
+    if (saver_media_frame_count > 0U) {
+        saver_media_interval_ms =
+            (uint16_t)CLAMP(
+                saver_media_loop_ms / saver_media_frame_count,
+                33U,
+                5000U);
+    }
+}
+
+static void saver_timing_set_uniform(
+    uint8_t frame_count,
+    uint16_t interval_ms) {
+
+    interval_ms =
+        CLAMP(interval_ms, (uint16_t)33U, (uint16_t)5000U);
+
+    memset(
+        saver_media_frame_intervals,
+        0,
+        sizeof(saver_media_frame_intervals));
+
+    for (uint8_t i = 0U;
+         i < frame_count && i < LUMI_SAVER_MAX_FRAMES;
+         i++) {
+        saver_media_frame_intervals[i] = interval_ms;
+    }
+
+    saver_media_loop_ms =
+        MAX((uint32_t)frame_count * interval_ms, 1U);
+    saver_media_interval_ms = interval_ms;
+}
+
 static int saver_flash_open_once(void) {
     if (saver_flash) {
         return 0;
@@ -758,7 +817,31 @@ static bool saver_flash_load_metadata(void) {
     }
 
     saver_media_frame_count = header.frame_count;
-    saver_media_interval_ms = header.interval_ms;
+    saver_timing_set_uniform(
+        saver_media_frame_count,
+        header.interval_ms);
+
+    struct saver_flash_timing timing = {0};
+    int timing_rc = flash_area_read(
+        saver_flash,
+        SAVER_FLASH_TIMING_OFFSET,
+        &timing,
+        sizeof(timing));
+
+    if (timing_rc == 0 &&
+        timing.magic == SAVER_FLASH_TIMING_MAGIC &&
+        timing.frame_count == saver_media_frame_count) {
+
+        for (uint8_t i = 0U;
+             i < saver_media_frame_count;
+             i++) {
+            saver_media_frame_intervals[i] =
+                timing.interval_ms[i];
+        }
+
+        saver_timing_recalculate();
+    }
+
     saver_media_index = 0U;
     saver_media_epoch_ms = 0U;
     saver_media_valid = true;
@@ -928,7 +1011,36 @@ static int saver_flash_commit_header(void) {
             (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
     };
 
-    return flash_area_write(saver_flash, 0, &header, sizeof(header));
+    int rc = flash_area_write(
+        saver_flash,
+        0,
+        &header,
+        sizeof(header));
+
+    if (rc != 0) {
+        return rc;
+    }
+
+    struct saver_flash_timing timing = {
+        .magic = SAVER_FLASH_TIMING_MAGIC,
+        .frame_count = saver_media_frame_count,
+        .reserved0 = 0U,
+        .reserved1 = 0U,
+        .reserved2 = 0U,
+    };
+
+    for (uint8_t i = 0U;
+         i < saver_media_frame_count;
+         i++) {
+        timing.interval_ms[i] =
+            saver_media_frame_intervals[i];
+    }
+
+    return flash_area_write(
+        saver_flash,
+        SAVER_FLASH_TIMING_OFFSET,
+        &timing,
+        sizeof(timing));
 }
 
 static void saver_flash_invalidate(void) {
@@ -1123,15 +1235,24 @@ static void refresh_screensaver(lv_timer_t *timer) {
     }
 
     uint32_t lv_now = lv_tick_get();
-    uint32_t interval = MAX((uint32_t)saver_media_interval_ms, 1U);
     uint32_t elapsed = (uint32_t)(lv_now - saver_media_epoch_ms);
+    uint32_t loop_ms = MAX(saver_media_loop_ms, 1U);
+    uint32_t loop_pos = elapsed % loop_ms;
 
-    /* Keep loop speed tied to wall-clock time. If a full-screen SPI write
-     * misses one or more deadlines, skip stale frames instead of making the
-     * whole animation run in slow motion.
+    /* Keep playback on the source GIF time line. Slow SPI writes may drop a
+     * stale frame, but they must not stretch the loop and make it slow down.
      */
-    uint8_t desired_index =
-        (uint8_t)((elapsed / interval) % saver_media_frame_count);
+    uint8_t desired_index = 0U;
+    uint32_t boundary = 0U;
+
+    for (uint8_t i = 0U; i < saver_media_frame_count; i++) {
+        boundary += saver_media_frame_intervals[i];
+        desired_index = i;
+
+        if (loop_pos < boundary) {
+            break;
+        }
+    }
 
     if (desired_index != saver_media_index) {
         saver_media_index = desired_index;
@@ -1158,8 +1279,9 @@ bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
-    saver_media_interval_ms =
-        CLAMP(frame_interval_ms, (uint16_t)33U, (uint16_t)5000U);
+    saver_timing_set_uniform(
+        frame_count,
+        frame_interval_ms);
     saver_media_index = 0U;
     saver_media_epoch_ms = 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
@@ -1168,6 +1290,24 @@ bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
         saver_media_frame_count = 0U;
         return false;
     }
+
+    return true;
+}
+
+bool lumi_ui_saver_anim_set_frame_interval(
+    uint8_t index,
+    uint16_t interval_ms) {
+
+    if (index >= saver_media_frame_count ||
+        index >= LUMI_SAVER_MAX_FRAMES) {
+        return false;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_media_frame_intervals[index] =
+        CLAMP(interval_ms, (uint16_t)33U, (uint16_t)5000U);
+    saver_timing_recalculate();
+    k_mutex_unlock(&lumi_ui_config_lock);
 
     return true;
 }
