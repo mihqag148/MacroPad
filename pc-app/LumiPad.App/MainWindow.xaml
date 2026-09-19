@@ -158,89 +158,194 @@
 
                     <Border Grid.Column="0"
                             Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="28" Padding="28">
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="24">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="22"/>
+                                <RowDefinition Height="18"/>
                                 <RowDefinition Height="*"/>
+                                <RowDefinition Height="18"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Text="MEDIA" FontSize="12"
-                                       Foreground="{DynamicResource Muted}"
-                                       FontWeight="SemiBold"/>
+                            <Grid>
+                                <TextBlock Text="MEDIA"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock x:Name="SourceText"
+                                           Text="MEDIA SESSION"
+                                           HorizontalAlignment="Right"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Muted}"/>
+                            </Grid>
 
                             <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="180"/>
-                                    <ColumnDefinition Width="26"/>
+                                    <ColumnDefinition Width="138"/>
+                                    <ColumnDefinition Width="22"/>
                                     <ColumnDefinition/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Width="180" Height="180" CornerRadius="30"
+                                <Border Width="138"
+                                        Height="138"
+                                        CornerRadius="18"
                                         Background="{DynamicResource Card2}"
                                         BorderBrush="{DynamicResource Line}"
                                         BorderThickness="1"
-                                        ClipToBounds="True">
+                                        ClipToBounds="True"
+                                        VerticalAlignment="Center">
                                     <Grid>
                                         <Image x:Name="AlbumArtImage"
                                                Stretch="UniformToFill"
                                                Visibility="Collapsed"/>
                                         <Grid x:Name="AlbumArtFallback">
-                                            <Ellipse Width="82" Height="82">
+                                            <Ellipse Width="66" Height="66">
                                                 <Ellipse.Fill>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <LinearGradientBrush StartPoint="0,0"
+                                                                         EndPoint="1,1">
                                                         <GradientStop Color="#FF9500" Offset="0"/>
                                                         <GradientStop Color="#FF2D55" Offset="0.55"/>
                                                         <GradientStop Color="#5856D6" Offset="1"/>
                                                     </LinearGradientBrush>
                                                 </Ellipse.Fill>
                                             </Ellipse>
-                                            <TextBlock Text="▶" FontSize="30" Foreground="White"
+                                            <TextBlock Text="▶"
+                                                       FontSize="24"
+                                                       Foreground="White"
                                                        HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                                       VerticalAlignment="Center"
+                                                       Margin="4,0,0,0"/>
                                         </Grid>
                                     </Grid>
                                 </Border>
 
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TitleText" Text="Nothing Playing"
-                                               FontSize="26" FontWeight="SemiBold"
-                                               TextWrapping="Wrap" MaxHeight="72"/>
-                                    <TextBlock x:Name="ArtistText" Text="LumiPad"
-                                               FontSize="16"
+                                <StackPanel Grid.Column="2"
+                                            VerticalAlignment="Center">
+                                    <TextBlock x:Name="TitleText"
+                                               Text="Nothing Playing"
+                                               FontSize="23"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap"
+                                               MaxHeight="66"/>
+                                    <TextBlock x:Name="ArtistText"
+                                               Text="LumiPad"
+                                               FontSize="14"
                                                Foreground="{DynamicResource Muted}"
-                                               Margin="0,8,0,24"/>
+                                               Margin="0,5,0,17"/>
 
-                                    <ProgressBar x:Name="TrackProgress"
-                                                 Minimum="0" Maximum="1" Value="0"
-                                                 Height="5" BorderThickness="0"
-                                                 Foreground="{DynamicResource TextPrimary}"
-                                                 Background="{DynamicResource Line}"/>
+                                    <Slider x:Name="TrackSlider"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0"
+                                            Height="24"
+                                            IsMoveToPointEnabled="True"
+                                            IsEnabled="False"
+                                            PreviewMouseLeftButtonDown="TrackSlider_PreviewMouseLeftButtonDown"
+                                            PreviewMouseLeftButtonUp="TrackSlider_PreviewMouseLeftButtonUp"
+                                            ValueChanged="TrackSlider_ValueChanged"/>
 
-                                    <Grid Margin="0,7,0,0">
-                                        <TextBlock x:Name="ElapsedText" Text="0:00"
-                                                   FontSize="12"
+                                    <Grid Margin="1,2,1,0">
+                                        <TextBlock x:Name="ElapsedText"
+                                                   Text="0:00"
+                                                   FontSize="11"
                                                    Foreground="{DynamicResource Muted}"/>
-                                        <TextBlock x:Name="DurationText" Text="0:00"
+                                        <TextBlock x:Name="DurationText"
+                                                   Text="-0:00"
                                                    HorizontalAlignment="Right"
-                                                   FontSize="12"
+                                                   FontSize="11"
                                                    Foreground="{DynamicResource Muted}"/>
                                     </Grid>
                                 </StackPanel>
                             </Grid>
 
-                            <StackPanel Grid.Row="3" Orientation="Horizontal"
-                                        HorizontalAlignment="Center" Margin="0,26,0,0">
-                                <Button x:Name="PrevButton" Content="◀◀" FontSize="18"
-                                        Click="PrevButton_Click"/>
-                                <Button x:Name="PlayButton" Content="▶" FontSize="18"
-                                        Click="PlayButton_Click"/>
-                                <Button x:Name="NextButton" Content="▶▶" FontSize="18"
-                                        Click="NextButton_Click"/>
-                            </StackPanel>
+                            <Grid Grid.Row="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.05*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="1.05*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <Button x:Name="MuteButton"
+                                            Content="🔊"
+                                            Width="38"
+                                            Height="38"
+                                            Padding="0"
+                                            Click="MuteButton_Click"
+                                            ToolTip="Mute / unmute"/>
+                                    <Slider x:Name="VolumeSlider"
+                                            Width="112"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Value="50"
+                                            IsMoveToPointEnabled="True"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="VolumeSlider_ValueChanged"/>
+                                    <TextBlock x:Name="VolumeText"
+                                               Text="50%"
+                                               Width="40"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="11"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            HorizontalAlignment="Center">
+                                    <Button x:Name="PrevButton"
+                                            Content="◀◀"
+                                            Width="42"
+                                            Height="38"
+                                            Padding="0"
+                                            IsEnabled="False"
+                                            Click="PrevButton_Click"/>
+                                    <Button x:Name="PlayButton"
+                                            Content="▶"
+                                            Width="48"
+                                            Height="42"
+                                            Padding="0"
+                                            FontSize="17"
+                                            IsEnabled="False"
+                                            Click="PlayButton_Click"/>
+                                    <Button x:Name="NextButton"
+                                            Content="▶▶"
+                                            Width="42"
+                                            Height="38"
+                                            Padding="0"
+                                            Margin="0"
+                                            IsEnabled="False"
+                                            Click="NextButton_Click"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2"
+                                            Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center">
+                                    <Button x:Name="ShuffleButton"
+                                            Content="🔀"
+                                            Width="40"
+                                            Height="38"
+                                            Padding="0"
+                                            IsEnabled="False"
+                                            Click="ShuffleButton_Click"
+                                            ToolTip="Shuffle"/>
+                                    <Button x:Name="RepeatButton"
+                                            Content="↻"
+                                            Width="48"
+                                            Height="38"
+                                            Padding="0"
+                                            Margin="0"
+                                            IsEnabled="False"
+                                            Click="RepeatButton_Click"
+                                            ToolTip="Repeat"/>
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                     </Border>
 
@@ -669,7 +774,7 @@
 
 
 
-            <TabItem Header="Auto Profile">
+                        <TabItem Header="Auto Profile">
                 <Grid Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.15*"/>
@@ -685,7 +790,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="18"/>
+                                <RowDefinition Height="14"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="14"/>
                                 <RowDefinition Height="*"/>
@@ -694,6 +799,8 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="14"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
@@ -710,45 +817,71 @@
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,4,0,0"/>
                                 </StackPanel>
+                                <TextBlock x:Name="AutoProfileMappingCountText"
+                                           Grid.Column="1"
+                                           Text="0 / 10 linked apps"
+                                           Foreground="{DynamicResource Muted}"
+                                           VerticalAlignment="Center"/>
                                 <CheckBox x:Name="AutoProfileEnabledCheckBox"
-                                          Grid.Column="1"
+                                          Grid.Column="3"
                                           Content="Enabled"
                                           VerticalAlignment="Center"
                                           Checked="AutoProfileEnabled_Changed"
                                           Unchecked="AutoProfileEnabled_Changed"/>
                             </Grid>
 
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="210"/>
-                                    <ColumnDefinition Width="18"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Default"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,12,0"/>
-                                <ComboBox x:Name="AutoProfileDefaultCombo"
-                                          Grid.Column="1"
-                                          SelectedValuePath="Tag"
-                                          SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
-                                    <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
-                                    <ComboBoxItem Content="MEDIA" Tag="1"/>
-                                    <ComboBoxItem Content="FUSION 360" Tag="2"/>
-                                    <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
-                                    <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
-                                </ComboBox>
-                                <TextBlock x:Name="AutoProfileMappingCountText"
-                                           Grid.Column="3"
-                                           Text="0 / 10 app profiles"
-                                           Foreground="{DynamicResource Muted}"
-                                           VerticalAlignment="Center"/>
-                                <Button Grid.Column="4"
-                                        Content="Select Application"
-                                        Click="SelectAutoProfileApplication_Click"
-                                        Margin="12,0,0,0"/>
-                            </Grid>
+                            <Border Grid.Row="2"
+                                    Background="{DynamicResource Card2}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="190"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="40"
+                                            Height="40"
+                                            CornerRadius="10"
+                                            Background="{DynamicResource ControlBg}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="▦"
+                                                   FontSize="20"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Margin="4,0,14,0">
+                                        <TextBlock Text="Default"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="Fallback when no linked app is active"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,3,0,0"/>
+                                    </StackPanel>
+
+                                    <ComboBox x:Name="AutoProfileDefaultCombo"
+                                              Grid.Column="2"
+                                              SelectedValuePath="Tag"
+                                              VerticalAlignment="Center"
+                                              SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
+                                        <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
+                                        <ComboBoxItem Content="MEDIA" Tag="1"/>
+                                        <ComboBoxItem Content="FUSION 360" Tag="2"/>
+                                        <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
+                                        <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
 
                             <ScrollViewer Grid.Row="4"
                                           VerticalScrollBarVisibility="Auto"
@@ -777,20 +910,24 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="RUNNING APPS"
+                                    <TextBlock Text="APPLICATIONS"
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="Suggestions"
+                                    <TextBlock Text="Add game/app"
                                                FontSize="22"
                                                FontWeight="SemiBold"
                                                Margin="0,6,0,0"/>
                                 </StackPanel>
-                                <Button Grid.Column="1"
-                                        Content="Refresh"
-                                        Click="RefreshRunningApps_Click"
-                                        VerticalAlignment="Center"
-                                        Margin="0"/>
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <Button Content="Select Application"
+                                            Click="SelectAutoProfileApplication_Click"/>
+                                    <Button Content="Refresh"
+                                            Click="RefreshRunningApps_Click"
+                                            Margin="0"/>
+                                </StackPanel>
                             </Grid>
 
                             <ScrollViewer Grid.Row="2"
@@ -803,7 +940,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
+            <TabItem x:Name="ZmkTab" Header="ZMK Studio">            <TabItem x:Name="ZmkTab" Header="ZMK Studio">
                 <Grid Margin="0,14,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

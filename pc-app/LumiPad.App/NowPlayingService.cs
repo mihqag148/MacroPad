@@ -1,4 +1,5 @@
 using System.IO;
+using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 using Drawing = System.Drawing;
@@ -14,6 +15,14 @@ public sealed record NowPlayingData(
     TimeSpan Position,
     TimeSpan Duration,
     bool IsPlaying,
+    bool CanPrevious,
+    bool CanPlayPause,
+    bool CanNext,
+    bool CanSeek,
+    bool CanRepeat,
+    bool CanShuffle,
+    MediaPlaybackAutoRepeatMode RepeatMode,
+    bool IsShuffleActive,
     byte[]? ArtworkRgb332);
 
 public sealed class NowPlayingService : IDisposable
@@ -160,6 +169,7 @@ public sealed class NowPlayingService : IDisposable
                     await LoadArtworkAsync(media.Thumbnail);
             }
 
+            var controls = playback.Controls;
             var data = new NowPlayingData(
                 SourceLabel(session.SourceAppUserModelId),
                 string.IsNullOrWhiteSpace(media.Title)
@@ -171,6 +181,17 @@ public sealed class NowPlayingService : IDisposable
                 position,
                 duration,
                 playing,
+                controls.IsPreviousEnabled,
+                controls.IsPlayPauseToggleEnabled ||
+                    controls.IsPlayEnabled ||
+                    controls.IsPauseEnabled,
+                controls.IsNextEnabled,
+                controls.IsPlaybackPositionEnabled,
+                controls.IsRepeatEnabled,
+                controls.IsShuffleEnabled,
+                playback.AutoRepeatMode ??
+                    MediaPlaybackAutoRepeatMode.None,
+                playback.IsShuffleActive ?? false,
                 _cachedArtwork);
 
             _lastData = data;
@@ -307,6 +328,77 @@ public sealed class NowPlayingService : IDisposable
 
         await _currentSession.TrySkipNextAsync();
         await Task.Delay(120);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
+    }
+
+    public async Task SeekAsync(TimeSpan relativePosition)
+    {
+        if (_currentSession is null)
+            return;
+
+        var playback = _currentSession.GetPlaybackInfo();
+        if (!playback.Controls.IsPlaybackPositionEnabled)
+            return;
+
+        var timeline = _currentSession.GetTimelineProperties();
+        TimeSpan duration = timeline.EndTime - timeline.StartTime;
+        if (duration < TimeSpan.Zero)
+            duration = TimeSpan.Zero;
+
+        if (relativePosition < TimeSpan.Zero)
+            relativePosition = TimeSpan.Zero;
+        if (duration > TimeSpan.Zero && relativePosition > duration)
+            relativePosition = duration;
+
+        long requestedTicks =
+            (timeline.StartTime + relativePosition).Ticks;
+
+        await _currentSession.TryChangePlaybackPositionAsync(
+            requestedTicks);
+        await Task.Delay(80);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
+    }
+
+    public async Task ToggleShuffleAsync()
+    {
+        if (_currentSession is null)
+            return;
+
+        var playback = _currentSession.GetPlaybackInfo();
+        if (!playback.Controls.IsShuffleEnabled)
+            return;
+
+        bool next = !(playback.IsShuffleActive ?? false);
+        await _currentSession.TryChangeShuffleActiveAsync(next);
+        await Task.Delay(80);
+        await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
+    }
+
+    public async Task CycleRepeatModeAsync()
+    {
+        if (_currentSession is null)
+            return;
+
+        var playback = _currentSession.GetPlaybackInfo();
+        if (!playback.Controls.IsRepeatEnabled)
+            return;
+
+        MediaPlaybackAutoRepeatMode current =
+            playback.AutoRepeatMode ??
+            MediaPlaybackAutoRepeatMode.None;
+
+        MediaPlaybackAutoRepeatMode next = current switch
+        {
+            MediaPlaybackAutoRepeatMode.None =>
+                MediaPlaybackAutoRepeatMode.Track,
+            MediaPlaybackAutoRepeatMode.Track =>
+                MediaPlaybackAutoRepeatMode.List,
+            _ =>
+                MediaPlaybackAutoRepeatMode.None
+        };
+
+        await _currentSession.TryChangeAutoRepeatModeAsync(next);
+        await Task.Delay(80);
         await RefreshCurrentSessionAsync(DateTimeOffset.UtcNow);
     }
 

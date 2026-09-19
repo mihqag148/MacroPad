@@ -9,6 +9,8 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Input;
+using Windows.Media;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using MediaColor = System.Windows.Media.Color;
@@ -48,6 +50,11 @@ public partial class MainWindow : Window
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
     private string? _lastForegroundAppPath;
     private int _lastAppliedAutoProfile = -1;
+    private NowPlayingData? _currentNowPlaying;
+    private bool _mediaSeekDragging;
+    private bool _syncingMediaUi;
+    private bool _volumeMuted;
+    private DateTimeOffset _lastVolumeUiSync = DateTimeOffset.MinValue;
     private List<ActionScriptDefinition> _actionScripts = [];
     private bool _loadingActionScriptUi;
     private readonly HashSet<int> _runningActionIds = [];
@@ -900,35 +907,95 @@ public partial class MainWindow : Window
 
     private void ApplyNowPlaying(NowPlayingData data)
     {
-        TitleText.Text = data.Title;
-        ArtistText.Text = string.IsNullOrWhiteSpace(data.Artist)
-            ? "Unknown Artist"
-            : data.Artist;
+        _currentNowPlaying = data;
+        _syncingMediaUi = true;
 
-        var duration = Math.Max(0.001, data.Duration.TotalMilliseconds);
-        TrackProgress.Value = Math.Clamp(
-            data.Position.TotalMilliseconds / duration,
-            0,
-            1);
-
-        ElapsedText.Text = FormatTime(data.Position);
-        DurationText.Text = FormatTime(data.Duration);
-        PlayButton.Content = data.IsPlaying ? "❚❚" : "▶";
-        PlayButton.ToolTip = data.IsPlaying
-            ? L("Pause", "Tạm dừng")
-            : L("Play", "Phát");
-
-        if (data.ArtworkRgb332 is { Length: 5776 } artwork)
+        try
         {
-            AlbumArtImage.Source = CreateArtworkBitmap(artwork);
-            AlbumArtImage.Visibility = Visibility.Visible;
-            AlbumArtFallback.Visibility = Visibility.Collapsed;
+            SourceText.Text = string.IsNullOrWhiteSpace(data.SourceName)
+                ? "MEDIA SESSION"
+                : data.SourceName;
+            TitleText.Text = data.Title;
+            ArtistText.Text = string.IsNullOrWhiteSpace(data.Artist)
+                ? "Unknown Artist"
+                : data.Artist;
+
+            var durationMs = Math.Max(0.001, data.Duration.TotalMilliseconds);
+            double progress = Math.Clamp(
+                data.Position.TotalMilliseconds / durationMs,
+                0,
+                1);
+
+            if (!_mediaSeekDragging)
+                TrackSlider.Value = progress;
+
+            TrackSlider.IsEnabled =
+                data.CanSeek && data.Duration > TimeSpan.Zero;
+
+            ElapsedText.Text = FormatTime(data.Position);
+            TimeSpan remaining = data.Duration - data.Position;
+            DurationText.Text = data.Duration > TimeSpan.Zero
+                ? $"-{FormatTime(remaining)}"
+                : "0:00";
+
+            PlayButton.Content = data.IsPlaying ? "❚❚" : "▶";
+            PlayButton.ToolTip = data.IsPlaying
+                ? L("Pause", "Tạm dừng")
+                : L("Play", "Phát");
+
+            PrevButton.IsEnabled = data.CanPrevious;
+            PlayButton.IsEnabled = data.CanPlayPause;
+            NextButton.IsEnabled = data.CanNext;
+            ShuffleButton.IsEnabled = data.CanShuffle;
+            RepeatButton.IsEnabled = data.CanRepeat;
+
+            RepeatButton.Content = data.RepeatMode switch
+            {
+                MediaPlaybackAutoRepeatMode.Track => "↻1",
+                MediaPlaybackAutoRepeatMode.List => "↻∞",
+                _ => "↻"
+            };
+
+            RepeatButton.ToolTip = data.RepeatMode switch
+            {
+                MediaPlaybackAutoRepeatMode.Track =>
+                    L("Repeat one · click for repeat all", "Lặp 1 bài · bấm để lặp toàn bộ"),
+                MediaPlaybackAutoRepeatMode.List =>
+                    L("Repeat all · click to turn off", "Lặp toàn bộ · bấm để tắt"),
+                _ =>
+                    L("Repeat off · click for repeat one", "Đang tắt lặp · bấm để lặp 1 bài")
+            };
+
+            ShuffleButton.ToolTip = data.IsShuffleActive
+                ? L("Shuffle on", "Xáo trộn đang bật")
+                : L("Shuffle off", "Xáo trộn đang tắt");
+
+            SetMediaModeButton(
+                ShuffleButton,
+                data.CanShuffle && data.IsShuffleActive);
+            SetMediaModeButton(
+                RepeatButton,
+                data.CanRepeat &&
+                data.RepeatMode != MediaPlaybackAutoRepeatMode.None);
+
+            if (data.ArtworkRgb332 is { Length: 5776 } artwork)
+            {
+                AlbumArtImage.Source = CreateArtworkBitmap(artwork);
+                AlbumArtImage.Visibility = Visibility.Visible;
+                AlbumArtFallback.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                AlbumArtImage.Source = null;
+                AlbumArtImage.Visibility = Visibility.Collapsed;
+                AlbumArtFallback.Visibility = Visibility.Visible;
+            }
+
+            SyncSystemVolumeUi();
         }
-        else
+        finally
         {
-            AlbumArtImage.Source = null;
-            AlbumArtImage.Visibility = Visibility.Collapsed;
-            AlbumArtFallback.Visibility = Visibility.Visible;
+            _syncingMediaUi = false;
         }
 
         _serial.SendNowPlaying(data);
@@ -936,18 +1003,80 @@ public partial class MainWindow : Window
 
     private void ClearNowPlaying()
     {
-        TitleText.Text = "Nothing Playing";
-        ArtistText.Text = "LumiPad";
-        AlbumArtImage.Source = null;
-        AlbumArtImage.Visibility = Visibility.Collapsed;
-        AlbumArtFallback.Visibility = Visibility.Visible;
-        TrackProgress.Value = 0;
-        ElapsedText.Text = "0:00";
-        DurationText.Text = "0:00";
-        PlayButton.Content = "▶";
-        PlayButton.ToolTip = L("Play", "Phát");
+        _currentNowPlaying = null;
+        _mediaSeekDragging = false;
+        _syncingMediaUi = true;
+
+        try
+        {
+            SourceText.Text = "MEDIA SESSION";
+            TitleText.Text = "Nothing Playing";
+            ArtistText.Text = "LumiPad";
+            AlbumArtImage.Source = null;
+            AlbumArtImage.Visibility = Visibility.Collapsed;
+            AlbumArtFallback.Visibility = Visibility.Visible;
+
+            TrackSlider.Value = 0;
+            TrackSlider.IsEnabled = false;
+            ElapsedText.Text = "0:00";
+            DurationText.Text = "-0:00";
+
+            PrevButton.IsEnabled = false;
+            PlayButton.IsEnabled = false;
+            NextButton.IsEnabled = false;
+            ShuffleButton.IsEnabled = false;
+            RepeatButton.IsEnabled = false;
+
+            PlayButton.Content = "▶";
+            PlayButton.ToolTip = L("Play", "Phát");
+            ShuffleButton.Content = "🔀";
+            RepeatButton.Content = "↻";
+            SetMediaModeButton(ShuffleButton, false);
+            SetMediaModeButton(RepeatButton, false);
+            SyncSystemVolumeUi(force: true);
+        }
+        finally
+        {
+            _syncingMediaUi = false;
+        }
 
         _serial.ClearNowPlaying();
+    }
+
+    private void SetMediaModeButton(
+        System.Windows.Controls.Button button,
+        bool active)
+    {
+        button.Background =
+            TryFindResource(active ? "Selection" : "ControlBg")
+                as System.Windows.Media.Brush;
+        button.BorderBrush =
+            TryFindResource(active ? "Accent" : "Line")
+                as System.Windows.Media.Brush;
+    }
+
+    private void SyncSystemVolumeUi(bool force = false)
+    {
+        if (!force &&
+            DateTimeOffset.UtcNow - _lastVolumeUiSync <
+                TimeSpan.FromMilliseconds(650))
+        {
+            return;
+        }
+
+        _lastVolumeUiSync = DateTimeOffset.UtcNow;
+
+        if (!SystemVolumeService.TryGetState(out SystemVolumeState state))
+            return;
+
+        VolumeSlider.Value = state.Percent;
+        VolumeText.Text = $"{Math.Round(state.Percent):0}%";
+        _volumeMuted = state.IsMuted;
+        MuteButton.Content =
+            state.IsMuted || state.Percent <= 0.5 ? "🔇" : "🔊";
+        MuteButton.ToolTip = state.IsMuted
+            ? L("Unmute", "Bật tiếng")
+            : L("Mute", "Tắt tiếng");
     }
 
     private static BitmapSource CreateArtworkBitmap(byte[] rgb332) =>
@@ -1736,6 +1865,136 @@ public partial class MainWindow : Window
     private async void NextButton_Click(object sender, RoutedEventArgs e) =>
         await _nowPlaying.NextAsync();
 
+    private async void ShuffleButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await _nowPlaying.ToggleShuffleAsync();
+
+    private async void RepeatButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await _nowPlaying.CycleRepeatModeAsync();
+
+    private void TrackSlider_PreviewMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (_currentNowPlaying is not { CanSeek: true } data ||
+            data.Duration <= TimeSpan.Zero ||
+            sender is not Slider slider)
+        {
+            return;
+        }
+
+        _mediaSeekDragging = true;
+        SetSliderValueFromPointer(slider, e);
+        UpdateSeekPreview(slider.Value);
+    }
+
+    private async void TrackSlider_PreviewMouseLeftButtonUp(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (!_mediaSeekDragging ||
+            _currentNowPlaying is not { CanSeek: true } data ||
+            data.Duration <= TimeSpan.Zero ||
+            sender is not Slider slider)
+        {
+            _mediaSeekDragging = false;
+            return;
+        }
+
+        SetSliderValueFromPointer(slider, e);
+        double fraction = Math.Clamp(slider.Value, 0, 1);
+        _mediaSeekDragging = false;
+
+        await _nowPlaying.SeekAsync(
+            TimeSpan.FromTicks(
+                (long)Math.Round(data.Duration.Ticks * fraction)));
+    }
+
+    private void TrackSlider_ValueChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_mediaSeekDragging)
+            UpdateSeekPreview(e.NewValue);
+    }
+
+    private static void SetSliderValueFromPointer(
+        Slider slider,
+        MouseButtonEventArgs e)
+    {
+        if (slider.ActualWidth <= 1)
+            return;
+
+        double fraction =
+            Math.Clamp(
+                e.GetPosition(slider).X / slider.ActualWidth,
+                0,
+                1);
+        slider.Value =
+            slider.Minimum +
+            (slider.Maximum - slider.Minimum) * fraction;
+    }
+
+    private void UpdateSeekPreview(double fraction)
+    {
+        if (_currentNowPlaying is not { } data ||
+            data.Duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        fraction = Math.Clamp(fraction, 0, 1);
+        TimeSpan preview =
+            TimeSpan.FromTicks(
+                (long)Math.Round(data.Duration.Ticks * fraction));
+        ElapsedText.Text = FormatTime(preview);
+        DurationText.Text =
+            $"-{FormatTime(data.Duration - preview)}";
+    }
+
+    private void VolumeSlider_ValueChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady || _syncingMediaUi)
+            return;
+
+        double percent = Math.Clamp(e.NewValue, 0, 100);
+        VolumeText.Text = $"{Math.Round(percent):0}%";
+
+        if (SystemVolumeService.TrySetVolume(percent))
+        {
+            if (_volumeMuted && percent > 0)
+            {
+                SystemVolumeService.TrySetMute(false);
+                _volumeMuted = false;
+            }
+
+            MuteButton.Content =
+                percent <= 0.5 || _volumeMuted ? "🔇" : "🔊";
+        }
+    }
+
+    private void MuteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!SystemVolumeService.TrySetMute(!_volumeMuted))
+            return;
+
+        _volumeMuted = !_volumeMuted;
+        _syncingMediaUi = true;
+        try
+        {
+            SyncSystemVolumeUi(force: true);
+        }
+        finally
+        {
+            _syncingMediaUi = false;
+        }
+    }
+
     private static string ProfileName(int index) =>
         index switch
         {
@@ -1876,7 +2135,7 @@ public partial class MainWindow : Window
             {
                 Name = string.IsNullOrWhiteSpace(name) ? "Application" : name,
                 ExecutablePath = path,
-                ProfileIndex = Math.Clamp(_rgbProfileIndex, 0, 4)
+                ProfileIndex = Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4)
             });
 
             AutoProfileService.Save(_autoProfileSettings);
@@ -1921,7 +2180,7 @@ public partial class MainWindow : Window
         if (AutoProfileMappingCountText is not null)
         {
             AutoProfileMappingCountText.Text =
-                $"{_autoProfileSettings.Mappings.Count} / 10 app profiles";
+                $"{_autoProfileSettings.Mappings.Count} / 10 linked apps";
         }
 
         if (_autoProfileSettings.Mappings.Count == 0)
@@ -1929,17 +2188,18 @@ public partial class MainWindow : Window
             AutoProfileMappingsPanel.Children.Add(new TextBlock
             {
                 Text = L(
-                    "No application mappings yet. Select an EXE or add a running app.",
-                    "Chưa có ứng dụng được gán. Chọn file EXE hoặc thêm ứng dụng đang chạy."),
+                    "Add an application from the list on the right, then choose one of your existing profiles here.",
+                    "Thêm ứng dụng từ danh sách bên phải, sau đó chọn một profile có sẵn tại đây."),
                 Foreground =
                     TryFindResource("Muted") as System.Windows.Media.Brush,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 8, 0, 0)
+                Margin = new Thickness(2, 4, 4, 0)
             });
             return;
         }
 
-        foreach (AutoProfileMapping mapping in _autoProfileSettings.Mappings.ToArray())
+        foreach (AutoProfileMapping mapping in
+                 _autoProfileSettings.Mappings.ToArray())
         {
             var row = new Border
             {
@@ -1954,17 +2214,52 @@ public partial class MainWindow : Window
             };
 
             var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(48)
+            });
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
-                Width = GridLength.Auto
+                Width = new GridLength(178)
             });
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
                 Width = GridLength.Auto
             });
 
-            var text = new StackPanel();
+            string initial =
+                string.IsNullOrWhiteSpace(mapping.Name)
+                    ? "•"
+                    : mapping.Name.Trim()[0].ToString().ToUpperInvariant();
+
+            var icon = new Border
+            {
+                Width = 40,
+                Height = 40,
+                CornerRadius = new CornerRadius(10),
+                Background =
+                    TryFindResource("ControlBg") as System.Windows.Media.Brush,
+                BorderBrush =
+                    TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            icon.Child = new TextBlock
+            {
+                Text = initial,
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            grid.Children.Add(icon);
+
+            var text = new StackPanel
+            {
+                Margin = new Thickness(4, 0, 14, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
             text.Children.Add(new TextBlock
             {
                 Text = mapping.Name,
@@ -1977,20 +2272,25 @@ public partial class MainWindow : Window
                 Foreground =
                     TryFindResource("Muted") as System.Windows.Media.Brush,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = 520,
-                Margin = new Thickness(0, 3, 14, 0)
+                MaxWidth = 470,
+                FontSize = 11,
+                Margin = new Thickness(0, 3, 0, 0)
             });
+            Grid.SetColumn(text, 1);
             grid.Children.Add(text);
 
             System.Windows.Controls.ComboBox profile =
                 CreateProfileSelector(mapping.ProfileIndex);
+            profile.Width = 166;
             profile.Tag = mapping;
-            profile.Margin = new Thickness(8, 0, 8, 0);
+            profile.Margin = new Thickness(0, 0, 8, 0);
             profile.SelectionChanged += (_, _) =>
             {
                 if (profile.Tag is not AutoProfileMapping current ||
                     profile.SelectedItem is not ComboBoxItem selected ||
-                    !int.TryParse(selected.Tag?.ToString(), out int index))
+                    !int.TryParse(
+                        selected.Tag?.ToString(),
+                        out int index))
                 {
                     return;
                 }
@@ -2000,7 +2300,7 @@ public partial class MainWindow : Window
                 _lastAppliedAutoProfile = -1;
                 PollAutoProfile(force: true);
             };
-            Grid.SetColumn(profile, 1);
+            Grid.SetColumn(profile, 2);
             grid.Children.Add(profile);
 
             var remove = new System.Windows.Controls.Button
@@ -2025,7 +2325,7 @@ public partial class MainWindow : Window
                 _lastAppliedAutoProfile = -1;
                 PollAutoProfile(force: true);
             };
-            Grid.SetColumn(remove, 2);
+            Grid.SetColumn(remove, 3);
             grid.Children.Add(remove);
 
             row.Child = grid;
@@ -2060,13 +2360,47 @@ public partial class MainWindow : Window
             };
 
             var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(46)
+            });
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
                 Width = GridLength.Auto
             });
 
-            var text = new StackPanel();
+            string initial =
+                string.IsNullOrWhiteSpace(app.Name)
+                    ? "•"
+                    : app.Name.Trim()[0].ToString().ToUpperInvariant();
+
+            var icon = new Border
+            {
+                Width = 38,
+                Height = 38,
+                CornerRadius = new CornerRadius(9),
+                Background =
+                    TryFindResource("ControlBg") as System.Windows.Media.Brush,
+                BorderBrush =
+                    TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            icon.Child = new TextBlock
+            {
+                Text = initial,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            grid.Children.Add(icon);
+
+            var text = new StackPanel
+            {
+                Margin = new Thickness(4, 0, 12, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
             text.Children.Add(new TextBlock
             {
                 Text = app.Name,
@@ -2079,9 +2413,10 @@ public partial class MainWindow : Window
                     TryFindResource("Muted") as System.Windows.Media.Brush,
                 FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = 390,
-                Margin = new Thickness(0, 3, 12, 0)
+                MaxWidth = 330,
+                Margin = new Thickness(0, 3, 0, 0)
             });
+            Grid.SetColumn(text, 1);
             grid.Children.Add(text);
 
             var add = new System.Windows.Controls.Button
@@ -2089,6 +2424,7 @@ public partial class MainWindow : Window
                 Content = added ? L("Added", "Đã thêm") : L("Add", "Thêm"),
                 IsEnabled = !added,
                 Tag = app.ExecutablePath,
+                MinWidth = 68,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0)
             };
@@ -2097,7 +2433,7 @@ public partial class MainWindow : Window
                 if (add.Tag is string path)
                     AddAutoProfileMapping(path);
             };
-            Grid.SetColumn(add, 1);
+            Grid.SetColumn(add, 2);
             grid.Children.Add(add);
 
             row.Child = grid;
