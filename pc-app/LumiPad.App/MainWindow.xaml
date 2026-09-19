@@ -392,12 +392,6 @@
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="11"
                                            Margin="17,3,0,0"/>
-                                <TextBlock x:Name="PanelInfoText"
-                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
-                                           Foreground="{DynamicResource Muted}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Margin="17,3,0,0"/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="1"
@@ -894,12 +888,30 @@
                             BorderThickness="1"
                             CornerRadius="24"
                             Padding="20">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="12"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="DISPLAY"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Muted}"/>
+                            <TextBlock Text="Panel timing"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,10"/>
+                            <Border Background="{DynamicResource ControlBg}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="12">
+                                <TextBlock x:Name="PanelInfoText"
+                                           Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"/>
+                            </Border>
+
+                            <Border Height="1"
+                                    Background="{DynamicResource Line}"
+                                    Margin="0,18,0,18"/>
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -916,30 +928,48 @@
                                                FontWeight="SemiBold"
                                                Margin="0,4,0,0"/>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button Content="Copy log"
-                                            Click="CopyLog_Click"/>
-                                    <Button Content="Clear log"
-                                            Click="ClearLog_Click"
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <Button x:Name="ViewLogButton"
+                                            Content="View log"
+                                            Click="ToggleLog_Click"/>
+                                    <Button Content="Save log"
+                                            Click="SaveLog_Click"
                                             Margin="0"/>
                                 </StackPanel>
                             </Grid>
 
-                            <TextBox x:Name="LogTextBox"
-                                     Grid.Row="2"
-                                     IsReadOnly="True"
-                                     AcceptsReturn="True"
-                                     TextWrapping="NoWrap"
-                                     VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Auto"
-                                     FontFamily="Consolas"
-                                     FontSize="12"
-                                     Background="{DynamicResource ControlBg}"
-                                     Foreground="{DynamicResource TextPrimary}"
-                                     BorderBrush="{DynamicResource Line}"
-                                     BorderThickness="1"
-                                     Padding="12"/>
-                        </Grid>
+                            <Border x:Name="LogPanel"
+                                    Visibility="Collapsed"
+                                    Margin="0,14,0,0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,0,0,8">
+                                        <Button Content="Copy log"
+                                                Click="CopyLog_Click"/>
+                                        <Button Content="Clear log"
+                                                Click="ClearLog_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="LogTextBox"
+                                             Height="330"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="NoWrap"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             FontFamily="Consolas"
+                                             FontSize="12"
+                                             Background="{DynamicResource ControlBg}"
+                                             Foreground="{DynamicResource TextPrimary}"
+                                             BorderBrush="{DynamicResource Line}"
+                                             BorderThickness="1"
+                                             Padding="12"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </Border>
                 </Grid>
             </TabItem>
