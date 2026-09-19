@@ -43,18 +43,8 @@ public partial class MainWindow : Window
     private readonly List<string> _logLines = new();
     private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
-    private const int RgbLedCount = 4;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
-    private bool _rgbPixelMode;
-    private int _selectedRgbLed = -1;
-    private MediaColor[] _rgbLedColors =
-    [
-        MediaColor.FromRgb(255, 120, 0),
-        MediaColor.FromRgb(255, 120, 0),
-        MediaColor.FromRgb(255, 120, 0),
-        MediaColor.FromRgb(255, 120, 0),
-    ];
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
     private int _rgbBrightness = 25;
@@ -290,11 +280,6 @@ public partial class MainWindow : Window
         ["Brightness"] = "Độ sáng",
         ["Effect Speed"] = "Tốc độ hiệu ứng",
         ["Selected color"] = "Màu đã chọn",
-        ["LED MAP"] = "SƠ ĐỒ LED",
-        ["All LEDs"] = "Tất cả LED",
-        ["All LEDs selected"] = "Đang chọn tất cả LED",
-        ["Per-LED Static"] = "Tĩnh từng LED",
-        ["Tip: select LED 1–4 on the board, then choose a color."] = "Mẹo: chọn LED 1–4 trên bàn phím rồi chọn màu.",
         ["ZMK Studio"] = "ZMK Studio",
         ["Embedded zmk.studio"] = "ZMK Studio tích hợp",
         ["Reload"] = "Tải lại",
@@ -505,38 +490,21 @@ public partial class MainWindow : Window
             "LumiPad",
             "settings.json");
 
-    private sealed class RgbLedColorSetting
-    {
-        public byte R { get; set; }
-        public byte G { get; set; }
-        public byte B { get; set; }
-    }
-
     private sealed class RgbProfileSetting
     {
         public int Effect { get; set; }
         public byte R { get; set; }
         public byte G { get; set; }
         public byte B { get; set; }
-        public bool PixelMode { get; set; }
-        public RgbLedColorSetting[]? Pixels { get; set; }
     }
-
-    private static RgbLedColorSetting[] SolidPixelSettings(
-        byte r,
-        byte g,
-        byte b) =>
-        Enumerable.Range(0, RgbLedCount)
-            .Select(_ => new RgbLedColorSetting { R = r, G = g, B = b })
-            .ToArray();
 
     private static RgbProfileSetting[] CreateDefaultRgbProfiles() =>
     [
-        new() { Effect = 0, R = 255, G = 120, B = 0, Pixels = SolidPixelSettings(255, 120, 0) },
-        new() { Effect = 1, R = 180, G = 40, B = 255, Pixels = SolidPixelSettings(180, 40, 255) },
-        new() { Effect = 2, R = 255, G = 90, B = 0, Pixels = SolidPixelSettings(255, 90, 0) },
-        new() { Effect = 3, R = 0, G = 170, B = 255, Pixels = SolidPixelSettings(0, 170, 255) },
-        new() { Effect = 3, R = 80, G = 255, B = 100, Pixels = SolidPixelSettings(80, 255, 100) },
+        new() { Effect = 0, R = 255, G = 120, B = 0 },
+        new() { Effect = 1, R = 180, G = 40, B = 255 },
+        new() { Effect = 2, R = 255, G = 90, B = 0 },
+        new() { Effect = 3, R = 0, G = 170, B = 255 },
+        new() { Effect = 3, R = 80, G = 255, B = 100 },
     ];
 
     private sealed class AppSettings
@@ -549,8 +517,6 @@ public partial class MainWindow : Window
         public byte R { get; set; } = 255;
         public byte G { get; set; } = 120;
         public byte B { get; set; }
-        public bool RgbPixelMode { get; set; }
-        public RgbLedColorSetting[]? RgbLedColors { get; set; }
         public RgbProfileSetting[]? RgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
@@ -579,22 +545,6 @@ public partial class MainWindow : Window
             _r = settings.R;
             _g = settings.G;
             _b = settings.B;
-            _rgbPixelMode = settings.RgbPixelMode;
-
-            if (settings.RgbLedColors is { Length: >= RgbLedCount })
-            {
-                _rgbLedColors = settings.RgbLedColors
-                    .Take(RgbLedCount)
-                    .Select(p => MediaColor.FromRgb(p.R, p.G, p.B))
-                    .ToArray();
-            }
-            else
-            {
-                _rgbLedColors =
-                    Enumerable.Range(0, RgbLedCount)
-                        .Select(_ => MediaColor.FromRgb(_r, _g, _b))
-                        .ToArray();
-            }
 
             if (settings.RgbProfiles is { Length: >= 5 })
             {
@@ -605,18 +555,7 @@ public partial class MainWindow : Window
                         Effect = Math.Clamp(p.Effect, 0, 4),
                         R = p.R,
                         G = p.G,
-                        B = p.B,
-                        PixelMode = p.PixelMode,
-                        Pixels = p.Pixels is { Length: >= RgbLedCount }
-                            ? p.Pixels.Take(RgbLedCount)
-                                .Select(px => new RgbLedColorSetting
-                                {
-                                    R = px.R,
-                                    G = px.G,
-                                    B = px.B
-                                })
-                                .ToArray()
-                            : SolidPixelSettings(p.R, p.G, p.B)
+                        B = p.B
                     })
                     .ToArray();
             }
@@ -649,32 +588,13 @@ public partial class MainWindow : Window
                 R = _r,
                 G = _g,
                 B = _b,
-                RgbPixelMode = _rgbPixelMode,
-                RgbLedColors = _rgbLedColors
-                    .Select(px => new RgbLedColorSetting
-                    {
-                        R = px.R,
-                        G = px.G,
-                        B = px.B
-                    })
-                    .ToArray(),
                 RgbProfiles = _rgbProfiles
                     .Select(p => new RgbProfileSetting
                     {
                         Effect = p.Effect,
                         R = p.R,
                         G = p.G,
-                        B = p.B,
-                        PixelMode = p.PixelMode,
-                        Pixels = (p.Pixels ?? SolidPixelSettings(p.R, p.G, p.B))
-                            .Take(RgbLedCount)
-                            .Select(px => new RgbLedColorSetting
-                            {
-                                R = px.R,
-                                G = px.G,
-                                B = px.B
-                            })
-                            .ToArray()
+                        B = p.B
                     })
                     .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
@@ -708,8 +628,6 @@ public partial class MainWindow : Window
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         UpdateRgbReadout();
-        UpdateRgbLedPreviewUi();
-        UpdateRgbProfileTabs();
     }
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
@@ -1741,36 +1659,6 @@ public partial class MainWindow : Window
     private async void NextButton_Click(object sender, RoutedEventArgs e) =>
         await _nowPlaying.NextAsync();
 
-    private static string RgbProfileName(int index) =>
-        index switch
-        {
-            0 => "OFFICE",
-            1 => "MEDIA",
-            2 => "FUSION 360",
-            3 => "CUSTOM 4",
-            4 => "CUSTOM 5",
-            _ => $"PROFILE {index + 1}"
-        };
-
-    private void RgbProfileTab_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button button ||
-            !int.TryParse(button.Tag?.ToString(), out int index))
-        {
-            return;
-        }
-
-        index = Math.Clamp(index, 0, _rgbProfiles.Length - 1);
-
-        if (_rgbProfileIndex == index)
-        {
-            LoadRgbProfile(index);
-            return;
-        }
-
-        RgbProfileCombo.SelectedValue = index.ToString();
-    }
-
     private void RgbProfileCombo_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -1782,11 +1670,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        LoadRgbProfile(index);
-    }
-
-    private void LoadRgbProfile(int index)
-    {
         _rgbProfileIndex = Math.Clamp(index, 0, _rgbProfiles.Length - 1);
         var profile = _rgbProfiles[_rgbProfileIndex];
 
@@ -1794,202 +1677,31 @@ public partial class MainWindow : Window
         _r = profile.R;
         _g = profile.G;
         _b = profile.B;
-        _rgbPixelMode = profile.PixelMode;
-
-        var pixels =
-            profile.Pixels is { Length: >= RgbLedCount }
-                ? profile.Pixels
-                : SolidPixelSettings(profile.R, profile.G, profile.B);
-
-        _rgbLedColors = pixels
-            .Take(RgbLedCount)
-            .Select(px => MediaColor.FromRgb(px.R, px.G, px.B))
-            .ToArray();
-
-        _selectedRgbLed = -1;
-        UpdateRgbReadout();
-        UpdateRgbLedPreviewUi();
-        UpdateRgbProfileTabs();
-    }
-
-    private void UpdateRgbProfileTabs()
-    {
-        if (RgbProfileTab0 is null)
-            return;
-
-        var buttons = new[]
-        {
-            RgbProfileTab0,
-            RgbProfileTab1,
-            RgbProfileTab2,
-            RgbProfileTab3,
-            RgbProfileTab4
-        };
-        var dots = new[]
-        {
-            RgbProfileDot0,
-            RgbProfileDot1,
-            RgbProfileDot2,
-            RgbProfileDot3,
-            RgbProfileDot4
-        };
-
-        var accent =
-            TryFindResource("Accent") as System.Windows.Media.Brush ??
-            new SolidColorBrush(MediaColor.FromRgb(255, 122, 0));
-        var line =
-            TryFindResource("Line") as System.Windows.Media.Brush ??
-            new SolidColorBrush(MediaColor.FromRgb(58, 58, 60));
-
-        for (int i = 0; i < buttons.Length; i++)
-        {
-            buttons[i].BorderBrush =
-                i == _rgbProfileIndex ? accent : line;
-
-            var profile = _rgbProfiles[i];
-            MediaColor color;
-
-            if (profile.PixelMode &&
-                profile.Pixels is { Length: > 0 })
-            {
-                color = MediaColor.FromRgb(
-                    profile.Pixels[0].R,
-                    profile.Pixels[0].G,
-                    profile.Pixels[0].B);
-            }
-            else
-            {
-                color = MediaColor.FromRgb(
-                    profile.R,
-                    profile.G,
-                    profile.B);
-            }
-
-            dots[i].Fill = new SolidColorBrush(color);
-        }
-
-        if (RgbCurrentProfileText is not null)
-            RgbCurrentProfileText.Text = RgbProfileName(_rgbProfileIndex);
-    }
-
-    private void RgbLedSelector_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button button ||
-            !int.TryParse(button.Tag?.ToString(), out int index))
-        {
-            return;
-        }
-
-        _selectedRgbLed =
-            index < 0 ? -1 : Math.Clamp(index, 0, RgbLedCount - 1);
-
-        if (_selectedRgbLed >= 0)
-        {
-            MediaColor color = _rgbLedColors[_selectedRgbLed];
-            _r = color.R;
-            _g = color.G;
-            _b = color.B;
-        }
 
         UpdateRgbReadout();
-        UpdateRgbLedPreviewUi();
-    }
-
-    private void UpdateRgbLedPreviewUi()
-    {
-        if (RgbLedPreview0 is null)
-            return;
-
-        var previews = new[]
-        {
-            RgbLedPreview0,
-            RgbLedPreview1,
-            RgbLedPreview2,
-            RgbLedPreview3
-        };
-        var buttons = new[]
-        {
-            RgbLedButton0,
-            RgbLedButton1,
-            RgbLedButton2,
-            RgbLedButton3
-        };
-
-        var accent =
-            TryFindResource("Accent") as System.Windows.Media.Brush ??
-            new SolidColorBrush(MediaColor.FromRgb(255, 122, 0));
-        var line =
-            TryFindResource("Line") as System.Windows.Media.Brush ??
-            new SolidColorBrush(MediaColor.FromRgb(58, 58, 60));
-
-        for (int i = 0; i < RgbLedCount; i++)
-        {
-            previews[i].Fill =
-                new SolidColorBrush(_rgbLedColors[i]);
-            buttons[i].BorderBrush =
-                i == _selectedRgbLed ? accent : line;
-        }
-
-        if (RgbLedSelectionText is not null)
-        {
-            RgbLedSelectionText.Text =
-                _selectedRgbLed < 0
-                    ? L("All LEDs selected", "Đang chọn tất cả LED")
-                    : $"LED {_selectedRgbLed + 1}";
-        }
     }
 
     private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
     {
         int index = Math.Clamp(_rgbProfileIndex, 0, _rgbProfiles.Length - 1);
-
-        var pixelSettings = _rgbLedColors
-            .Select(px => new RgbLedColorSetting
-            {
-                R = px.R,
-                G = px.G,
-                B = px.B
-            })
-            .ToArray();
-
         _rgbProfiles[index] = new RgbProfileSetting
         {
             Effect = Math.Clamp(_rgbEffect, 0, 4),
             R = _r,
             G = _g,
-            B = _b,
-            PixelMode = _rgbPixelMode,
-            Pixels = pixelSettings
+            B = _b
         };
 
         SaveAppSettings();
-        UpdateRgbProfileTabs();
 
         if (_serial.IsConnected)
         {
-            var profile = _rgbProfiles[index];
-
             _serial.SetRgbProfile(
                 index,
-                profile.Effect,
-                profile.R,
-                profile.G,
-                profile.B);
-
-            _serial.SetRgbProfilePixelMode(
-                index,
-                profile.PixelMode);
-
-            for (int led = 0; led < RgbLedCount; led++)
-            {
-                var px = pixelSettings[led];
-                _serial.SetRgbProfilePixel(
-                    index,
-                    led,
-                    px.R,
-                    px.G,
-                    px.B);
-            }
+                _rgbProfiles[index].Effect,
+                _rgbProfiles[index].R,
+                _rgbProfiles[index].G,
+                _rgbProfiles[index].B);
         }
 
         BottomStatus.Text = L(
@@ -2115,43 +1827,14 @@ public partial class MainWindow : Window
 
     private void ApplySelectedRgbColor(bool send)
     {
-        MediaColor color = MediaColor.FromRgb(_r, _g, _b);
-
-        _rgbAuto = false;
-        _rgbEffect = 3;
-
-        if (_selectedRgbLed >= 0)
-        {
-            _rgbPixelMode = true;
-            _rgbLedColors[_selectedRgbLed] = color;
-        }
-        else
-        {
-            _rgbPixelMode = false;
-            for (int i = 0; i < RgbLedCount; i++)
-                _rgbLedColors[i] = color;
-        }
-
         UpdateRgbReadout();
-        UpdateRgbLedPreviewUi();
 
         if (send && _uiReady)
         {
+            _rgbAuto = false;
+            _rgbEffect = 3;
             SaveAppSettings();
-
-            if (_rgbPixelMode)
-            {
-                _serial.SetRgbPixelMode(true);
-                _serial.SetRgbPixel(
-                    _selectedRgbLed,
-                    _r,
-                    _g,
-                    _b);
-            }
-            else
-            {
-                _serial.SetSolid(_r, _g, _b);
-            }
+            _serial.SetSolid(_r, _g, _b);
         }
     }
 
@@ -2187,36 +1870,12 @@ public partial class MainWindow : Window
         {
             _rgbAuto = false;
             _rgbEffect = 3;
-
-            if (_rgbPixelMode)
-            {
-                _serial.SetRgbPixelMode(true);
-                for (int i = 0; i < RgbLedCount; i++)
-                {
-                    MediaColor px = _rgbLedColors[i];
-                    _serial.SetRgbPixel(i, px.R, px.G, px.B);
-                }
-            }
-            else
-            {
-                _serial.SetSolid(_r, _g, _b);
-            }
+            _serial.SetSolid(_r, _g, _b);
         }
         else if (mode == "Reactive")
         {
             _rgbAuto = false;
             _rgbEffect = 4;
-
-            if (_rgbPixelMode)
-            {
-                _serial.SetRgbPixelMode(true);
-                for (int i = 0; i < RgbLedCount; i++)
-                {
-                    MediaColor px = _rgbLedColors[i];
-                    _serial.SetRgbPixel(i, px.R, px.G, px.B);
-                }
-            }
-
             _serial.SetEffect(4);
         }
 
@@ -2235,31 +1894,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (tag == "PIXEL")
-        {
-            _rgbAuto = false;
-            _rgbEffect = 3;
-            _rgbPixelMode = true;
-            SaveAppSettings();
-            UpdateRgbLedPreviewUi();
-
-            _serial.SetRgbPixelMode(true);
-            for (int i = 0; i < RgbLedCount; i++)
-            {
-                MediaColor px = _rgbLedColors[i];
-                _serial.SetRgbPixel(i, px.R, px.G, px.B);
-            }
-            return;
-        }
-
         if (!int.TryParse(tag, out int effect))
             return;
 
         _rgbAuto = false;
         _rgbEffect = effect;
-
-        if (effect == 3)
-            _rgbPixelMode = false;
 
         SaveAppSettings();
 
@@ -2295,39 +1934,12 @@ public partial class MainWindow : Window
         _rgbBrightness = (int)Math.Round(BrightnessSlider.Value);
         _rgbSpeed = (int)Math.Round(RgbSpeedSlider.Value);
 
-        // Send all profile RGB state, including optional per-LED colors.
+        // Preserve the known-working pre-redesign protocol: individual
+        // commands are sent in a deterministic order instead of RGB|STATE.
         for (int i = 0; i < _rgbProfiles.Length; i++)
         {
             var profile = _rgbProfiles[i];
-            _serial.SetRgbProfile(
-                i,
-                profile.Effect,
-                profile.R,
-                profile.G,
-                profile.B);
-
-            _serial.SetRgbProfilePixelMode(
-                i,
-                profile.PixelMode);
-
-            var pixels =
-                profile.Pixels is { Length: >= RgbLedCount }
-                    ? profile.Pixels
-                    : SolidPixelSettings(
-                        profile.R,
-                        profile.G,
-                        profile.B);
-
-            for (int led = 0; led < RgbLedCount; led++)
-            {
-                var px = pixels[led];
-                _serial.SetRgbProfilePixel(
-                    i,
-                    led,
-                    px.R,
-                    px.G,
-                    px.B);
-            }
+            _serial.SetRgbProfile(i, profile.Effect, profile.R, profile.G, profile.B);
         }
 
         _serial.SetEnabled(_rgbEnabled);
@@ -2335,44 +1947,11 @@ public partial class MainWindow : Window
         _serial.SetSpeed(_rgbSpeed);
 
         if (_rgbAuto)
-        {
             _serial.SetAutoLayer();
-        }
-        else if (_rgbEffect == 3 && _rgbPixelMode)
-        {
-            _serial.SetRgbPixelMode(true);
-            for (int led = 0; led < RgbLedCount; led++)
-            {
-                MediaColor px = _rgbLedColors[led];
-                _serial.SetRgbPixel(
-                    led,
-                    px.R,
-                    px.G,
-                    px.B);
-            }
-        }
         else if (_rgbEffect == 3)
-        {
             _serial.SetSolid(_r, _g, _b);
-        }
         else
-        {
-            if (_rgbPixelMode)
-            {
-                _serial.SetRgbPixelMode(true);
-                for (int led = 0; led < RgbLedCount; led++)
-                {
-                    MediaColor px = _rgbLedColors[led];
-                    _serial.SetRgbPixel(
-                        led,
-                        px.R,
-                        px.G,
-                        px.B);
-                }
-            }
-
             _serial.SetEffect(_rgbEffect);
-        }
     }
 
     private void SetScreensaverUploadState(
