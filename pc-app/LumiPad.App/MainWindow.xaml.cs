@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private bool _zmkInitialized;
     private bool _autoReconnectEnabled = true;
     private string _connectionPreference = "auto";
+    private bool _keyboardSleeping;
     private readonly CancellationTokenSource _reconnectCts = new();
 
     private byte _r = 255;
@@ -186,7 +187,10 @@ public partial class MainWindow : Window
                     DeviceStatus.Text = L("Bluetooth write error", "Lỗi ghi Bluetooth");
                     DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
                     BottomStatus.Text = message;
+                    _keyboardSleeping = false;
                     SetDeviceControlsEnabled(false);
+                    UpdateTransportIndicators();
+                    UpdateSleepButtonUi();
                 });
 
             _nowPlaying.Updated += data =>
@@ -316,6 +320,7 @@ public partial class MainWindow : Window
         ["Flash usage"] = "Sử dụng Flash",
         ["RAM usage"] = "Sử dụng RAM",
         ["Sleep keyboard"] = "Ngủ bàn phím",
+        ["Wake keyboard"] = "Đánh thức bàn phím",
     };
 
     private string L(string en, string vi) => _language == "vi" ? vi : en;
@@ -1034,6 +1039,70 @@ public partial class MainWindow : Window
         return $"{(int)value.TotalMinutes}:{value.Seconds:00}";
     }
 
+    private void UpdateTransportIndicators()
+    {
+        if (HeaderUsbPath is null ||
+            HeaderUsbDot is null ||
+            HeaderBluetoothPath is null)
+        {
+            return;
+        }
+
+        var active = new SolidColorBrush(
+            MediaColor.FromRgb(48, 209, 88));
+        var inactive =
+            TryFindResource("Muted") as Brush ??
+            new SolidColorBrush(MediaColor.FromRgb(154, 154, 160));
+        var normalBorder =
+            TryFindResource("Line") as Brush ??
+            new SolidColorBrush(MediaColor.FromRgb(58, 58, 60));
+
+        bool usb = _serial.IsUsbConnected;
+        bool bluetooth =
+            !_serial.IsUsbConnected &&
+            _serial.IsBluetoothConnected;
+
+        HeaderUsbPath.Stroke = usb ? active : inactive;
+        HeaderUsbDot.Fill = usb ? active : inactive;
+        HeaderBluetoothPath.Stroke =
+            bluetooth ? active : inactive;
+
+        if (ConnectUsbButton is not null)
+            ConnectUsbButton.BorderBrush =
+                usb ? active : normalBorder;
+
+        if (ConnectBluetoothButton is not null)
+            ConnectBluetoothButton.BorderBrush =
+                bluetooth ? active : normalBorder;
+    }
+
+    private void UpdateSleepButtonUi()
+    {
+        if (SleepKeyboardButton is null ||
+            SleepKeyboardIcon is null)
+        {
+            return;
+        }
+
+        var active =
+            TryFindResource("Accent") as Brush ??
+            new SolidColorBrush(MediaColor.FromRgb(255, 122, 0));
+        var normal =
+            TryFindResource("ControlBg") as Brush ??
+            new SolidColorBrush(MediaColor.FromRgb(39, 39, 42));
+        var text =
+            TryFindResource("TextPrimary") as Brush ??
+            Brushes.White;
+
+        SleepKeyboardButton.Background =
+            _keyboardSleeping ? active : normal;
+        SleepKeyboardIcon.Foreground = text;
+        SleepKeyboardButton.ToolTip =
+            _keyboardSleeping
+                ? L("Wake keyboard", "Đánh thức bàn phím")
+                : L("Sleep keyboard", "Ngủ bàn phím");
+    }
+
     private void SetDeviceControlsEnabled(bool enabled)
     {
         bool connected = enabled && _serial.IsConnected;
@@ -1069,6 +1138,8 @@ public partial class MainWindow : Window
             SleepKeyboardButton.IsEnabled = connected;
 
         UpdateSettingsInfo();
+        UpdateTransportIndicators();
+        UpdateSleepButtonUi();
     }
 
     private void UpdateSettingsInfo()
@@ -1283,9 +1354,11 @@ public partial class MainWindow : Window
                 L("LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.",
                   "Không tìm thấy LumiPad. Hãy ghép Bluetooth hoặc cắm USB dự phòng.");
             SetDeviceControlsEnabled(false);
+            UpdateTransportIndicators();
         }
         else
         {
+            _keyboardSleeping = false;
             DeviceStatus.Text = connection;
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
             BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
@@ -1301,6 +1374,8 @@ public partial class MainWindow : Window
             SendPowerTiming();
             await UpdateMemoryUsageAsync();
             await UpdatePanelInfoAsync();
+            UpdateTransportIndicators();
+            UpdateSleepButtonUi();
         }
 
         ConnectUsbButton.IsEnabled = true;
@@ -1315,7 +1390,10 @@ public partial class MainWindow : Window
         DeviceStatus.Text = L("Not connected", "Chưa kết nối");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
         BottomStatus.Text = L("Disconnected.", "Đã ngắt kết nối.");
+        _keyboardSleeping = false;
         SetDeviceControlsEnabled(false);
+        UpdateTransportIndicators();
+        UpdateSleepButtonUi();
     }
 
     private async Task AutoReconnectLoopAsync(CancellationToken token)
@@ -1326,8 +1404,45 @@ public partial class MainWindow : Window
             {
                 await Task.Delay(3000, token);
 
-                if (!_autoReconnectEnabled || _serial.IsConnected)
+                if (!_autoReconnectEnabled)
                     continue;
+
+                if (_serial.IsConnected)
+                {
+                    // In default Auto mode, a plugged USB cable always wins
+                    // over the Bluetooth companion link. Promote without
+                    // clearing media state or re-uploading the screensaver.
+                    if (_connectionPreference == "auto" &&
+                        _serial.IsBluetoothConnected &&
+                        !_serial.IsUsbConnected)
+                    {
+                        var promoted =
+                            await _serial.PromoteToUsbIfAvailableAsync(token);
+
+                        if (promoted is not null)
+                        {
+                            DeviceStatus.Text = promoted;
+                            DeviceDot.Fill =
+                                new SolidColorBrush(
+                                    MediaColor.FromRgb(48, 209, 88));
+                            BottomStatus.Text =
+                                L("USB detected and selected automatically.",
+                                  "Đã phát hiện USB và tự động chuyển sang USB.");
+                            AddLog(
+                                "INFO",
+                                "LINK",
+                                $"Auto-promoted to {promoted}");
+                            SetDeviceControlsEnabled(true);
+                            SendAllRgb();
+                            SendPowerTiming();
+                            await UpdateMemoryUsageAsync();
+                            await UpdatePanelInfoAsync();
+                            UpdateTransportIndicators();
+                        }
+                    }
+
+                    continue;
+                }
 
                 var connection = _connectionPreference switch
                 {
@@ -1338,11 +1453,12 @@ public partial class MainWindow : Window
                 if (connection is null)
                     continue;
 
+                _keyboardSleeping = false;
                 DeviceStatus.Text = connection;
                 DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
                 BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
                     ? L("Reconnected wirelessly after wake.", "Đã kết nối lại Bluetooth sau khi wake.")
-                    : L("Reconnected over USB fallback.", "Đã kết nối lại qua USB dự phòng.");
+                    : L("Reconnected over USB.", "Đã kết nối lại qua USB.");
 
                 SetDeviceControlsEnabled(true);
                 SendAllRgb();
@@ -1350,6 +1466,8 @@ public partial class MainWindow : Window
                 await UpdateMemoryUsageAsync();
                 await UpdatePanelInfoAsync();
                 await RestoreScreensaverAfterReconnectAsync();
+                UpdateTransportIndicators();
+                UpdateSleepButtonUi();
             }
             catch (OperationCanceledException)
             {
@@ -1431,22 +1549,37 @@ public partial class MainWindow : Window
         if (!_serial.IsConnected)
         {
             BottomStatus.Text =
-                L("Connect LumiPad before sleeping the keyboard.",
-                  "Hãy kết nối LumiPad trước khi cho bàn phím ngủ.");
+                L("Connect LumiPad before using sleep.",
+                  "Hãy kết nối LumiPad trước khi dùng chế độ ngủ.");
             return;
         }
 
         try
         {
-            await _serial.SleepKeyboardAsync();
-            BottomStatus.Text =
-                L("Keyboard entered soft sleep. Press any key to wake.",
-                  "Bàn phím đã ngủ mềm. Nhấn phím bất kỳ để đánh thức.");
+            if (_keyboardSleeping)
+            {
+                await _serial.WakeKeyboardAsync();
+                _keyboardSleeping = false;
+                BottomStatus.Text =
+                    L("Keyboard display and RGB are awake.",
+                      "Màn hình và RGB của bàn phím đã bật lại.");
+            }
+            else
+            {
+                await _serial.SleepKeyboardAsync();
+                _keyboardSleeping = true;
+                BottomStatus.Text =
+                    L("Keyboard display and RGB are sleeping. Press again to wake.",
+                      "Màn hình và RGB đang ngủ. Nhấn lại để bật lên.");
+            }
+
+            UpdateSleepButtonUi();
         }
         catch (Exception ex)
         {
             BottomStatus.Text =
-                L($"Sleep failed: {ex.Message}", $"Ngủ thất bại: {ex.Message}");
+                L($"Sleep/wake failed: {ex.Message}",
+                  $"Ngủ/đánh thức thất bại: {ex.Message}");
         }
     }
 
