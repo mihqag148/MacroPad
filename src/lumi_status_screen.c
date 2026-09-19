@@ -1539,6 +1539,24 @@ void lumi_ui_set_sleep_timeout(uint32_t seconds) {
     lumi_ui_note_activity();
 }
 
+void lumi_ui_sleep_now(void) {
+    bool already_sleeping;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    already_sleeping = soft_sleep;
+    soft_sleep = true;
+    saver_force_show = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (already_sleeping) {
+        return;
+    }
+
+    lumi_diag_report('I', "Manual soft sleep requested");
+    lumi_rgb_set_suspended(true);
+    k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
+}
+
 static void lumi_sleep_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
 
