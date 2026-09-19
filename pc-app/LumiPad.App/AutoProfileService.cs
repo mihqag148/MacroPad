@@ -3,6 +3,7 @@ using System.Linq;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LumiPad.App;
 
@@ -13,6 +14,7 @@ public sealed class AutoProfileMapping
     public int ProfileIndex { get; set; }
 }
 
+// Kept only so settings written by the short-lived preset UI can be migrated.
 public sealed class AutoProfilePreset
 {
     public string Name { get; set; } = "Profile";
@@ -23,63 +25,76 @@ public sealed class AutoProfilePreset
 public sealed class AutoProfileSettings
 {
     public bool Enabled { get; set; }
-    public int ActivePresetIndex { get; set; }
-    public List<AutoProfilePreset> Presets { get; set; } = [];
-
-    // Legacy fields kept for backward-compatible JSON migration from v1.2.0.
     public int DefaultProfile { get; set; }
     public List<AutoProfileMapping> Mappings { get; set; } = [];
 
-    public AutoProfilePreset ActivePreset
-    {
-        get
-        {
-            EnsureNormalized();
-            return Presets[ActivePresetIndex];
-        }
-    }
+    [JsonPropertyName("ActivePresetIndex")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int LegacyActivePresetIndex { get; set; }
+
+    [JsonPropertyName("Presets")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<AutoProfilePreset>? LegacyPresets { get; set; }
 
     public void EnsureNormalized()
     {
-        Presets ??= [];
         Mappings ??= [];
 
-        if (Presets.Count == 0)
+        // Migrate the previous "preset of mappings" format into the UI the
+        // product actually wants: one Default row + up to ten app mappings.
+        if (LegacyPresets is { Count: > 0 })
         {
-            Presets.Add(new AutoProfilePreset
+            int index = Math.Clamp(
+                LegacyActivePresetIndex,
+                0,
+                LegacyPresets.Count - 1);
+            AutoProfilePreset selected = LegacyPresets[index];
+
+            if (Mappings.Count == 0 && selected.Mappings is { Count: > 0 })
             {
-                Name = "Profile 1",
-                DefaultProfile = Math.Clamp(DefaultProfile, 0, 4),
-                Mappings = Mappings
+                Mappings = selected.Mappings
                     .Select(CloneMapping)
-                    .ToList()
-            });
-        }
-
-        if (Presets.Count > 10)
-            Presets = Presets.Take(10).ToList();
-
-        for (int i = 0; i < Presets.Count; i++)
-        {
-            Presets[i] ??= new AutoProfilePreset();
-            Presets[i].Name =
-                string.IsNullOrWhiteSpace(Presets[i].Name)
-                    ? $"Profile {i + 1}"
-                    : Presets[i].Name.Trim();
-
-            Presets[i].DefaultProfile =
-                Math.Clamp(Presets[i].DefaultProfile, 0, 4);
-
-            Presets[i].Mappings ??= [];
-            foreach (var mapping in Presets[i].Mappings)
-            {
-                mapping.ProfileIndex =
-                    Math.Clamp(mapping.ProfileIndex, 0, 4);
+                    .ToList();
             }
+
+            if (DefaultProfile == 0 && selected.DefaultProfile != 0)
+                DefaultProfile = selected.DefaultProfile;
+
+            LegacyPresets = null;
+            LegacyActivePresetIndex = 0;
         }
 
-        ActivePresetIndex =
-            Math.Clamp(ActivePresetIndex, 0, Presets.Count - 1);
+        DefaultProfile = Math.Clamp(DefaultProfile, 0, 4);
+
+        var deduped = new List<AutoProfileMapping>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (AutoProfileMapping mapping in Mappings)
+        {
+            if (mapping is null ||
+                string.IsNullOrWhiteSpace(mapping.ExecutablePath))
+            {
+                continue;
+            }
+
+            string key = mapping.ExecutablePath.Trim();
+            if (!seen.Add(key))
+                continue;
+
+            mapping.Name =
+                string.IsNullOrWhiteSpace(mapping.Name)
+                    ? Path.GetFileNameWithoutExtension(key)
+                    : mapping.Name.Trim();
+            mapping.ExecutablePath = key;
+            mapping.ProfileIndex =
+                Math.Clamp(mapping.ProfileIndex, 0, 4);
+
+            deduped.Add(mapping);
+            if (deduped.Count >= 10)
+                break;
+        }
+
+        Mappings = deduped;
     }
 
     private static AutoProfileMapping CloneMapping(
