@@ -83,7 +83,7 @@ public static class SystemVolumeService
 
         try
         {
-            enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            enumerator = (IMMDeviceEnumerator)(object)new MMDeviceEnumerator();
             Marshal.ThrowExceptionForHR(
                 enumerator.GetDefaultAudioEndpoint(
                     EDataFlow.Render,

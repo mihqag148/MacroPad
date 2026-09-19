@@ -2250,7 +2250,7 @@ public partial class MainWindow : Window
                 Text = initial,
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
             grid.Children.Add(icon);
@@ -2391,7 +2391,7 @@ public partial class MainWindow : Window
             {
                 Text = initial,
                 FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
             grid.Children.Add(icon);
