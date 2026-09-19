@@ -1850,9 +1850,9 @@ public partial class MainWindow : Window
         PollAutoProfile(force: true);
     }
 
-    private ComboBox CreateProfileSelector(int selectedProfile)
+    private System.Windows.Controls.ComboBox CreateProfileSelector(int selectedProfile)
     {
-        var combo = new ComboBox
+        var combo = new System.Windows.Controls.ComboBox
         {
             Width = 160,
             SelectedValuePath = "Tag",
@@ -1937,7 +1937,8 @@ public partial class MainWindow : Window
             });
             grid.Children.Add(text);
 
-            ComboBox profile = CreateProfileSelector(mapping.ProfileIndex);
+            System.Windows.Controls.ComboBox profile =
+                CreateProfileSelector(mapping.ProfileIndex);
             profile.Tag = mapping;
             profile.Margin = new Thickness(8, 0, 8, 0);
             profile.SelectionChanged += (_, _) =>
