@@ -1256,6 +1256,9 @@ public sealed class SerialLink : IDisposable
     public void SetSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
 
+    public void SetActiveProfile(int profile) =>
+        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 4)}");
+
     public Task RestartKeyboardAsync() =>
         SendLineAsync("SYS|RESTART");
 
