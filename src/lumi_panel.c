@@ -14,33 +14,33 @@ static const struct spi_dt_spec bus =
     SPI_DT_SPEC_GET(PANEL, SPI_OP_MODE_MASTER | SPI_WORD_SET(8), 0);
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
-/* AO3400 N-MOSFET gate used only for TFT backlight switching. */
-#define LUMI_BL_GATE_PIN 8U
-static const struct device *const bl_gate_gpio =
+/* ST7789 module BLK/backlight control on P0.08. */
+#define LUMI_BL_PIN 8U
+static const struct device *const bl_gpio =
     DEVICE_DT_GET(DT_NODELABEL(gpio0));
-static bool bl_gate_ready;
+static bool bl_ready;
 
 static int lumi_panel_backlight_init(void) {
-    if (!device_is_ready(bl_gate_gpio)) {
+    if (!device_is_ready(bl_gpio)) {
         lumi_diag_report('E', "Backlight GPIO not ready");
         return -ENODEV;
     }
 
     int err = gpio_pin_configure(
-        bl_gate_gpio,
-        LUMI_BL_GATE_PIN,
+        bl_gpio,
+        LUMI_BL_PIN,
         GPIO_OUTPUT_LOW);
     if (err) {
         lumi_diag_report('E', "Backlight GPIO init rc=%d", err);
         return err;
     }
 
-    bl_gate_ready = true;
+    bl_ready = true;
     return 0;
 }
 
 int lumi_panel_set_backlight(bool enabled) {
-    if (!bl_gate_ready) {
+    if (!bl_ready) {
         int err = lumi_panel_backlight_init();
         if (err) {
             return err;
@@ -48,8 +48,8 @@ int lumi_panel_set_backlight(bool enabled) {
     }
 
     int err = gpio_pin_set(
-        bl_gate_gpio,
-        LUMI_BL_GATE_PIN,
+        bl_gpio,
+        LUMI_BL_PIN,
         enabled ? 1 : 0);
     if (err) {
         lumi_diag_report(

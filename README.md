@@ -47,7 +47,7 @@ Chuyển từ `MacroPad_nice_nano_FULL_BLE_TFT_Keymap.ino` sang ZMK cho nice!nan
   Đảo byte 16-bit cho SPI là việc khác với thứ tự kênh BGR; không đảo R/B lần nữa.
 - Giữ timing PORCTRL/FRCTRL2 baseline của panel/driver (khoảng 60 Hz), không ép
   C6 = 0x1F hay porch 25 Hz. `src/lumi_panel.c` bật inversion cho đúng cực màu.
-- BL nối thẳng 3V3: không có PWM, menu hay thao tác chỉnh sáng giả.
+- BLK/backlight nối P0.08 để firmware bật/tắt đèn nền khi boot, sleep và wake.
 - LVGL có heap 32 KB, partial double buffer tĩnh 20% màn hình, stack display
   4 KB và `CONFIG_SPI_ASYNC=y`; buffer chỉ được trả cho LVGL sau callback DMA.
 - WS2812 dùng SPIM1 riêng, không tranh SPIM3 của TFT.
@@ -223,21 +223,17 @@ The tab URL is reset whenever the active product changes, so switching between
 a ZMK product and a QMK product also switches the embedded configurator.
 
 
-### TFT backlight AO3400 / P0.08
+### TFT backlight BLK / P0.08
 
-Firmware now reserves **P0.08** for an AO3400 backlight switch gate.
+Firmware reserves **P0.08** for the ST7789 module **BLK/backlight** control pin.
 
-- Gate: P0.08.
-- Add a physical 100k resistor from Gate to GND so the MOSFET is OFF while the
-  nRF52840 is in reset or the bootloader.
-- Firmware also holds P0.08 LOW during Zephyr startup.
+- ST7789 `BLK` -> nice!nano `P0.08`.
+- TFT `GND` stays connected directly to nice!nano `GND`.
+- Firmware holds P0.08 LOW during Zephyr startup.
 - Backlight stays OFF while the ST7789/LVGL boot screen is initialized, then
   turns ON after a short delay.
 - Soft sleep sends ST7789 DISPOFF and turns the backlight OFF.
 - Wake sends DISPON, invalidates the LVGL screen, then turns the backlight ON
   after the redraw delay.
 
-Do **not** use the AO3400 to disconnect the complete TFT module GND. Keep TFT GND
-connected directly to controller GND; otherwise SPI/DC/RST lines can provide
-unwanted current paths while the TFT ground is disconnected. Switch only the
-backlight current path (or use the module's dedicated BL control circuitry).
+This wiring uses the module's own BLK input directly; no AO3400 is required.

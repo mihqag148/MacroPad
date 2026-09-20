@@ -192,16 +192,16 @@ row-gpios
 };
 
 
-/* AO3400 backlight switch gate.
- * P0.08 is unused by the matrix, encoder, TFT and WS2812 buses.
- * The GPIO hog keeps the N-MOSFET OFF during Zephyr startup; add a physical
- * 100k gate-to-GND resistor as well so it also stays off during reset/bootloader.
+/* ST7789 backlight control (BLK) on P0.08.
+ * P0.08 is unused by the matrix, encoder, TFT SPI/control and WS2812 buses.
+ * Keep BLK LOW during Zephyr startup so the panel stays dark until LVGL has
+ * drawn the boot splash.
  */
 &gpio0 {
-    lumi_panel_bl_gate_hog {
+    lumi_panel_backlight_hog {
         gpio-hog;
         gpios = <8 GPIO_ACTIVE_HIGH>;
         output-low;
-        line-name = "lumi-tft-backlight-gate";
+        line-name = "lumi-tft-backlight";
     };
 };
