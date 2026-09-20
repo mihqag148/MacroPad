@@ -43,6 +43,8 @@ public partial class MainWindow : Window
     private static readonly HttpClient UpdateHttp = CreateUpdateHttpClient();
     private const string UpdateReleaseApi =
         "https://api.github.com/repos/mihqag148/MacroPad/releases/latest";
+    private const string PixelProFirmwareReleaseApi =
+        "https://api.github.com/repos/mihqag148/PIXEL-PRO---Lumi-Macropad/releases/latest";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;
@@ -2805,6 +2807,77 @@ public partial class MainWindow : Window
             }
         }
 
+        if (string.Equals(
+                _activeProduct.Id,
+                ProductCatalog.PixelPro.Id,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            using var pixelResponse =
+                await UpdateHttp.GetAsync(PixelProFirmwareReleaseApi);
+            pixelResponse.EnsureSuccessStatusCode();
+
+            using JsonDocument pixelRelease =
+                JsonDocument.Parse(
+                    await pixelResponse.Content.ReadAsStringAsync());
+
+            string pixelTag =
+                pixelRelease.RootElement.TryGetProperty(
+                    "tag_name",
+                    out JsonElement pixelTagElement)
+                    ? pixelTagElement.GetString() ?? ""
+                    : "";
+
+            string cleanPixelTag =
+                pixelTag.Trim().TrimStart('v', 'V');
+
+            if (!string.IsNullOrWhiteSpace(cleanPixelTag))
+                firmwareVersion = cleanPixelTag;
+
+            if (pixelRelease.RootElement.TryGetProperty(
+                    "assets",
+                    out JsonElement pixelAssets))
+            {
+                foreach (JsonElement asset in pixelAssets.EnumerateArray())
+                {
+                    string name =
+                        asset.GetProperty("name").GetString() ?? "";
+
+                    if (!string.Equals(
+                            name,
+                            "firmware-manifest.json",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string pixelManifestUrl =
+                        asset.GetProperty(
+                            "browser_download_url").GetString() ?? "";
+
+                    if (string.IsNullOrWhiteSpace(pixelManifestUrl))
+                        break;
+
+                    using var pixelManifestResponse =
+                        await UpdateHttp.GetAsync(pixelManifestUrl);
+                    pixelManifestResponse.EnsureSuccessStatusCode();
+
+                    using JsonDocument pixelManifest =
+                        JsonDocument.Parse(
+                            await pixelManifestResponse.Content.ReadAsStringAsync());
+
+                    if (pixelManifest.RootElement.TryGetProperty(
+                            "version",
+                            out JsonElement pixelVersion))
+                    {
+                        firmwareVersion =
+                            pixelVersion.GetString() ?? firmwareVersion;
+                    }
+
+                    break;
+                }
+            }
+        }
+
         return new LatestReleaseInfo(
             tag,
             appVersion,
@@ -2861,12 +2934,24 @@ public partial class MainWindow : Window
             }
             else if (_firmwareUpdateAvailable)
             {
+                bool pixelBootstrapRequired =
+                    string.Equals(
+                        _activeProduct.Id,
+                        ProductCatalog.PixelPro.Id,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    _serial is QmkRawHidLink pixelLink &&
+                    !pixelLink.SupportsFirmwareOta;
+
                 FirmwareUpdateStateText.Text =
-                    _serial.IsUsbConnected
-                        ? L("Update available", "Có bản mới")
-                        : L(
-                            "Connect by USB to update firmware",
-                            "Cắm USB để cập nhật firmware");
+                    pixelBootstrapRequired
+                        ? L(
+                            "One-time v0.1.5 bootstrap required; future updates are one-click",
+                            "Cần nạp bootstrap v0.1.5 một lần; các bản sau cập nhật 1 nút")
+                        : _serial.IsUsbConnected
+                            ? L("Update available", "Có bản mới")
+                            : L(
+                                "Connect by USB to update firmware",
+                                "Cắm USB để cập nhật firmware");
             }
             else
             {
@@ -2983,10 +3068,14 @@ public partial class MainWindow : Window
     }
 
     private async Task<(string Tag, string Url)> FindLatestAssetAsync(
-        string assetName)
+        string assetName,
+        string? releaseApi = null)
     {
         using var response =
-            await UpdateHttp.GetAsync(UpdateReleaseApi);
+            await UpdateHttp.GetAsync(
+                string.IsNullOrWhiteSpace(releaseApi)
+                    ? UpdateReleaseApi
+                    : releaseApi);
         response.EnsureSuccessStatusCode();
 
         using JsonDocument json =
@@ -3116,12 +3205,171 @@ public partial class MainWindow : Window
         return result;
     }
 
+    private async Task UpdatePixelProFirmwareAsync()
+    {
+        if (!_serial.IsConnected ||
+            !_serial.IsUsbConnected ||
+            _serial is not QmkRawHidLink pixelLink)
+        {
+            System.Windows.MessageBox.Show(
+                L(
+                    "Connect PIXEL PRO by USB first.",
+                    "Hãy kết nối PIXEL PRO bằng USB trước."),
+                "PIXEL PRO Firmware Update",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        if (!pixelLink.SupportsFirmwareOta)
+        {
+            System.Windows.MessageBox.Show(
+                L(
+                    "The firmware currently on this PIXEL PRO predates the in-app updater. Flash PIXEL PRO v0.1.5 merged once; after that, every firmware update can be installed directly from Lumi Macropad without another flashing tool.",
+                    "Firmware hiện tại của PIXEL PRO chưa có bộ cập nhật trong app. Hãy nạp PIXEL PRO v0.1.5 merged một lần; từ các bản sau Lumi Macropad sẽ tự tải và nạp firmware trực tiếp, không cần phần mềm flash khác."),
+                "PIXEL PRO · One-time bootstrap",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = System.Windows.MessageBox.Show(
+            L(
+                "Download the latest PIXEL PRO firmware from GitHub and install it directly over USB now?",
+                "Tải firmware PIXEL PRO mới nhất từ GitHub và nạp trực tiếp qua USB ngay?"),
+            "PIXEL PRO Firmware Update",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        _updateBusy = true;
+        SetDeviceControlsEnabled(true);
+
+        string tempFile =
+            IO.Path.Combine(
+                IO.Path.GetTempPath(),
+                $"pixel-pro-ota-{Guid.NewGuid():N}.bin");
+
+        try
+        {
+            UpdateStatusText.Text =
+                L(
+                    "Downloading latest PIXEL PRO firmware…",
+                    "Đang tải firmware PIXEL PRO mới nhất…");
+
+            var asset =
+                await FindLatestAssetAsync(
+                    "PIXEL_PRO_OTA.bin",
+                    PixelProFirmwareReleaseApi);
+
+            await DownloadFileAsync(
+                asset.Url,
+                tempFile);
+
+            byte[] image =
+                await IO.File.ReadAllBytesAsync(tempFile);
+
+            if (image.Length < 4096)
+            {
+                throw new InvalidOperationException(
+                    "Downloaded PIXEL PRO firmware image is invalid.");
+            }
+
+            var progress = new Progress<int>(value =>
+            {
+                UpdateStatusText.Text =
+                    L(
+                        $"Installing PIXEL PRO firmware… {value}%",
+                        $"Đang nạp firmware PIXEL PRO… {value}%");
+            });
+
+            await pixelLink.InstallFirmwareAsync(
+                image,
+                progress);
+
+            UpdateStatusText.Text =
+                L(
+                    $"Firmware {asset.Tag} installed. Reconnecting…",
+                    $"Đã nạp firmware {asset.Tag}. Đang kết nối lại…");
+
+            await Task.Delay(1200);
+            _serial.Disconnect();
+
+            _autoReconnectEnabled = true;
+
+            string? connection = null;
+            for (int i = 0; i < 12 && connection is null; i++)
+            {
+                await Task.Delay(500);
+                connection =
+                    await _serial.ConnectUsbAsync();
+            }
+
+            if (connection is null)
+            {
+                throw new IOException(
+                    L(
+                        "Firmware installed, but PIXEL PRO did not reconnect yet. Press RESET once, then Connect USB.",
+                        "Đã nạp firmware nhưng PIXEL PRO chưa kết nối lại. Nhấn RESET một lần rồi bấm Kết nối USB."));
+            }
+
+            DeviceStatus.Text = connection;
+            DeviceDot.Fill =
+                new SolidColorBrush(
+                    MediaColor.FromRgb(48, 209, 88));
+
+            UpdateStatusText.Text =
+                L(
+                    $"PIXEL PRO firmware update complete · {asset.Tag}",
+                    $"Cập nhật firmware PIXEL PRO hoàn tất · {asset.Tag}");
+
+            await CheckForUpdatesAsync(silent: true);
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text =
+                L(
+                    $"PIXEL PRO firmware update failed: {ex.Message}",
+                    $"Cập nhật firmware PIXEL PRO lỗi: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "UPDATE",
+                $"PIXEL PRO firmware update failed: {ex}");
+        }
+        finally
+        {
+            try
+            {
+                if (IO.File.Exists(tempFile))
+                    IO.File.Delete(tempFile);
+            }
+            catch
+            {
+            }
+
+            _updateBusy = false;
+            SetDeviceControlsEnabled(
+                _serial.IsConnected);
+        }
+    }
+
     private async void FirmwareUpdate_Click(
         object sender,
         RoutedEventArgs e)
     {
         if (_updateBusy)
             return;
+
+        if (string.Equals(
+                _activeProduct.Id,
+                ProductCatalog.PixelPro.Id,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await UpdatePixelProFirmwareAsync();
+            return;
+        }
 
         if (!_serial.IsConnected ||
             !_serial.IsUsbConnected)
