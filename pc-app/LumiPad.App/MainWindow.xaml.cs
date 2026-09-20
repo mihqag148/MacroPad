@@ -2981,7 +2981,7 @@ public partial class MainWindow : Window
                         exeName,
                         IO.SearchOption.AllDirectories)
                     .FirstOrDefault()
-                ?? Directory
+                ?? IO.Directory
                     .EnumerateFiles(
                         stagePath,
                         "*.exe",
