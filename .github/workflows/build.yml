@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths: ['boards/**', 'config/**', 'src/**', 'include/**', 'dts/**', 'CMakeLists.txt', 'Kconfig', 'VERSION', 'build.yaml', 'zephyr/**', '.github/workflows/build.yml']
   pull_request:
-    paths: ['boards/**', 'config/**', 'src/**', 'include/**', 'dts/**', 'CMakeLists.txt', 'Kconfig', 'VERSION', 'build.yaml', 'zephyr/**', '.github/workflows/build.yml']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +19,19 @@ concurrency:
 jobs:
   build:
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
+  pr-checks:
+    name: PR checks
+    needs: build
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require successful build
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: test "$BUILD_RESULT" = success
+
   release:
     needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
