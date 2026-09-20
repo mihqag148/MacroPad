@@ -1762,7 +1762,9 @@ public sealed class SerialLink : IDisposable
             $"PCCFG|{safe}|{layout}");
     }
 
-    public async Task<bool> SendPcMonitorAsync(PcMonitorSnapshot data)
+    public async Task<bool> SendPcMonitorAsync(
+        PcMonitorSnapshot data,
+        IReadOnlyList<int>? metricSlots = null)
     {
         if (!IsConnected || !SupportsPcMonitor)
             return false;
@@ -1792,12 +1794,21 @@ public sealed class SerialLink : IDisposable
                 0,
                 int.MaxValue);
 
+        int[] slots =
+            metricSlots is { Count: 6 }
+                ? metricSlots.Select(v => Math.Clamp(v, 0, 11)).ToArray()
+                : [0, 3, 6, 9, 10, 11];
+
+        string layout =
+            string.Join("|", slots.Select(v => v.ToString()));
+
         string line =
             $"PCMON|{I(data.CpuLoad)}|{N(data.CpuTemperature)}|" +
             $"{N(data.CpuClockMHz)}|{N(data.GpuLoad)}|" +
             $"{N(data.GpuTemperature)}|{N(data.GpuClockMHz)}|" +
             $"{I(data.MemoryLoad)}|{usedMb}|{totalMb}|" +
-            $"{downKbps}|{upKbps}|{data.Fps ?? -1}";
+            $"{downKbps}|{upKbps}|{data.Fps ?? -1}|" +
+            layout;
 
         return await SendRealtimeLineAsync(line);
     }
