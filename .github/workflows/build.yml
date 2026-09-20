@@ -2,31 +2,53 @@ name: Build ZMK firmware
 
 on:
   push:
-    paths:
-      - "boards/**"
-      - "config/**"
-      - "src/**"
-      - "include/**"
-      - "pc-app/LumiPad.App/LumiPad.App.csproj"
-      - "CMakeLists.txt"
-      - "Kconfig"
-      - "build.yaml"
-      - "zephyr/**"
-      - ".github/workflows/build.yml"
+    branches: [main]
+    paths: ['boards/**', 'config/**', 'src/**', 'include/**', 'dts/**', 'CMakeLists.txt', 'Kconfig', 'VERSION', 'build.yaml', 'zephyr/**', '.github/workflows/build.yml']
   pull_request:
-    paths:
-      - "boards/**"
-      - "config/**"
-      - "src/**"
-      - "include/**"
-      - "pc-app/LumiPad.App/LumiPad.App.csproj"
-      - "CMakeLists.txt"
-      - "Kconfig"
-      - "build.yaml"
-      - "zephyr/**"
-      - ".github/workflows/build.yml"
+    paths: ['boards/**', 'config/**', 'src/**', 'include/**', 'dts/**', 'CMakeLists.txt', 'Kconfig', 'VERSION', 'build.yaml', 'zephyr/**', '.github/workflows/build.yml']
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: rynor-firmware-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: dist/fw
+      - name: Publish RYNOR ONE firmware
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d '\r\n' < VERSION)
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid VERSION'; exit 1; }
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; preserved."
+            exit 0
+          fi
+          mapfile -t UF2_FILES < <(find dist/fw -type f -name '*.uf2')
+          [ "${#UF2_FILES[@]}" -eq 1 ] || { echo 'Expected exactly one RYNOR ONE UF2'; exit 1; }
+          cp "${UF2_FILES[0]}" dist/firmware.uf2
+          jq -n --arg version "$VERSION" --arg commit "$GITHUB_SHA" \
+            '{product:"RYNOR ONE",version:$version,firmwareVersion:$version,commit:$commit,firmware:"firmware.uf2"}' > dist/release-manifest.json
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "RYNOR ONE $VERSION" \
+            --notes 'Standalone RYNOR ONE firmware. LumiPad Windows app is maintained at https://github.com/mihqag148/Lumipad-APP.' \
+            dist/firmware.uf2 dist/release-manifest.json

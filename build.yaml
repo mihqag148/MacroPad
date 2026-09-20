@@ -1,34 +1,5 @@
 ---
-# Fast Bluetooth Now Playing media v1.14.0
-# Unified RGB/display wake v1.13.3
-# Unified version compile-quote fix
-# Unified app/firmware release version v1.13.2
-# Settings layout Device first / General above System v1.13.1
-# v1.13 firmware-version include path sync
-# Automatic update notifications v1.13.0
-# Updater IO final release sync
-# Updater IO hotfix release sync
-# Synchronized v1.12.0 updater release build
-# Boot splash 0.5s backlight + 2.5s visible loading / updater v1.12.0
-# Encoder rotation wake from deep sleep
-# Lumi ECO sleep + dynamic deep sleep v1.11.0
-# PC Monitor BLE capability and dynamic footer fix 1.10.1
-# ST7789 BLK direct control on P0.08
-# AO3400 P0.08 TFT backlight sleep wake control
-# PC Monitor single-row footer readability update
-# Lumi Macropad dynamic ZMK VIA configurator verification 1.10.0
-# Lumi Macropad QMK Raw HID compile fix 1.9.1
-# Lumi Macropad QMK Raw HID verification 1.9.0
-# Lumi Macropad multi-firmware architecture verification 1.8.0
-# Lumi Macropad PC monitor hard fix verification 1.7.5
-# v1.7.4 final verified build
-# Lumi Macropad sensor fallback dark theme verification 1.7.4
-# Lumi Macropad UI screensaver reliability verification 1.7.3
-# Lumi Macropad final custom monitor verification 1.7.1
-# Lumi Macropad custom PC monitor UI verification 1.7.0
-# final PC Monitor release build · Lumi Macropad v1.5.0
-# Lumi Macropad v1.4.0 multi-GPU screensaver verification 1.6.0
-# LumiPad v1.3.3 app integration verification 2 (no firmware setting change)
+# RYNOR ONE; preserve the established shield and artifact identifiers.
 include:
   - board: nice_nano_v2
     shield: lumi_macropad

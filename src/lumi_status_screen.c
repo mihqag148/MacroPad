@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT
- * Lumi MacroPad: four columns, three rows, live ZMK keymap captions.
+ * RYNOR ONE: four columns, three rows, live ZMK keymap captions.
  */
 #include <stdio.h>
 #include <string.h>
@@ -2844,7 +2844,7 @@ static void init_boot_splash(lv_obj_t *screen) {
         make_label(
             boot_overlay,
             &lv_font_montserrat_20);
-    lv_label_set_text(product, "DIAL DESK");
+    lv_label_set_text(product, "RYNOR ONE");
     lv_obj_set_style_text_color(
         product,
         lv_color_hex(0xFFFFFF),

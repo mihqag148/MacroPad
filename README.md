@@ -1,6 +1,6 @@
-# Lumi MacroPad - ZMK
+# RYNOR ONE — ZMK firmware
 
-Chuyển từ `MacroPad_nice_nano_FULL_BLE_TFT_Keymap.ino` sang ZMK cho nice!nano v2 / nRF52840.
+Firmware và cấu hình phần cứng RYNOR ONE cho nice!nano v2 / nRF52840.
 
 ## Đã giữ nguyên
 
@@ -85,7 +85,7 @@ dịch được; hướng/màu panel và chất lượng tín hiệu SPI cần x
 
 Firmware đã bật `studio-rpc-usb-uart` và `CONFIG_ZMK_STUDIO=y`.
 
-1. Cắm MacroPad bằng USB.
+1. Cắm RYNOR ONE bằng USB.
 2. Mở https://zmk.studio/ bằng Chrome/Edge hoặc app ZMK Studio.
 3. Nếu Studio yêu cầu unlock, nhấn đồng thời phím vật lý số 1 + phím số 12 (góc trên trái + góc dưới phải/ESC).
 4. Có thể sửa keymap của 13 vị trí (12 key + encoder push) và đổi tên layer.
@@ -112,116 +112,32 @@ yêu cầu unlock, giữ đồng thời phím vật lý 1 + 12. Việc gán đư
 không phải một key map giả chỉ lưu trên PC.
 
 
-## Lumi Macropad Product Hub
+## LumiPad desktop app
 
-Ứng dụng desktop hiện có tên **Lumi Macropad** và được tổ chức theo kiến trúc
-multi-product. Khi mở app, Product Hub xuất hiện trước. Sản phẩm hiện tại là
-**DIAL DESK**; card thiết bị hiển thị kết nối USB/Bluetooth và phần trăm pin thật
-từ ZMK thông qua command `BAT`.
+App Windows, source C#/XAML, drivers phía PC và hướng dẫn app đã chuyển sang
+[Lumipad-APP](https://github.com/mihqag148/Lumipad-APP).
+Repo này chỉ build firmware RYNOR ONE. `src/lumi_app_link.*` là mã chạy trên
+bàn phím để giao tiếp với app, vì vậy vẫn được giữ tại đây.
 
-Danh sách sản phẩm nằm trong `pc-app/LumiPad.App/ProductCatalog.cs`, nên các
-sản phẩm Lumi tiếp theo có thể thêm vào Product Hub mà không phải thay cấu trúc
-giao diện điều khiển DIAL DESK.
+## Version và phát hành độc lập
 
-Firmware DIAL DESK hiển thị splash **LUMI3D / DIAL DESK** cùng thanh loading
-khoảng 2 giây khi màn hình khởi động, sau đó mới chuyển sang giao diện phím.
+- `VERSION` là nguồn phiên bản firmware; CMake đưa giá trị này vào HELLO `FW=`.
+- Workflow `build.yml` build ZMK, sau đó mới chạy job release bằng `needs: build`.
+- Release chứa `firmware.uf2` và `release-manifest.json` với `firmwareVersion`.
+- App có version và release riêng ở Lumipad-APP; không cần checkout app để build firmware.
+- Tăng `VERSION` trước mỗi bản phát hành mới. Release đã tồn tại được giữ nguyên.
 
+Tên USB, BLE và splash là **RYNOR ONE**. Giữ nguyên shield `lumi_macropad`,
+Kconfig symbols, pinout, VID/PID, UUID và protocol để tương thích firmware/app cũ.
+App giữ ID cấu hình `dial-desk` để không mất cấu hình đã lưu.
 
-### PC Monitor v1.6
+PIXEL PRO có [repo firmware riêng](https://github.com/mihqag148/PIXEL-PRO---Lumi-Macropad).
+Mã tham khảo QMK Raw HID được giữ tại `qmk/lumi_raw_hid` và copy sang repo PIXEL PRO;
+đây là firmware-side adapter, không phải mã desktop và không tham gia build ZMK.
 
-PC Monitor hỗ trợ nhiều GPU: **Auto** tự chọn GPU có tải realtime cao nhất (ưu tiên GPU rời NVIDIA/AMD khi tải bằng nhau), hoặc người dùng chọn thủ công từng GPU theo đúng tên model. App lưu lựa chọn GPU và tên cấu hình PC.
-
-Screensaver có thể chọn **GIF / Image** hoặc **PC Monitor**. Khi chọn PC Monitor, DIAL DESK hiển thị telemetry realtime khi hết thời gian chờ thay vì chạy GIF. Tab PC Monitor nằm ngay sau Action.
-
-
-### PC Monitor v1.7
-
-PC Monitor cho phép tùy biến 6 vị trí hiển thị trên DIAL DESK (3 card lớn + 3 footer) với các chỉ số: CPU usage/temperature/clock, GPU usage/temperature/clock, RAM usage/used/total, network download/upload và FPS. Cấu hình được lưu trong app và gửi lại qua USB/Bluetooth khi kết nối.
-
-Giao diện ComboBox dùng theme động hoàn toàn để light/dark đều đọc rõ, selection box luôn hiển thị đúng mục vừa chọn. Screensaver Source nằm ở góc phải của tiêu đề Screensaver. Tab đang chọn có viền cam kín bốn cạnh.
-
-Final verified package: Lumi Macropad v1.7.1.
-
-
-### PC Monitor v1.7.5
-
-- ComboBox dùng template riêng với converter đọc trực tiếp SelectedItem nên text lựa chọn luôn cập nhật và màu dark/light không phụ thuộc theme mặc định của Windows.
-- App yêu cầu quyền Administrator để LibreHardwareMonitor có thể đọc CPU/GPU temperature qua driver phần cứng.
-- CPU temperature có thêm fallback qua LibreHardwareMonitor/OpenHardwareMonitor WMI và ACPI.
-- 6 metric layout được nhúng vào mọi gói PCMON realtime, nên DIAL DESK luôn cập nhật layout kể cả khi gói PCCFG riêng bị trễ/mất.
-
-
-### Multi-firmware app architecture v1.8.0
-
-Lumi Macropad no longer makes the main UI depend directly on the DIAL DESK
-`SerialLink` implementation. The app now has separate contracts for connection
-and product commands:
-
-- `IDeviceTransport`: USB/Bluetooth connection lifecycle.
-- `IDeviceProtocol`: Media, RGB, screensaver, Action, PC Monitor, diagnostics,
-  battery and device-control commands.
-- `IDeviceLink`: combines transport and protocol for the UI.
-- `DeviceLinkFactory`: selects a driver from the product definition.
-- `DeviceDriverKind`: currently defines `LumiZmk`, `QmkRawHid` and
-  `Esp32Companion`.
-
-DIAL DESK still uses the existing `SerialLink` and the same Lumi protocol, so
-this refactor does not change its USB CDC/BLE UUIDs or current features.
-A future QMK product can add a Raw HID implementation of `IDeviceLink` and a
-ProductCatalog entry without rewriting MainWindow or the shared app features.
-
-
-### QMK Raw HID support v1.9.0
-
-The Windows app now includes a real QMK Raw HID driver. QMK products use the
-standard QMK Raw HID interface and the Lumi framing protocol defined in
-`qmk/lumi_raw_hid`.
-
-- QMK Raw HID uses the default QMK Usage Page/Usage ID `0xFF60 / 0x61`.
-- Each QMK product should define its USB VID/PID in `ProductCatalog`.
-- `QmkRawHidLink` probes only the configured VID/PID, requires a 32-byte QMK
-  raw report, and verifies the device with a `HELLO` handshake before accepting it.
-- Lumi messages are fragmented across fixed 32-byte QMK reports, so the shared
-  app protocol can still carry Media, RGB, Profile, PC Monitor, Action and
-  other product commands.
-- Product selection now swaps the underlying device driver. Adding a QMK
-  product to `ProductCatalog.All` no longer requires editing `MainWindow`.
-
-To add a QMK product:
-
-```csharp
-public static ProductDefinition MyQmkPad { get; } =
-    CreateQmkProduct(
-        "my-qmk-pad",
-        "MY QMK PAD",
-        "QMK macro controller",
-        "QP-01",
-        0x1234,
-        0x5678);
-```
-
-Then add `MyQmkPad` to `ProductCatalog.All`, copy the
-`qmk/lumi_raw_hid` files into the QMK keymap/userspace, enable
-`RAW_ENABLE = yes`, and implement the product command callback.
-
-
-### Dynamic ZMK Studio / VIA tab v1.10.0
-
-The embedded firmware-configuration tab now follows the selected product:
-
-- ZMK products show **ZMK Studio** and load `https://zmk.studio/`.
-- QMK Raw HID products show **VIA** and load `https://usevia.app/`.
-- Other driver types fall back to a generic **Device Config** label.
-
-For VIA, the app probes `navigator.hid` after the embedded web app loads.
-When WebHID is available, the status reports **WebHID ready**. When the current
-WebView2 runtime does not expose WebHID, the status tells the user to use the
-existing **Open in Edge** button, which opens the same official VIA web app in
-the browser.
-
-The tab URL is reset whenever the active product changes, so switching between
-a ZMK product and a QMK product also switches the embedded configurator.
-
+Các release và nhánh lịch sử trước khi tách được giữ nguyên để có thể khôi phục.
+Nhánh `main` là nguồn firmware hiện hành. Lịch sử app/protocol đã chuyển sang
+[tài liệu app](https://github.com/mihqag148/Lumipad-APP/blob/main/docs/pre-split-history.md).
 
 ### TFT backlight BLK / P0.08
 
@@ -239,6 +155,7 @@ Firmware reserves **P0.08** for the ST7789 module **BLK/backlight** control pin.
 This wiring uses the module's own BLK input directly; no AO3400 is required.
 
 
+
 ### PC Monitor BLE + dynamic footer fix v1.10.1
 
 - Protocol v3 fallback capabilities in the Windows app now include `PCMON`.
@@ -251,6 +168,7 @@ This wiring uses the module's own BLK input directly; no AO3400 is required.
   Changing a footer slot in the app immediately changes the keyboard display.
 - Footer text stays compact for the 101 px columns, for example:
   `CPU 52C`, `GPU 48C`, `RAM 43%`, `DOWN 12.4M`, `UP 850K`, `FPS 144`.
+
 
 
 ### ECO sleep and dynamic deep sleep v1.11.0
@@ -274,6 +192,7 @@ Power behavior is now split into user-configurable stages:
   loop drops from 500 ms to 2 s while asleep.
 
 
+
 ### Encoder rotation wake from deep sleep
 
 Deep sleep now uses ZMK's soft-off wake-source flow instead of calling
@@ -287,60 +206,6 @@ Wake sources:
 Both EC11 phases P1.04 and P1.06 get dedicated wake-trigger devices that remain
 suspended during normal operation and are armed only while entering deep sleep.
 
-
-### One-click updater v1.12.0
-
-Boot sequence:
-- ST7789 BLK remains OFF for 0.5 s after the display UI is initialized.
-- The splash is already rendered before BLK turns ON.
-- The loading screen remains visibly on-screen for a full 2.5 s, then the
-  normal DIAL DESK UI appears.
-
-LumiPad Settings now includes:
-- **Update firmware**: requires USB. LumiPad downloads the latest release
-  `firmware.uf2`, commands the nice!nano into UF2 bootloader, detects the UF2
-  drive, copies the firmware automatically, and reconnects after reboot.
-- **Update app**: downloads the latest self-contained Windows ZIP, closes the
-  running app, replaces its files, then launches LumiPad again automatically.
-
-Release assets are produced by `.github/workflows/publish-latest.yml`.
-
-
-### Automatic update notifications v1.13.0
-
-- Firmware HELLO now reports `FW=<version>`.
-- LumiPad checks the latest GitHub release at startup, after reconnect, after a
-  firmware update, and every 30 minutes.
-- Settings shows current and latest versions independently for the Windows app
-  and keyboard firmware.
-- Update buttons are enabled only when a newer version exists.
-- Firmware update additionally requires USB; BLE users are prompted to plug in
-  USB before the one-click UF2 flash begins.
-- Older firmware without an FW version is treated as updateable so it can move
-  onto the version-aware update system.
-
-
-### Settings layout v1.13.1
-
-- DEVICE is now the first card in the left Settings column.
-- GENERAL is moved to the right column directly above SYSTEM.
-- No Settings functionality changed.
-
-
-### Unified app + firmware version v1.13.2
-
-There is now one release-version source: the LumiPad app `<Version>` in
-`pc-app/LumiPad.App/LumiPad.App.csproj`.
-
-- CMake reads that value and injects it into firmware as
-  `LUMI_FIRMWARE_VERSION`.
-- Firmware HELLO therefore reports exactly the same version as the release.
-- `release-manifest.json` uses the same version for app and firmware.
-- The ZMK firmware workflow is triggered when the app project version changes.
-
-Result: bumping the app from v1.13.2 to v1.13.3 automatically builds firmware
-that reports `FW=1.13.3`, so LumiPad can immediately show and enable the
-firmware Update button without manually editing a second version file.
 
 
 ### Unified RGB/display wake v1.13.3
@@ -360,6 +225,7 @@ Do not wake either from background PC Monitor, telemetry or CFG/RGB sync traffic
 The RGB timeout remains independent from the display Sleep timeout. Every
 meaningful wake resets the RGB idle timer, so RGB does not immediately turn
 back off after Auto Profile or Media wakes the device.
+
 
 
 ### Fast Bluetooth Now Playing v1.14.0

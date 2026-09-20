@@ -1,23 +1,11 @@
 if(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM)
-  # Single source of truth for release version:
-  # pc-app/LumiPad.App/LumiPad.App.csproj <Version>.
-  # Firmware HELLO automatically reports the exact same version.
-  file(READ
-    "${CMAKE_CURRENT_LIST_DIR}/pc-app/LumiPad.App/LumiPad.App.csproj"
-    LUMI_APP_CSPROJ
-  )
-  string(
-    REGEX MATCH
-    "<Version>([0-9]+\.[0-9]+\.[0-9]+)</Version>"
-    LUMI_VERSION_MATCH
-    "${LUMI_APP_CSPROJ}"
-  )
-  if(NOT CMAKE_MATCH_1)
-    message(FATAL_ERROR "Unable to read LumiPad <Version> from csproj")
+  # Firmware owns its version independently of the desktop application.
+  file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" LUMI_RELEASE_VERSION)
+  string(STRIP "${LUMI_RELEASE_VERSION}" LUMI_RELEASE_VERSION)
+  if(NOT LUMI_RELEASE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "VERSION must contain a firmware version in X.Y.Z format")
   endif()
-  set(LUMI_RELEASE_VERSION "${CMAKE_MATCH_1}")
-  message(STATUS "Lumi release version: ${LUMI_RELEASE_VERSION}")
-
+  message(STATUS "RYNOR ONE firmware version: ${LUMI_RELEASE_VERSION}")
   target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
   )

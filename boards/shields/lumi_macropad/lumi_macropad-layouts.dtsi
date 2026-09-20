@@ -3,7 +3,7 @@
 / {
     lumi_macropad_layout: lumi_macropad_layout {
         compatible = "zmk,physical-layout";
-        display-name = "Lumi MacroPad";
+        display-name = "RYNOR ONE";
 
         keys
             = <&key_physical_attrs 100 100   0   0 0 0 0>

@@ -78,6 +78,6 @@ Only advertise capabilities the product actually implements.
 
 Every real QMK product should use a unique USB VID/PID pair in its QMK
 `info.json`/keyboard definition and register those IDs in
-`ProductCatalog.cs`. The Windows app probes only that VID/PID and then
+[`ProductCatalog.cs`](https://github.com/mihqag148/Lumipad-APP/blob/main/pc-app/LumiPad.App/ProductCatalog.cs). The Windows app probes only that VID/PID and then
 requires the Lumi `HELLO` handshake, so an unrelated HID interface is not
 accepted as a Lumi device.
