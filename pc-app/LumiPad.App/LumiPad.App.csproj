@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Lumi Macropad v1.7.4 · sensor fallback and dark theme -->
+  <!-- Lumi Macropad v1.7.5 · PC monitor hard fix -->
   <PropertyGroup>
     <!-- v1.7.4 final verified build -->
     <OutputType>WinExe</OutputType>
@@ -14,9 +14,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.7.4</Version>
-    <AssemblyVersion>1.7.4.0</AssemblyVersion>
-    <FileVersion>1.7.4.0</FileVersion>
+    <Version>1.7.5</Version>
+    <AssemblyVersion>1.7.5.0</AssemblyVersion>
+    <FileVersion>1.7.5.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
