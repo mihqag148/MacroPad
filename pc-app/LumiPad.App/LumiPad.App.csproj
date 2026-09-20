@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- synchronized updater release build -->
   <!-- Lumi Macropad v1.12.0 · one-click firmware and app updater -->
   <PropertyGroup>
     <!-- v1.12.0 one-click firmware and app updater -->
