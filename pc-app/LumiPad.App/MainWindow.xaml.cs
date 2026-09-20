@@ -3205,6 +3205,326 @@ public partial class MainWindow : Window
         return result;
     }
 
+    private static HashSet<string> CurrentSerialPorts() =>
+        new(
+            System.IO.Ports.SerialPort.GetPortNames(),
+            StringComparer.OrdinalIgnoreCase);
+
+    private static string? FindNewSerialPort(
+        ISet<string> before)
+    {
+        string[] ports =
+            System.IO.Ports.SerialPort.GetPortNames();
+
+        string? fresh =
+            ports.FirstOrDefault(
+                port => !before.Contains(port));
+
+        if (!string.IsNullOrWhiteSpace(fresh))
+            return fresh;
+
+        // ESP32-S2 ROM USB CDC is normally the only transient COM port here.
+        // If Windows reused a COM number, prefer the sole port when possible.
+        return ports.Length == 1
+            ? ports[0]
+            : null;
+    }
+
+    private async Task<string> EnsureEspToolAsync(
+        string toolRoot)
+    {
+        string? existing =
+            IO.Directory.Exists(toolRoot)
+                ? IO.Directory
+                    .EnumerateFiles(
+                        toolRoot,
+                        "esptool.exe",
+                        IO.SearchOption.AllDirectories)
+                    .FirstOrDefault()
+                : null;
+
+        if (!string.IsNullOrWhiteSpace(existing))
+            return existing;
+
+        IO.Directory.CreateDirectory(toolRoot);
+
+        string zipPath =
+            IO.Path.Combine(
+                toolRoot,
+                "esptool-windows-amd64.zip");
+
+        UpdateStatusText.Text =
+            L(
+                "Downloading Espressif flashing engine for the one-time bootstrap…",
+                "Đang tải bộ nạp chính thức của Espressif cho lần bootstrap duy nhất…");
+
+        await DownloadFileAsync(
+            "https://github.com/espressif/esptool/releases/download/v5.4.0/esptool-v5.4.0-windows-amd64.zip",
+            zipPath);
+
+        string extractPath =
+            IO.Path.Combine(
+                toolRoot,
+                "esptool-v5.4.0");
+
+        if (IO.Directory.Exists(extractPath))
+            IO.Directory.Delete(extractPath, true);
+
+        IO.Directory.CreateDirectory(extractPath);
+        ZipFile.ExtractToDirectory(
+            zipPath,
+            extractPath,
+            true);
+
+        try
+        {
+            IO.File.Delete(zipPath);
+        }
+        catch
+        {
+        }
+
+        string? exe =
+            IO.Directory
+                .EnumerateFiles(
+                    extractPath,
+                    "esptool.exe",
+                    IO.SearchOption.AllDirectories)
+                .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            throw new InvalidOperationException(
+                "Espressif esptool.exe was not found after extraction.");
+        }
+
+        return exe;
+    }
+
+    private async Task BootstrapPixelProFirmwareAsync()
+    {
+        var confirm = System.Windows.MessageBox.Show(
+            L(
+                "This PIXEL PRO needs a one-time bootstrap before in-app OTA can work. Lumi Macropad can do it itself: it will download the official Espressif flashing engine and the latest PIXEL PRO firmware. You only need to put the board into BOOT mode when prompted. Continue?",
+                "PIXEL PRO này cần bootstrap một lần trước khi OTA trong app hoạt động. Lumi Macropad sẽ tự tải bộ nạp chính thức của Espressif và firmware mới nhất. Bạn chỉ cần đưa mạch vào BOOT khi app yêu cầu. Tiếp tục?"),
+            "PIXEL PRO · Enable one-click updates",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        _updateBusy = true;
+        SetDeviceControlsEnabled(true);
+
+        string workRoot =
+            IO.Path.Combine(
+                IO.Path.GetTempPath(),
+                "LumiPad-PixelPro-Bootstrap-" +
+                Guid.NewGuid().ToString("N"));
+        string mergedPath =
+            IO.Path.Combine(
+                workRoot,
+                "PIXEL_PRO_merged.bin");
+
+        try
+        {
+            IO.Directory.CreateDirectory(workRoot);
+
+            UpdateStatusText.Text =
+                L(
+                    "Downloading PIXEL PRO bootstrap firmware…",
+                    "Đang tải firmware bootstrap PIXEL PRO…");
+
+            var firmware =
+                await FindLatestAssetAsync(
+                    "PIXEL_PRO_merged.bin",
+                    PixelProFirmwareReleaseApi);
+
+            await DownloadFileAsync(
+                firmware.Url,
+                mergedPath);
+
+            string localTools =
+                IO.Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData),
+                    "LumiPad",
+                    "Tools",
+                    "esptool-5.4.0");
+
+            string esptool =
+                await EnsureEspToolAsync(localTools);
+
+            HashSet<string> portsBefore =
+                CurrentSerialPorts();
+
+            _autoReconnectEnabled = false;
+            _serial.Disconnect();
+
+            UpdateStatusText.Text =
+                L(
+                    "Waiting for PIXEL PRO BOOT mode…",
+                    "Đang chờ PIXEL PRO vào BOOT…");
+
+            var bootPrompt = System.Windows.MessageBox.Show(
+                L(
+                    "Put PIXEL PRO into ROM BOOT mode now:\n\n1. Hold BOOT.\n2. Press RESET once.\n3. Release RESET.\n4. Release BOOT.\n5. Click OK here.\n\nLumi Macropad will detect the new COM port and flash automatically.",
+                    "Đưa PIXEL PRO vào ROM BOOT ngay:\n\n1. Giữ BOOT.\n2. Nhấn RESET một lần.\n3. Thả RESET.\n4. Thả BOOT.\n5. Bấm OK ở đây.\n\nLumi Macropad sẽ tự tìm cổng COM mới và tự nạp."),
+                "PIXEL PRO · BOOT mode",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information);
+
+            if (bootPrompt != MessageBoxResult.OK)
+                return;
+
+            string? bootPort = null;
+
+            for (int i = 0; i < 30 && bootPort is null; i++)
+            {
+                await Task.Delay(250);
+                bootPort =
+                    FindNewSerialPort(
+                        portsBefore);
+            }
+
+            if (string.IsNullOrWhiteSpace(bootPort))
+            {
+                throw new InvalidOperationException(
+                    L(
+                        "No new ESP32-S2 boot COM port appeared. Repeat BOOT + RESET and try again.",
+                        "Không thấy cổng COM boot mới của ESP32-S2. Làm lại BOOT + RESET rồi thử lại."));
+            }
+
+            UpdateStatusText.Text =
+                L(
+                    $"Flashing PIXEL PRO on {bootPort}…",
+                    $"Đang nạp PIXEL PRO trên {bootPort}…");
+
+            var startInfo =
+                new ProcessStartInfo
+                {
+                    FileName = esptool,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+            startInfo.ArgumentList.Add("--chip");
+            startInfo.ArgumentList.Add("esp32s2");
+            startInfo.ArgumentList.Add("--port");
+            startInfo.ArgumentList.Add(bootPort);
+            startInfo.ArgumentList.Add("--baud");
+            startInfo.ArgumentList.Add("460800");
+            startInfo.ArgumentList.Add("--before");
+            startInfo.ArgumentList.Add("no-reset");
+            startInfo.ArgumentList.Add("--after");
+            startInfo.ArgumentList.Add("hard-reset");
+            startInfo.ArgumentList.Add("write-flash");
+            startInfo.ArgumentList.Add("0x0");
+            startInfo.ArgumentList.Add(mergedPath);
+
+            using Process process =
+                Process.Start(startInfo) ??
+                throw new InvalidOperationException(
+                    "Could not start Espressif esptool.");
+
+            Task<string> stdoutTask =
+                process.StandardOutput.ReadToEndAsync();
+            Task<string> stderrTask =
+                process.StandardError.ReadToEndAsync();
+
+            await process.WaitForExitAsync();
+
+            string stdout = await stdoutTask;
+            string stderr = await stderrTask;
+
+            AddLog(
+                process.ExitCode == 0 ? "INFO" : "ERROR",
+                "ESPTOOL",
+                stdout + Environment.NewLine + stderr);
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    L(
+                        $"Espressif flashing failed (exit {process.ExitCode}). Open Diagnostics for details.",
+                        $"Nạp bằng Espressif lỗi (mã {process.ExitCode}). Mở Diagnostics để xem chi tiết."));
+            }
+
+            UpdateStatusText.Text =
+                L(
+                    $"PIXEL PRO {firmware.Tag} bootstrap installed. Reconnecting…",
+                    $"Đã nạp bootstrap PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
+
+            _autoReconnectEnabled = true;
+
+            string? connection = null;
+            for (int i = 0; i < 12 && connection is null; i++)
+            {
+                await Task.Delay(500);
+                connection =
+                    await _serial.ConnectUsbAsync();
+            }
+
+            if (connection is null)
+            {
+                System.Windows.MessageBox.Show(
+                    L(
+                        "Flash completed. ESP32-S2 sometimes needs one manual RESET after flashing. Press RESET once, then click Connect USB. After this bootstrap, future firmware updates are fully automatic inside Lumi Macropad.",
+                        "Đã nạp xong. ESP32-S2 đôi khi cần nhấn RESET một lần sau khi flash. Nhấn RESET rồi bấm Kết nối USB. Sau lần bootstrap này, các firmware sau sẽ cập nhật hoàn toàn tự động trong Lumi Macropad."),
+                    "PIXEL PRO bootstrap complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            else
+            {
+                DeviceStatus.Text = connection;
+                DeviceDot.Fill =
+                    new SolidColorBrush(
+                        MediaColor.FromRgb(48, 209, 88));
+
+                System.Windows.MessageBox.Show(
+                    L(
+                        "Bootstrap complete. PIXEL PRO now supports one-click firmware updates directly from GitHub inside Lumi Macropad.",
+                        "Bootstrap hoàn tất. Từ giờ PIXEL PRO có thể cập nhật firmware 1 nút trực tiếp từ GitHub trong Lumi Macropad."),
+                    "PIXEL PRO",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+
+            await CheckForUpdatesAsync(silent: true);
+        }
+        catch (Exception ex)
+        {
+            _autoReconnectEnabled = true;
+            UpdateStatusText.Text =
+                L(
+                    $"PIXEL PRO bootstrap failed: {ex.Message}",
+                    $"Bootstrap PIXEL PRO lỗi: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "UPDATE",
+                $"PIXEL PRO bootstrap failed: {ex}");
+        }
+        finally
+        {
+            try
+            {
+                if (IO.Directory.Exists(workRoot))
+                    IO.Directory.Delete(workRoot, true);
+            }
+            catch
+            {
+            }
+
+            _updateBusy = false;
+            SetDeviceControlsEnabled(
+                _serial.IsConnected);
+        }
+    }
+
     private async Task UpdatePixelProFirmwareAsync()
     {
         if (!_serial.IsConnected ||
@@ -3223,13 +3543,7 @@ public partial class MainWindow : Window
 
         if (!pixelLink.SupportsFirmwareOta)
         {
-            System.Windows.MessageBox.Show(
-                L(
-                    "The firmware currently on this PIXEL PRO predates the in-app updater. Flash PIXEL PRO v0.1.5 merged once; after that, every firmware update can be installed directly from Lumi Macropad without another flashing tool.",
-                    "Firmware hiện tại của PIXEL PRO chưa có bộ cập nhật trong app. Hãy nạp PIXEL PRO v0.1.5 merged một lần; từ các bản sau Lumi Macropad sẽ tự tải và nạp firmware trực tiếp, không cần phần mềm flash khác."),
-                "PIXEL PRO · One-time bootstrap",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            await BootstrapPixelProFirmwareAsync();
             return;
         }
 
