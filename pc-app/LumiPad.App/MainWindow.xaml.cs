@@ -2728,7 +2728,7 @@ public partial class MainWindow : Window
                 await _serial.SendPcMonitorConfigAsync(
                     _pcMonitorConfigName,
                     _pcMonitorMetricSlots);
-                await _serial.SendPcMonitorAsync(snapshot);
+                await _serial.SendPcMonitorAsync(snapshot, _pcMonitorMetricSlots);
                 PcMonitorLinkText.Text =
                     _serial.IsBluetoothConnected
                         ? L("Live · Bluetooth telemetry", "Trực tiếp · dữ liệu Bluetooth")
