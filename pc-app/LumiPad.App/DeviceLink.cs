@@ -109,8 +109,7 @@ public static class DeviceLinkFactory
         product.Driver switch
         {
             DeviceDriverKind.LumiZmk => new SerialLink(),
-            DeviceDriverKind.QmkRawHid => throw new NotSupportedException(
-                $"QMK Raw HID driver is not registered for {product.ProductCode}."),
+            DeviceDriverKind.QmkRawHid => new QmkRawHidLink(product),
             DeviceDriverKind.Esp32Companion => throw new NotSupportedException(
                 $"ESP32 companion driver is not registered for {product.ProductCode}."),
             _ => throw new ArgumentOutOfRangeException(

@@ -169,3 +169,37 @@ DIAL DESK still uses the existing `SerialLink` and the same Lumi protocol, so
 this refactor does not change its USB CDC/BLE UUIDs or current features.
 A future QMK product can add a Raw HID implementation of `IDeviceLink` and a
 ProductCatalog entry without rewriting MainWindow or the shared app features.
+
+
+### QMK Raw HID support v1.9.0
+
+The Windows app now includes a real QMK Raw HID driver. QMK products use the
+standard QMK Raw HID interface and the Lumi framing protocol defined in
+`qmk/lumi_raw_hid`.
+
+- QMK Raw HID uses the default QMK Usage Page/Usage ID `0xFF60 / 0x61`.
+- Each QMK product should define its USB VID/PID in `ProductCatalog`.
+- `QmkRawHidLink` probes only the configured VID/PID, requires a 32-byte QMK
+  raw report, and verifies the device with a `HELLO` handshake before accepting it.
+- Lumi messages are fragmented across fixed 32-byte QMK reports, so the shared
+  app protocol can still carry Media, RGB, Profile, PC Monitor, Action and
+  other product commands.
+- Product selection now swaps the underlying device driver. Adding a QMK
+  product to `ProductCatalog.All` no longer requires editing `MainWindow`.
+
+To add a QMK product:
+
+```csharp
+public static ProductDefinition MyQmkPad { get; } =
+    CreateQmkProduct(
+        "my-qmk-pad",
+        "MY QMK PAD",
+        "QMK macro controller",
+        "QP-01",
+        0x1234,
+        0x5678);
+```
+
+Then add `MyQmkPad` to `ProductCatalog.All`, copy the
+`qmk/lumi_raw_hid` files into the QMK keymap/userspace, enable
+`RAW_ENABLE = yes`, and implement the product command callback.
