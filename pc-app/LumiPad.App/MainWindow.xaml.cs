@@ -1,5 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Net.Http;
+using System.Text;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -36,6 +39,10 @@ public partial class MainWindow : Window
     private string _connectionPreference = "auto";
     private bool _keyboardSleeping;
     private readonly CancellationTokenSource _reconnectCts = new();
+    private static readonly HttpClient UpdateHttp = CreateUpdateHttpClient();
+    private const string UpdateReleaseApi =
+        "https://api.github.com/repos/mihqag148/MacroPad/releases/latest";
+    private bool _updateBusy;
 
     private byte _r = 255;
     private byte _g = 120;
@@ -121,6 +128,15 @@ public partial class MainWindow : Window
         (10, "Network upload"),
         (11, "FPS")
     ];
+
+    private static HttpClient CreateUpdateHttpClient()
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "LumiPad-Updater/1.12");
+        client.Timeout = TimeSpan.FromMinutes(5);
+        return client;
+    }
 
     public MainWindow()
     {
@@ -914,6 +930,11 @@ public partial class MainWindow : Window
         ["Effect Speed"] = "Tốc độ hiệu ứng",
         ["Turn LEDs off after"] = "Tắt LED sau",
         ["Deep sleep after"] = "Ngủ sâu sau",
+        ["UPDATES"] = "CẬP NHẬT",
+        ["One-click updates"] = "Cập nhật một chạm",
+        ["Update firmware"] = "Cập nhật firmware",
+        ["Update app"] = "Cập nhật ứng dụng",
+        ["Ready"] = "Sẵn sàng",
         ["Deep sleep disconnects Bluetooth and uses very little power. Press a key to reboot and reconnect."] = "Ngủ sâu sẽ ngắt Bluetooth và tiết kiệm điện tối đa. Nhấn phím để khởi động lại và kết nối lại.",
         ["1 hour"] = "1 giờ",
         ["2 hours"] = "2 giờ",
@@ -2026,6 +2047,13 @@ public partial class MainWindow : Window
         if (KeyboardDfuButton is not null)
             KeyboardDfuButton.IsEnabled = connected;
 
+        if (FirmwareUpdateButton is not null)
+            FirmwareUpdateButton.IsEnabled =
+                !_updateBusy && connected && _serial.IsUsbConnected;
+
+        if (AppUpdateButton is not null)
+            AppUpdateButton.IsEnabled = !_updateBusy;
+
         if (SleepKeyboardButton is not null)
             SleepKeyboardButton.IsEnabled = connected;
 
@@ -2595,6 +2623,434 @@ public partial class MainWindow : Window
             BottomStatus.Text =
                 L($"Sleep/wake failed: {ex.Message}",
                   $"Ngủ/đánh thức thất bại: {ex.Message}");
+        }
+    }
+
+
+    private async Task<(string Tag, string Url)> FindLatestAssetAsync(
+        string assetName)
+    {
+        using var response =
+            await UpdateHttp.GetAsync(UpdateReleaseApi);
+        response.EnsureSuccessStatusCode();
+
+        using JsonDocument json =
+            JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync());
+
+        string tag =
+            json.RootElement.TryGetProperty(
+                "tag_name",
+                out JsonElement tagElement)
+                ? tagElement.GetString() ?? ""
+                : "";
+
+        if (!json.RootElement.TryGetProperty(
+                "assets",
+                out JsonElement assets))
+        {
+            throw new InvalidOperationException(
+                "Latest release has no assets.");
+        }
+
+        foreach (JsonElement asset in assets.EnumerateArray())
+        {
+            string name =
+                asset.GetProperty("name").GetString() ?? "";
+
+            if (!string.Equals(
+                    name,
+                    assetName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string url =
+                asset.GetProperty(
+                    "browser_download_url").GetString() ?? "";
+
+            if (string.IsNullOrWhiteSpace(url))
+                break;
+
+            return (tag, url);
+        }
+
+        throw new InvalidOperationException(
+            $"Release asset not found: {assetName}");
+    }
+
+    private static async Task DownloadFileAsync(
+        string url,
+        string destination)
+    {
+        using var response =
+            await UpdateHttp.GetAsync(
+                url,
+                HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        await using Stream input =
+            await response.Content.ReadAsStreamAsync();
+        await using FileStream output =
+            new(
+                destination,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None);
+
+        await input.CopyToAsync(output);
+    }
+
+    private static string? FindUf2Drive(
+        ISet<string>? exclude = null)
+    {
+        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (!drive.IsReady)
+                    continue;
+
+                string root = drive.RootDirectory.FullName;
+                if (exclude is not null &&
+                    exclude.Contains(root))
+                {
+                    continue;
+                }
+
+                if (File.Exists(
+                        Path.Combine(root, "INFO_UF2.TXT")))
+                {
+                    return root;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static HashSet<string> CurrentUf2Drives()
+    {
+        var result =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (drive.IsReady &&
+                    File.Exists(
+                        Path.Combine(
+                            drive.RootDirectory.FullName,
+                            "INFO_UF2.TXT")))
+                {
+                    result.Add(
+                        drive.RootDirectory.FullName);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return result;
+    }
+
+    private async void FirmwareUpdate_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_updateBusy)
+            return;
+
+        if (!_serial.IsConnected ||
+            !_serial.IsUsbConnected)
+        {
+            System.Windows.MessageBox.Show(
+                L(
+                    "Connect DIAL DESK by USB first. The app will enter UF2 bootloader and flash the latest firmware automatically.",
+                    "Hãy cắm DIAL DESK bằng USB trước. App sẽ tự vào UF2 bootloader và tự nạp firmware mới nhất."),
+                "LumiPad Firmware Update",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = System.Windows.MessageBox.Show(
+            L(
+                "Download and install the latest DIAL DESK firmware now?",
+                "Tải và tự nạp firmware DIAL DESK mới nhất ngay bây giờ?"),
+            "LumiPad Firmware Update",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        _updateBusy = true;
+        SetDeviceControlsEnabled(true);
+
+        string tempFile =
+            Path.Combine(
+                Path.GetTempPath(),
+                $"dial-desk-{Guid.NewGuid():N}.uf2");
+
+        try
+        {
+            UpdateStatusText.Text =
+                L(
+                    "Downloading latest firmware…",
+                    "Đang tải firmware mới nhất…");
+
+            var asset =
+                await FindLatestAssetAsync(
+                    "firmware.uf2");
+            await DownloadFileAsync(
+                asset.Url,
+                tempFile);
+
+            HashSet<string> before =
+                CurrentUf2Drives();
+
+            UpdateStatusText.Text =
+                L(
+                    "Entering UF2 bootloader…",
+                    "Đang vào UF2 bootloader…");
+
+            _autoReconnectEnabled = false;
+            await _serial.EnterDfuAsync();
+            await Task.Delay(250);
+            _serial.Disconnect();
+
+            string? uf2Root = null;
+            for (int i = 0; i < 40 && uf2Root is null; i++)
+            {
+                await Task.Delay(250);
+                uf2Root = FindUf2Drive(before);
+            }
+
+            uf2Root ??= FindUf2Drive();
+
+            if (string.IsNullOrWhiteSpace(uf2Root))
+            {
+                throw new InvalidOperationException(
+                    L(
+                        "UF2 drive did not appear. Check the USB cable and retry.",
+                        "Không thấy ổ UF2. Kiểm tra cáp USB rồi thử lại."));
+            }
+
+            UpdateStatusText.Text =
+                L(
+                    $"Flashing {asset.Tag}…",
+                    $"Đang nạp {asset.Tag}…");
+
+            string target =
+                Path.Combine(
+                    uf2Root,
+                    "firmware.uf2");
+
+            File.Copy(
+                tempFile,
+                target,
+                true);
+
+            await Task.Delay(1800);
+
+            _autoReconnectEnabled = true;
+            UpdateStatusText.Text =
+                L(
+                    "Firmware installed. Reconnecting…",
+                    "Đã nạp firmware. Đang kết nối lại…");
+
+            await DetectAsync();
+
+            UpdateStatusText.Text =
+                L(
+                    $"Firmware update complete · {asset.Tag}",
+                    $"Cập nhật firmware hoàn tất · {asset.Tag}");
+        }
+        catch (Exception ex)
+        {
+            _autoReconnectEnabled = true;
+            UpdateStatusText.Text =
+                L(
+                    $"Firmware update failed: {ex.Message}",
+                    $"Cập nhật firmware lỗi: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "UPDATE",
+                $"Firmware update failed: {ex}");
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempFile))
+                    File.Delete(tempFile);
+            }
+            catch
+            {
+            }
+
+            _updateBusy = false;
+            SetDeviceControlsEnabled(
+                _serial.IsConnected);
+        }
+    }
+
+    private async void AppUpdate_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_updateBusy)
+            return;
+
+        var confirm = System.Windows.MessageBox.Show(
+            L(
+                "Download the latest LumiPad app, replace this version, then reopen it automatically?",
+                "Tải LumiPad mới nhất, thay bản hiện tại rồi tự mở lại app?"),
+            "LumiPad App Update",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        _updateBusy = true;
+        SetDeviceControlsEnabled(
+            _serial.IsConnected);
+
+        string updateRoot =
+            Path.Combine(
+                Path.GetTempPath(),
+                "LumiPadUpdate-" +
+                Guid.NewGuid().ToString("N"));
+        string zipPath =
+            Path.Combine(
+                updateRoot,
+                "app.zip");
+        string stagePath =
+            Path.Combine(
+                updateRoot,
+                "stage");
+
+        try
+        {
+            Directory.CreateDirectory(updateRoot);
+
+            UpdateStatusText.Text =
+                L(
+                    "Downloading latest app…",
+                    "Đang tải app mới nhất…");
+
+            var asset =
+                await FindLatestAssetAsync(
+                    "LumiPad-Windows-x64.zip");
+
+            await DownloadFileAsync(
+                asset.Url,
+                zipPath);
+
+            Directory.CreateDirectory(stagePath);
+            ZipFile.ExtractToDirectory(
+                zipPath,
+                stagePath,
+                true);
+
+            string currentExe =
+                Environment.ProcessPath ??
+                throw new InvalidOperationException(
+                    "Current executable path is unavailable.");
+            string targetDir =
+                Path.GetDirectoryName(currentExe) ??
+                throw new InvalidOperationException(
+                    "Current app directory is unavailable.");
+            string exeName =
+                Path.GetFileName(currentExe);
+
+            string stagedExe =
+                Directory
+                    .EnumerateFiles(
+                        stagePath,
+                        exeName,
+                        SearchOption.AllDirectories)
+                    .FirstOrDefault()
+                ?? Directory
+                    .EnumerateFiles(
+                        stagePath,
+                        "*.exe",
+                        SearchOption.AllDirectories)
+                    .FirstOrDefault()
+                ?? throw new InvalidOperationException(
+                    "Downloaded app package has no executable.");
+
+            string sourceDir =
+                Path.GetDirectoryName(stagedExe)!;
+
+            string scriptPath =
+                Path.Combine(
+                    updateRoot,
+                    "install-update.ps1");
+
+            string script =
+$@"$ErrorActionPreference = 'Stop'
+$pidToWait = {Environment.ProcessId}
+$source = '{sourceDir.Replace("'", "''")}'
+$target = '{targetDir.Replace("'", "''")}'
+$exe = '{exeName.Replace("'", "''")}'
+try {{
+    Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+    Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+    Start-Process -FilePath (Join-Path $target $exe)
+}} finally {{
+    Start-Sleep -Milliseconds 500
+    Remove-Item -LiteralPath '{updateRoot.Replace("'", "''")}' -Recurse -Force -ErrorAction SilentlyContinue
+}}";
+
+            File.WriteAllText(
+                scriptPath,
+                script,
+                new UTF8Encoding(false));
+
+            UpdateStatusText.Text =
+                L(
+                    $"Installing {asset.Tag}. LumiPad will reopen automatically…",
+                    $"Đang cài {asset.Tag}. LumiPad sẽ tự mở lại…");
+
+            Process.Start(
+                new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments =
+                        $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                    UseShellExecute = true,
+                    WindowStyle =
+                        ProcessWindowStyle.Hidden
+                });
+
+            _allowExit = true;
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text =
+                L(
+                    $"App update failed: {ex.Message}",
+                    $"Cập nhật app lỗi: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "UPDATE",
+                $"App update failed: {ex}");
+
+            _updateBusy = false;
+            SetDeviceControlsEnabled(
+                _serial.IsConnected);
         }
     }
 

@@ -1749,6 +1749,34 @@
                                                TextWrapping="Wrap"
                                                Margin="0,6,0,0"/>
 
+                                    <Border Height="1"
+                                            Background="{DynamicResource Line}"
+                                            Margin="0,20,0,16"/>
+
+                                    <TextBlock Text="UPDATES"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="One-click updates"
+                                               FontSize="17"
+                                               FontWeight="SemiBold"
+                                               Margin="0,5,0,8"/>
+                                    <TextBlock x:Name="UpdateStatusText"
+                                               Text="Ready"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,10"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="FirmwareUpdateButton"
+                                                Content="Update firmware"
+                                                Click="FirmwareUpdate_Click"/>
+                                        <Button x:Name="AppUpdateButton"
+                                                Content="Update app"
+                                                Click="AppUpdate_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+
                                     <StackPanel Orientation="Horizontal"
                                                 Margin="0,16,0,0">
                                         <Button x:Name="RestartKeyboardButton"

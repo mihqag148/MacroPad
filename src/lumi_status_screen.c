@@ -126,6 +126,8 @@ static lv_obj_t *sleep_overlay;
 static lv_obj_t *boot_overlay;
 static lv_obj_t *boot_progress;
 static uint32_t boot_started_ms;
+#define BOOT_BACKLIGHT_DELAY_MS 500U
+#define BOOT_SPLASH_VISIBLE_MS 2500U
 
 static lv_obj_t *pc_monitor_overlay;
 static lv_obj_t *pc_cpu_title;
@@ -2275,6 +2277,16 @@ static void lumi_ui_set_eco_timers(bool sleeping) {
 
 static void lumi_panel_backlight_on_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
+
+    /* On cold boot the splash has already been drawn into ST7789 RAM while
+     * BLK is LOW. Start the visible 2.5 s loading window exactly when BLK
+     * turns on, so the user never sees the panel's random power-up RAM.
+     */
+    if (boot_overlay && boot_started_ms == 0U) {
+        /* The visible splash timer begins when BLK actually turns on. */
+    boot_started_ms = 0U;
+    }
+
     (void)lumi_panel_set_backlight(true);
 }
 
@@ -2774,17 +2786,28 @@ static void refresh_boot_splash(lv_timer_t *timer) {
         return;
     }
 
+    if (boot_started_ms == 0U) {
+        lv_bar_set_value(
+            boot_progress,
+            0,
+            LV_ANIM_OFF);
+        return;
+    }
+
     uint32_t elapsed =
         (uint32_t)(lv_tick_get() - boot_started_ms);
     uint32_t progress =
-        MIN(100U, (elapsed * 100U) / 2000U);
+        MIN(
+            100U,
+            (elapsed * 100U) /
+                BOOT_SPLASH_VISIBLE_MS);
 
     lv_bar_set_value(
         boot_progress,
         (int32_t)progress,
         LV_ANIM_OFF);
 
-    if (elapsed < 2000U) {
+    if (elapsed < BOOT_SPLASH_VISIBLE_MS) {
         return;
     }
 
@@ -3198,13 +3221,12 @@ screensaver_lv_timer = lv_timer_create(
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
-/* The physical 100k pulldown + P0.08 GPIO hog keep the backlight off during
- * reset and display init. Turn it on only after LVGL has had time to flush the
- * boot splash, eliminating the visible white/random RAM flash at power-up.
+/* P0.08/BLK stays LOW through display init. Wait 0.5 s after the UI is built,
+ * then reveal the already-rendered splash for a full visible 2.5 s.
  */
 (void)k_work_schedule(
     &lumi_panel_backlight_on_work,
-    K_MSEC(120));
+    K_MSEC(BOOT_BACKLIGHT_DELAY_MS));
 
 return screen;
 }

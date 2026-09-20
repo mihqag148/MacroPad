@@ -286,3 +286,21 @@ Wake sources:
 
 Both EC11 phases P1.04 and P1.06 get dedicated wake-trigger devices that remain
 suspended during normal operation and are armed only while entering deep sleep.
+
+
+### One-click updater v1.12.0
+
+Boot sequence:
+- ST7789 BLK remains OFF for 0.5 s after the display UI is initialized.
+- The splash is already rendered before BLK turns ON.
+- The loading screen remains visibly on-screen for a full 2.5 s, then the
+  normal DIAL DESK UI appears.
+
+LumiPad Settings now includes:
+- **Update firmware**: requires USB. LumiPad downloads the latest release
+  `firmware.uf2`, commands the nice!nano into UF2 bootloader, detects the UF2
+  drive, copies the firmware automatically, and reconnects after reboot.
+- **Update app**: downloads the latest self-contained Windows ZIP, closes the
+  running app, replaces its files, then launches LumiPad again automatically.
+
+Release assets are produced by `.github/workflows/publish-latest.yml`.
