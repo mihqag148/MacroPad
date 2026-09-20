@@ -24,6 +24,11 @@
     <FileVersion>1.14.0.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
+    <Content Include="Definitions\PIXEL-PRO-VIA.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
     <PackageReference Include="HidSharp" Version="2.6.4" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
