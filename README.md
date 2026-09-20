@@ -318,3 +318,10 @@ Release assets are produced by `.github/workflows/publish-latest.yml`.
   USB before the one-click UF2 flash begins.
 - Older firmware without an FW version is treated as updateable so it can move
   onto the version-aware update system.
+
+
+### Settings layout v1.13.1
+
+- DEVICE is now the first card in the left Settings column.
+- GENERAL is moved to the right column directly above SYSTEM.
+- No Settings functionality changed.

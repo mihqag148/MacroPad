@@ -1616,43 +1616,6 @@
                                     BorderBrush="{DynamicResource Line}"
                                     BorderThickness="1"
                                     CornerRadius="20"
-                                    Padding="22"
-                                    Margin="0,0,0,16">
-                                <StackPanel>
-                                    <TextBlock Text="GENERAL"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="App settings"
-                                               FontSize="21"
-                                               FontWeight="SemiBold"
-                                               Margin="0,6,0,18"/>
-
-                                    <TextBlock Text="Language"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,0,0,6"/>
-                                    <ComboBox x:Name="LanguageCombo"
-                                              SelectionChanged="LanguageCombo_SelectionChanged"
-                                              Margin="0,0,0,16">
-                                        <ComboBoxItem Content="EN  English" Tag="en" IsSelected="True"/>
-                                        <ComboBoxItem Content="VI  Tiếng Việt" Tag="vi"/>
-                                    </ComboBox>
-
-                                    <TextBlock Text="Appearance"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,0,0,6"/>
-                                    <Button x:Name="ThemeButton"
-                                            Content="Light mode"
-                                            Click="ThemeButton_Click"
-                                            HorizontalAlignment="Left"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="{DynamicResource Card}"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="20"
                                     Padding="22">
                                 <StackPanel>
                                     <TextBlock Text="DEVICE"
@@ -1869,6 +1832,43 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="2">
+                            <Border Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="22"
+                                    Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="GENERAL"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="App settings"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,18"/>
+
+                                    <TextBlock Text="Language"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <ComboBox x:Name="LanguageCombo"
+                                              SelectionChanged="LanguageCombo_SelectionChanged"
+                                              Margin="0,0,0,16">
+                                        <ComboBoxItem Content="EN  English" Tag="en" IsSelected="True"/>
+                                        <ComboBoxItem Content="VI  Tiếng Việt" Tag="vi"/>
+                                    </ComboBox>
+
+                                    <TextBlock Text="Appearance"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,6"/>
+                                    <Button x:Name="ThemeButton"
+                                            Content="Light mode"
+                                            Click="ThemeButton_Click"
+                                            HorizontalAlignment="Left"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Border>
+
                             <Border Background="{DynamicResource Card}"
                                     BorderBrush="{DynamicResource Line}"
                                     BorderThickness="1"
