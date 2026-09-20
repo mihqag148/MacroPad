@@ -1794,7 +1794,7 @@ public sealed class SerialLink : IDisposable
 
         string line =
             $"PCMON|{I(data.CpuLoad)}|{N(data.CpuTemperature)}|" +
-            $"{N(data.CpuClockMHz)}|{I(data.GpuLoad)}|" +
+            $"{N(data.CpuClockMHz)}|{N(data.GpuLoad)}|" +
             $"{N(data.GpuTemperature)}|{N(data.GpuClockMHz)}|" +
             $"{I(data.MemoryLoad)}|{usedMb}|{totalMb}|" +
             $"{downKbps}|{upKbps}|{data.Fps ?? -1}";
