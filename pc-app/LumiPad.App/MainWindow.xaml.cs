@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _allowExit;
     private bool _trayTipShown;
     private bool _zmkInitialized;
+    private string _loadedConfiguratorUrl = "";
     private bool _autoReconnectEnabled = true;
     private string _connectionPreference = "auto";
     private bool _keyboardSleeping;
@@ -253,6 +254,7 @@ public partial class MainWindow : Window
             ApplyAutoProfileUiState();
             RefreshActionScriptsUi();
             BuildProductCards();
+            UpdateDeviceConfiguratorUi();
             _uiReady = true;
             UpdateSettingsInfo();
             UpdateProductHubUi();
@@ -725,6 +727,10 @@ public partial class MainWindow : Window
 
             _serial = DeviceLinkFactory.Create(product);
             AttachDeviceLinkEvents(_serial);
+
+            _zmkInitialized = false;
+            _loadedConfiguratorUrl = "";
+            UpdateDeviceConfiguratorUi();
 
             SetDeviceControlsEnabled(false);
             UpdateTransportIndicators();
@@ -4765,6 +4771,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private string CurrentConfiguratorName() =>
+        _activeProduct.Driver switch
+        {
+            DeviceDriverKind.LumiZmk => "ZMK Studio",
+            DeviceDriverKind.QmkRawHid => "VIA",
+            DeviceDriverKind.Esp32Companion => "Device Config",
+            _ => "Device Config"
+        };
+
+    private string CurrentConfiguratorUrl() =>
+        _activeProduct.Driver switch
+        {
+            DeviceDriverKind.LumiZmk => "https://zmk.studio/",
+            DeviceDriverKind.QmkRawHid => "https://usevia.app/",
+            _ => ""
+        };
+
+    private void UpdateDeviceConfiguratorUi()
+    {
+        string name = CurrentConfiguratorName();
+        string url = CurrentConfiguratorUrl();
+
+        ZmkTab.Header = name;
+        if (DeviceConfiguratorTitle is not null)
+            DeviceConfiguratorTitle.Text = name;
+
+        if (ZmkStatus is not null)
+        {
+            ZmkStatus.Text = string.IsNullOrWhiteSpace(url)
+                ? L(
+                    "No embedded configurator for this product.",
+                    "Sản phẩm này chưa có trình cấu hình tích hợp.")
+                : _activeProduct.Driver == DeviceDriverKind.QmkRawHid
+                    ? L(
+                        "Embedded usevia.app · WebHID will be checked after loading",
+                        "Tích hợp usevia.app · sẽ kiểm tra WebHID sau khi tải")
+                    : $"Embedded {url}";
+        }
+    }
+
     private async void MainTabs_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -4775,23 +4821,70 @@ public partial class MainWindow : Window
         ApplyLanguage();
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
+        UpdateDeviceConfiguratorUi();
 
         if (ZmkTab.IsSelected)
-            await EnsureZmkStudioAsync();
+            await EnsureDeviceConfiguratorAsync();
     }
 
-    private async Task EnsureZmkStudioAsync()
+    private async Task EnsureDeviceConfiguratorAsync(bool force = false)
     {
-        if (_zmkInitialized)
+        string url = CurrentConfiguratorUrl();
+        string name = CurrentConfiguratorName();
+
+        UpdateDeviceConfiguratorUi();
+
+        if (string.IsNullOrWhiteSpace(url))
             return;
+
+        if (!force &&
+            _zmkInitialized &&
+            string.Equals(
+                _loadedConfiguratorUrl,
+                url,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
 
         try
         {
-            ZmkStatus.Text = L("Loading https://zmk.studio/ …", "Đang tải https://zmk.studio/ …");
+            ZmkStatus.Text = L(
+                $"Loading {url} …",
+                $"Đang tải {url} …");
+
             await ZmkWebView.EnsureCoreWebView2Async();
-            ZmkWebView.Source = new Uri("https://zmk.studio/");
+            ZmkWebView.Source = new Uri(url);
+            _loadedConfiguratorUrl = url;
             _zmkInitialized = true;
-            ZmkStatus.Text = "https://zmk.studio/";
+
+            await Task.Delay(750);
+
+            if (_activeProduct.Driver == DeviceDriverKind.QmkRawHid &&
+                ZmkWebView.CoreWebView2 is not null)
+            {
+                string webHidResult =
+                    await ZmkWebView.CoreWebView2.ExecuteScriptAsync(
+                        "typeof navigator.hid !== 'undefined'");
+
+                bool webHidAvailable =
+                    string.Equals(
+                        webHidResult?.Trim(),
+                        "true",
+                        StringComparison.OrdinalIgnoreCase);
+
+                ZmkStatus.Text = webHidAvailable
+                    ? L(
+                        "VIA loaded · WebHID ready",
+                        "VIA đã tải · WebHID sẵn sàng")
+                    : L(
+                        "VIA loaded · WebHID unavailable here — use Open in Edge",
+                        "VIA đã tải · WebHID không khả dụng tại đây — dùng Open in Edge");
+            }
+            else
+            {
+                ZmkStatus.Text = $"{name} · {url}";
+            }
         }
         catch (Exception ex)
         {
@@ -4802,7 +4895,8 @@ public partial class MainWindow : Window
 
     private async void ReloadZmk_Click(object sender, RoutedEventArgs e)
     {
-        await EnsureZmkStudioAsync();
+        _zmkInitialized = false;
+        await EnsureDeviceConfiguratorAsync(force: true);
 
         if (ZmkWebView.CoreWebView2 is not null)
             ZmkWebView.Reload();
@@ -4810,16 +4904,24 @@ public partial class MainWindow : Window
 
     private void OpenZmkExternal_Click(object sender, RoutedEventArgs e)
     {
+        string url = CurrentConfiguratorUrl();
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = "https://zmk.studio/",
+                FileName = url,
                 UseShellExecute = true
             });
         }
-        catch
+        catch (Exception ex)
         {
+            AddLog(
+                "WARN",
+                "CONFIG",
+                $"Open {CurrentConfiguratorName()} failed: {ex.Message}");
         }
     }
 }

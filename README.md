@@ -203,3 +203,21 @@ public static ProductDefinition MyQmkPad { get; } =
 Then add `MyQmkPad` to `ProductCatalog.All`, copy the
 `qmk/lumi_raw_hid` files into the QMK keymap/userspace, enable
 `RAW_ENABLE = yes`, and implement the product command callback.
+
+
+### Dynamic ZMK Studio / VIA tab v1.10.0
+
+The embedded firmware-configuration tab now follows the selected product:
+
+- ZMK products show **ZMK Studio** and load `https://zmk.studio/`.
+- QMK Raw HID products show **VIA** and load `https://usevia.app/`.
+- Other driver types fall back to a generic **Device Config** label.
+
+For VIA, the app probes `navigator.hid` after the embedded web app loads.
+When WebHID is available, the status reports **WebHID ready**. When the current
+WebView2 runtime does not expose WebHID, the status tells the user to use the
+existing **Open in Edge** button, which opens the same official VIA web app in
+the browser.
+
+The tab URL is reset whenever the active product changes, so switching between
+a ZMK product and a QMK product also switches the embedded configurator.
