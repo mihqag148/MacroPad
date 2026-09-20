@@ -7,9 +7,10 @@ namespace LumiPad.App;
 /// <summary>
 /// QMK Raw HID transport for Lumi products.
 ///
-/// QMK Raw HID is a fixed 32-byte report. HidSharp includes the report ID as
-/// byte zero, therefore a normal QMK Raw HID interface exposes 33-byte
-/// input/output reports. Lumi fragments UTF-8 protocol lines over those
+/// Raw HID is a fixed 32-byte payload. HidSharp includes the HID report ID as
+/// byte zero, therefore the transport uses 33-byte input/output reports.
+/// Normal QMK products use report ID 0; PIXEL PRO uses Arduino HID Vendor
+/// report ID 6. Lumi fragments UTF-8 protocol lines over those
 /// reports and verifies the target with HELLO before accepting the device.
 /// </summary>
 public sealed class QmkRawHidLink : IDeviceLink
@@ -329,7 +330,8 @@ public sealed class QmkRawHidLink : IDeviceLink
                 device.GetMaxOutputReportLength());
 
             byte[] report = new byte[reportLength];
-            int p = 1; // report ID = 0
+            report[0] = _product.RawReportId;
+            int p = 1;
 
             report[p + 0] = Magic0;
             report[p + 1] = Magic1;
@@ -394,6 +396,12 @@ public sealed class QmkRawHidLink : IDeviceLink
                 count >= RawPayloadBytes + 1
                     ? 1
                     : 0;
+
+            if (p == 1 &&
+                report[0] != _product.RawReportId)
+            {
+                continue;
+            }
 
             if (count - p < RawPayloadBytes)
                 continue;
