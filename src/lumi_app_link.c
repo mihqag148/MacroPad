@@ -1031,6 +1031,23 @@ static void handle_pc_monitor(char *save) {
         return;
     }
 
+    uint8_t slots[6];
+    bool have_layout = true;
+
+    for (uint8_t i = 0U; i < 6U; i++) {
+        char *slot = strtok_r(NULL, "|", &save);
+        if (!slot) {
+            have_layout = false;
+            break;
+        }
+
+        slots[i] = (uint8_t)CLAMP(atoi(slot), 0, 11);
+    }
+
+    if (have_layout) {
+        lumi_ui_pc_monitor_set_layout(slots);
+    }
+
     lumi_ui_pc_monitor_update(
         (uint8_t)CLAMP(atoi(cpu_load), 0, 100),
         (int16_t)atoi(cpu_temp),
