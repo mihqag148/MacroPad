@@ -395,12 +395,10 @@ static void refresh_pc_monitor_labels(void) {
 
     struct pc_monitor_state state;
     uint8_t slots[6];
-    char config_name[20];
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     state = pc_monitor_state;
     memcpy(slots, pc_monitor_metric_slots, sizeof(slots));
-    snprintf(config_name, sizeof(config_name), "%s", pc_monitor_config_name);
     k_mutex_unlock(&lumi_ui_config_lock);
 
     bool stale =
@@ -445,11 +443,41 @@ static void refresh_pc_monitor_labels(void) {
         &state,
         stale);
 
-    lv_label_set_text_fmt(
-        pc_monitor_status,
-        "%s  %s",
-        config_name,
-        stale ? "OFFLINE" : "LIVE");
+    if (stale) {
+        lv_label_set_text(
+            pc_monitor_status,
+            "CPU --C   GPU --C   RAM --%");
+    } else {
+        char cpu_temp[8];
+        char gpu_temp[8];
+
+        if (state.cpu_temp_c < 0) {
+            snprintf(cpu_temp, sizeof(cpu_temp), "--C");
+        } else {
+            snprintf(
+                cpu_temp,
+                sizeof(cpu_temp),
+                "%dC",
+                (int)state.cpu_temp_c);
+        }
+
+        if (state.gpu_temp_c < 0) {
+            snprintf(gpu_temp, sizeof(gpu_temp), "--C");
+        } else {
+            snprintf(
+                gpu_temp,
+                sizeof(gpu_temp),
+                "%dC",
+                (int)state.gpu_temp_c);
+        }
+
+        lv_label_set_text_fmt(
+            pc_monitor_status,
+            "CPU %s   GPU %s   RAM %u%%",
+            cpu_temp,
+            gpu_temp,
+            (unsigned int)state.ram_load);
+    }
 }
 
 static void pc_monitor_work_handler(struct k_work *work) {
@@ -2530,7 +2558,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_monitor_status =
         pc_monitor_label(
             network,
-            "MY PC  OFFLINE",
+            "CPU --C   GPU --C   RAM --%",
             &lv_font_montserrat_12,
             0x8E8E93);
     lv_obj_set_pos(pc_monitor_status, 10, 22);
