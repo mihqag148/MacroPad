@@ -272,3 +272,17 @@ Power behavior is now split into user-configurable stages:
   starting/opening music, or an explicit manual wake/show action.
 - LVGL high-frequency timers are paused during soft sleep and the page polling
   loop drops from 500 ms to 2 s while asleep.
+
+
+### Encoder rotation wake from deep sleep
+
+Deep sleep now uses ZMK's soft-off wake-source flow instead of calling
+`sys_poweroff()` directly.
+
+Wake sources:
+- Any matrix key.
+- Encoder push (because it is part of the matrix).
+- Encoder rotation in either direction.
+
+Both EC11 phases P1.04 and P1.06 get dedicated wake-trigger devices that remain
+suspended during normal operation and are armed only while entering deep sleep.

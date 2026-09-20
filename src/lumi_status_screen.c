@@ -2581,16 +2581,13 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
         k_sleep(K_MSEC(120));
 
-        int rc = zmk_pm_suspend_devices();
+        int rc = zmk_pm_soft_off();
         if (rc < 0) {
-            lumi_diag_report('E', "Deep sleep suspend failed rc=%d", rc);
-            zmk_pm_resume_devices();
+            lumi_diag_report('E', "Deep sleep soft-off failed rc=%d", rc);
 
             k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
             deep_sleep_pending = false;
             k_mutex_unlock(&lumi_ui_config_lock);
-        } else {
-            sys_poweroff();
         }
     }
 
