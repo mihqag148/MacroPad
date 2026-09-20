@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- unified version quote fix sync -->
   <!-- v1.13 firmware-version include path sync -->
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->

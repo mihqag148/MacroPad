@@ -23,7 +23,7 @@ if(CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM)
   )
   target_compile_definitions(
     app PRIVATE
-    LUMI_FIRMWARE_VERSION="\"${LUMI_RELEASE_VERSION}\""
+    LUMI_FIRMWARE_VERSION=\"${LUMI_RELEASE_VERSION}\"
   )
 
   target_sources(app PRIVATE
