@@ -103,7 +103,7 @@ public sealed class SerialLink : IDeviceLink
             foreach (string cap in new[]
                      {
                          "MEM", "PANEL", "LOG", "SAVERSTATE",
-                         "PROFILE", "ACTION", "ARTVAR", "BAT"
+                         "PROFILE", "ACTION", "ARTVAR", "BAT", "PCMON"
                      })
             {
                 _capabilities.Add(cap);
@@ -338,7 +338,7 @@ public sealed class SerialLink : IDeviceLink
                         // one-shot status read is temporarily unavailable. The
                         // service + characteristic UUID pair uniquely identifies
                         // this firmware. Read the hello/status opportunistically.
-                        string hello = "LUMIPAD|2";
+                        string hello = "LUMIPAD|3";
                         if ((props & GattCharacteristicProperties.Read) != 0)
                         {
                             try

@@ -237,3 +237,17 @@ Firmware reserves **P0.08** for the ST7789 module **BLK/backlight** control pin.
   after the redraw delay.
 
 This wiring uses the module's own BLK input directly; no AO3400 is required.
+
+
+### PC Monitor BLE + dynamic footer fix v1.10.1
+
+- Protocol v3 fallback capabilities in the Windows app now include `PCMON`.
+  This fixes Bluetooth sessions where the first GATT status read contains only
+  `LUMIPAD|3|SAVER:...` or is temporarily unavailable.
+- The app only reports PC Monitor as Live when both the configuration packet and
+  telemetry packet were actually sent.
+- The three large PC Monitor cards still use slots 1-3.
+- The readable bottom row now uses slots 4-6 again instead of being hard-coded.
+  Changing a footer slot in the app immediately changes the keyboard display.
+- Footer text stays compact for the 101 px columns, for example:
+  `CPU 52C`, `GPU 48C`, `RAM 43%`, `DOWN 12.4M`, `UP 850K`, `FPS 144`.

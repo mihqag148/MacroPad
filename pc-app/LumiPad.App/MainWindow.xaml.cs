@@ -2851,14 +2851,37 @@ public partial class MainWindow : Window
                 _serial.IsConnected &&
                 _serial.SupportsPcMonitor)
             {
-                await _serial.SendPcMonitorConfigAsync(
-                    _pcMonitorConfigName,
-                    _pcMonitorMetricSlots);
-                await _serial.SendPcMonitorAsync(snapshot, _pcMonitorMetricSlots);
-                PcMonitorLinkText.Text =
-                    _serial.IsBluetoothConnected
-                        ? L("Live · Bluetooth telemetry", "Trực tiếp · dữ liệu Bluetooth")
-                        : L("Live · USB telemetry", "Trực tiếp · dữ liệu USB");
+                bool configSent =
+                    await _serial.SendPcMonitorConfigAsync(
+                        _pcMonitorConfigName,
+                        _pcMonitorMetricSlots);
+                bool telemetrySent =
+                    await _serial.SendPcMonitorAsync(
+                        snapshot,
+                        _pcMonitorMetricSlots);
+
+                if (configSent && telemetrySent)
+                {
+                    PcMonitorLinkText.Text =
+                        _serial.IsBluetoothConnected
+                            ? L(
+                                "Live · Bluetooth telemetry",
+                                "Trực tiếp · dữ liệu Bluetooth")
+                            : L(
+                                "Live · USB telemetry",
+                                "Trực tiếp · dữ liệu USB");
+                }
+                else
+                {
+                    PcMonitorLinkText.Text =
+                        _serial.IsBluetoothConnected
+                            ? L(
+                                "Bluetooth telemetry send failed",
+                                "Gửi dữ liệu Bluetooth thất bại")
+                            : L(
+                                "USB telemetry send failed",
+                                "Gửi dữ liệu USB thất bại");
+                }
             }
             else if (_pcMonitorEnabled && _serial.IsConnected)
             {

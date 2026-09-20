@@ -363,7 +363,7 @@ static void pc_render_footer(
     char title[16];
     char value[20];
     char meta[16];
-    char line[40];
+    char line[32];
 
     pc_metric_format(
         metric,
@@ -376,10 +376,71 @@ static void pc_render_footer(
         meta,
         sizeof(meta));
 
-    if (meta[0] != ' ' && meta[0] != '\0') {
-        snprintf(line, sizeof(line), "%s %s%s", title, value, meta);
-    } else {
-        snprintf(line, sizeof(line), "%s %s", title, value);
+    switch (metric) {
+    case 0:
+    case 1:
+        snprintf(line, sizeof(line), "CPU %s", value);
+        break;
+    case 2:
+        snprintf(
+            line,
+            sizeof(line),
+            stale ? "CPU --" : "CPU %uM",
+            (unsigned int)state->cpu_clock_mhz);
+        break;
+    case 3:
+    case 4:
+        snprintf(line, sizeof(line), "GPU %s", value);
+        break;
+    case 5:
+        snprintf(
+            line,
+            sizeof(line),
+            (stale || state->gpu_clock_mhz == 0U)
+                ? "GPU --"
+                : "GPU %uM",
+            (unsigned int)state->gpu_clock_mhz);
+        break;
+    case 6:
+        snprintf(line, sizeof(line), "RAM %s", value);
+        break;
+    case 7:
+    case 8:
+        snprintf(
+            line,
+            sizeof(line),
+            "%s %sG",
+            metric == 7 ? "USED" : "TOTAL",
+            value);
+        break;
+    case 9:
+        if (stale) {
+            snprintf(line, sizeof(line), "DOWN --");
+        } else {
+            snprintf(
+                line,
+                sizeof(line),
+                "DOWN %s%s",
+                value,
+                strstr(meta, "Mb") ? "M" : "K");
+        }
+        break;
+    case 10:
+        if (stale) {
+            snprintf(line, sizeof(line), "UP --");
+        } else {
+            snprintf(
+                line,
+                sizeof(line),
+                "UP %s%s",
+                value,
+                strstr(meta, "Mb") ? "M" : "K");
+        }
+        break;
+    case 11:
+    default:
+        snprintf(line, sizeof(line), "FPS %s", value);
+        break;
     }
 
     lv_label_set_text(label, line);
@@ -427,34 +488,21 @@ static void refresh_pc_monitor_labels(void) {
         &state,
         stale);
 
-    if (stale) {
-        lv_label_set_text(pc_net_down, "CPU --C");
-        lv_label_set_text(pc_net_up, "GPU --C");
-        lv_label_set_text(pc_fps_value, "RAM --%");
-    } else {
-        if (state.cpu_temp_c < 0) {
-            lv_label_set_text(pc_net_down, "CPU --C");
-        } else {
-            lv_label_set_text_fmt(
-                pc_net_down,
-                "CPU %dC",
-                (int)state.cpu_temp_c);
-        }
-
-        if (state.gpu_temp_c < 0) {
-            lv_label_set_text(pc_net_up, "GPU --C");
-        } else {
-            lv_label_set_text_fmt(
-                pc_net_up,
-                "GPU %dC",
-                (int)state.gpu_temp_c);
-        }
-
-        lv_label_set_text_fmt(
-            pc_fps_value,
-            "RAM %u%%",
-            (unsigned int)state.ram_load);
-    }
+    pc_render_footer(
+        pc_net_down,
+        slots[3],
+        &state,
+        stale);
+    pc_render_footer(
+        pc_net_up,
+        slots[4],
+        &state,
+        stale);
+    pc_render_footer(
+        pc_fps_value,
+        slots[5],
+        &state,
+        stale);
 }
 
 static void pc_monitor_work_handler(struct k_work *work) {
@@ -2518,7 +2566,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_net_down =
         pc_monitor_label(
             network,
-            "CPU --C",
+            "DOWN --",
             &lv_font_montserrat_16,
             0x64D2FF);
     lv_obj_set_pos(pc_net_down, 0, 10);
@@ -2531,7 +2579,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_net_up =
         pc_monitor_label(
             network,
-            "GPU --C",
+            "UP --",
             &lv_font_montserrat_16,
             0xBF5AF2);
     lv_obj_set_pos(pc_net_up, 101, 10);
@@ -2544,7 +2592,7 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_fps_value =
         pc_monitor_label(
             network,
-            "RAM --%",
+            "FPS --",
             &lv_font_montserrat_16,
             0x30D158);
     lv_obj_set_pos(pc_fps_value, 202, 10);
