@@ -2736,6 +2736,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string FormatNetworkRate(double mbps)
+    {
+        if (!double.IsFinite(mbps) || mbps < 0)
+            return "--";
+
+        if (mbps < 0.001)
+            return "0 Kbps";
+
+        if (mbps < 1)
+            return $"{mbps * 1000d:0} Kbps";
+
+        return $"{mbps:0.0} Mbps";
+    }
+
     private void ApplyPcMonitorUi(PcMonitorSnapshot snapshot)
     {
         PcCpuLoadText.Text = $"{snapshot.CpuLoad:0}%";
@@ -2744,7 +2758,9 @@ public partial class MainWindow : Window
         PcCpuClockText.Text = snapshot.CpuClockMHz.HasValue
             ? $"{snapshot.CpuClockMHz.Value:0} MHz" : "-- MHz";
 
-        PcGpuLoadText.Text = $"{snapshot.GpuLoad:0}%";
+        PcGpuLoadText.Text = snapshot.GpuLoad.HasValue
+            ? $"{snapshot.GpuLoad.Value:0}%"
+            : "--%";
         PcGpuNameText.Text = snapshot.GpuName;
         PcGpuActiveText.Text =
             string.Equals(_pcMonitorGpuId, "auto", StringComparison.OrdinalIgnoreCase)
@@ -2758,8 +2774,8 @@ public partial class MainWindow : Window
         PcRamLoadText.Text = $"{snapshot.MemoryLoad:0}%";
         PcRamDetailText.Text =
             $"{snapshot.MemoryUsedGb:0.0} / {snapshot.MemoryTotalGb:0.0} GB";
-        PcNetDownText.Text = $"{snapshot.NetworkDownloadMbps:0.0} Mbps";
-        PcNetUpText.Text = $"{snapshot.NetworkUploadMbps:0.0} Mbps";
+        PcNetDownText.Text = FormatNetworkRate(snapshot.NetworkDownloadMbps);
+        PcNetUpText.Text = FormatNetworkRate(snapshot.NetworkUploadMbps);
         PcFpsText.Text = snapshot.Fps.HasValue
             ? $"FPS {snapshot.Fps.Value}" : "FPS --";
     }
@@ -2797,7 +2813,9 @@ public partial class MainWindow : Window
             {
                 PcGpuCombo.Items.Add(new ComboBoxItem
                 {
-                    Content = $"{gpu.Name} · {gpu.Load:0}%",
+                    Content = gpu.Load.HasValue
+                        ? $"{gpu.Name} · {gpu.Load.Value:0}%"
+                        : $"{gpu.Name} · --%",
                     Tag = gpu.Id
                 });
             }
