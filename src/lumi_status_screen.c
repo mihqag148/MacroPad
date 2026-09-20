@@ -150,7 +150,7 @@ struct pc_monitor_state {
     uint8_t cpu_load;
     int16_t cpu_temp_c;
     uint16_t cpu_clock_mhz;
-    uint8_t gpu_load;
+    int16_t gpu_load;
     int16_t gpu_temp_c;
     uint16_t gpu_clock_mhz;
     uint8_t ram_load;
@@ -223,10 +223,10 @@ static void pc_metric_format(
         break;
     case 3:
         snprintf(title, title_len, "GPU USE");
-        if (stale) {
+        if (stale || state->gpu_load < 0) {
             snprintf(value, value_len, "--");
         } else {
-            snprintf(value, value_len, "%u%%", (unsigned int)state->gpu_load);
+            snprintf(value, value_len, "%d%%", (int)state->gpu_load);
         }
         break;
     case 4:
@@ -284,6 +284,10 @@ static void pc_metric_format(
         snprintf(title, title_len, "NET DOWN");
         if (stale) {
             snprintf(value, value_len, "--");
+        } else if (state->net_down_kbps < 1000U) {
+            snprintf(value, value_len, "%u",
+                     (unsigned int)state->net_down_kbps);
+            snprintf(meta, meta_len, "Kb/s");
         } else {
             uint32_t tenths = state->net_down_kbps / 100U;
             snprintf(value, value_len, "%u.%u",
@@ -297,6 +301,10 @@ static void pc_metric_format(
         snprintf(title, title_len, "NET UP");
         if (stale) {
             snprintf(value, value_len, "--");
+        } else if (state->net_up_kbps < 1000U) {
+            snprintf(value, value_len, "%u",
+                     (unsigned int)state->net_up_kbps);
+            snprintf(meta, meta_len, "Kb/s");
         } else {
             uint32_t tenths = state->net_up_kbps / 100U;
             snprintf(value, value_len, "%u.%u",
@@ -455,7 +463,7 @@ void lumi_ui_pc_monitor_update(
     uint8_t cpu_load,
     int16_t cpu_temp_c,
     uint16_t cpu_clock_mhz,
-    uint8_t gpu_load,
+    int16_t gpu_load,
     int16_t gpu_temp_c,
     uint16_t gpu_clock_mhz,
     uint8_t ram_load,
@@ -469,7 +477,8 @@ void lumi_ui_pc_monitor_update(
     pc_monitor_state.cpu_load = MIN(cpu_load, 100U);
     pc_monitor_state.cpu_temp_c = cpu_temp_c;
     pc_monitor_state.cpu_clock_mhz = cpu_clock_mhz;
-    pc_monitor_state.gpu_load = MIN(gpu_load, 100U);
+    pc_monitor_state.gpu_load =
+        gpu_load < 0 ? -1 : MIN(gpu_load, 100);
     pc_monitor_state.gpu_temp_c = gpu_temp_c;
     pc_monitor_state.gpu_clock_mhz = gpu_clock_mhz;
     pc_monitor_state.ram_load = MIN(ram_load, 100U);
