@@ -12,7 +12,18 @@
         <SolidColorBrush x:Key="Muted" Color="#9A9AA0"/>
         <SolidColorBrush x:Key="Line" Color="#3A3A3C"/>
         <SolidColorBrush x:Key="Accent" Color="#FF7A00"/>
-        <SolidColorBrush x:Key="Selection" Color="#3A2414"/>
+        <SolidColorBrush x:Key="Selection" Color="#2B2521"/>
+
+        <!-- Native WPF ComboBox/Popup use SystemColors internally.
+             Override them so dark mode stays consistent without a fragile
+             custom ComboBox template. ApplyTheme updates these at runtime. -->
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1B1C20"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#202126"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#ECECF0"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#ECECF0"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2B2521"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#F4F4F6"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#252529"/>
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
