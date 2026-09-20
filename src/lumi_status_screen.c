@@ -169,7 +169,7 @@ static struct pc_monitor_state pc_monitor_state;
 
 K_MUTEX_DEFINE(lumi_ui_config_lock);
 static uint32_t ui_last_activity_ms;
-static uint32_t key_last_activity_ms;
+static uint32_t rgb_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
 static uint32_t sleep_delay_ms = 120000U;
 static uint32_t rgb_idle_delay_ms = 60000U;
@@ -2326,15 +2326,18 @@ static void lumi_ui_note_activity_internal(bool physical_key) {
     ui_last_activity_ms = now;
     deep_sleep_pending = false;
 
-    if (physical_key) {
-        key_last_activity_ms = now;
-        rgb_idle_suspended = false;
-    }
+    /* RGB uses its own idle timeout, but it shares the exact same meaningful
+     * wake sources as the display: physical input, Auto Profile changes,
+     * media playback start, and explicit manual wake. Background telemetry,
+     * PC Monitor and CFG traffic never call this path.
+     */
+    rgb_last_activity_ms = now;
+    rgb_idle_suspended = false;
 
     was_sleeping = soft_sleep;
     soft_sleep = false;
     saver_force_show = false;
-    resume_rgb = !rgb_idle_suspended;
+    resume_rgb = true;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     if (resume_rgb) {
@@ -2376,6 +2379,8 @@ void lumi_ui_show_screensaver_now(void) {
     was_sleeping = soft_sleep;
     soft_sleep = false;
     saver_force_show = true;
+    rgb_last_activity_ms = k_uptime_get_32();
+    rgb_idle_suspended = false;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     lumi_rgb_set_suspended(false);
@@ -2519,7 +2524,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     uint32_t rgb_timeout;
     uint32_t deep_timeout;
     uint32_t last_activity;
-    uint32_t last_key_activity;
+    uint32_t last_rgb_activity;
     bool already_sleeping;
     bool rgb_timed_out;
     bool deep_pending;
@@ -2529,7 +2534,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     rgb_timeout = rgb_idle_delay_ms;
     deep_timeout = deep_sleep_delay_ms;
     last_activity = ui_last_activity_ms;
-    last_key_activity = key_last_activity_ms;
+    last_rgb_activity = rgb_last_activity_ms;
     already_sleeping = soft_sleep;
     rgb_timed_out = rgb_idle_suspended;
     deep_pending = deep_sleep_pending;
@@ -2539,7 +2544,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 
     if (rgb_timeout > 0U &&
         !rgb_timed_out &&
-        (uint32_t)(now - last_key_activity) >= rgb_timeout) {
+        (uint32_t)(now - last_rgb_activity) >= rgb_timeout) {
 
         k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
         rgb_idle_suspended = true;
@@ -2927,7 +2932,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
     ui_last_activity_ms = k_uptime_get_32();
-    key_last_activity_ms = ui_last_activity_ms;
+    rgb_last_activity_ms = ui_last_activity_ms;
     lv_obj_remove_style_all(screen);
     lv_obj_set_size(screen, 320, 172);
     lv_obj_set_style_bg_color(screen, lv_color_hex(wallpaper_color_a), 0);

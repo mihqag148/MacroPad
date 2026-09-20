@@ -341,3 +341,22 @@ There is now one release-version source: the LumiPad app `<Version>` in
 Result: bumping the app from v1.13.2 to v1.13.3 automatically builds firmware
 that reports `FW=1.13.3`, so LumiPad can immediately show and enable the
 firmware Update button without manually editing a second version file.
+
+
+### Unified RGB/display wake v1.13.3
+
+RGB and the display now share the same meaningful wake sources while keeping
+independent sleep timers.
+
+Wake both display + RGB:
+- Physical key press.
+- Encoder push/rotation activity.
+- Auto Profile actually changes profile.
+- Media playback starts/opens.
+- Explicit manual Wake / Show Screensaver action.
+
+Do not wake either from background PC Monitor, telemetry or CFG/RGB sync traffic.
+
+The RGB timeout remains independent from the display Sleep timeout. Every
+meaningful wake resets the RGB idle timer, so RGB does not immediately turn
+back off after Auto Profile or Media wakes the device.
