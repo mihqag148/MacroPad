@@ -41,7 +41,7 @@ public static class ProductCatalog
             0x303A,
             0x4009,
             supportsBattery: false,
-            rawReportId: 6);
+            rawReportId: 0);
 
     public static ProductDefinition CreateQmkProduct(
         string id,
