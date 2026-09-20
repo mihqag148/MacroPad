@@ -17,7 +17,8 @@ public sealed record ProductDefinition(
     int? UsbVendorId = null,
     int? UsbProductId = null,
     ushort RawUsagePage = 0xFF60,
-    ushort RawUsageId = 0x0061);
+    ushort RawUsageId = 0x0061,
+    byte RawReportId = 0);
 
 public static class ProductCatalog
 {
@@ -39,7 +40,8 @@ public static class ProductCatalog
             "PP-01",
             0x303A,
             0x4009,
-            supportsBattery: false);
+            supportsBattery: false,
+            rawReportId: 6);
 
     public static ProductDefinition CreateQmkProduct(
         string id,
@@ -48,7 +50,8 @@ public static class ProductCatalog
         string productCode,
         int vendorId,
         int productId,
-        bool supportsBattery = false) =>
+        bool supportsBattery = false,
+        byte rawReportId = 0) =>
         new(
             id,
             name,
@@ -57,7 +60,8 @@ public static class ProductCatalog
             supportsBattery,
             DeviceDriverKind.QmkRawHid,
             vendorId,
-            productId);
+            productId,
+            RawReportId: rawReportId);
 
     public static IReadOnlyList<ProductDefinition> All { get; } =
     [
