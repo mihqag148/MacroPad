@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Lumi Macropad</AssemblyName>
     <RootNamespace>LumiPad.App</RootNamespace>
     <Product>Lumi Macropad</Product>
