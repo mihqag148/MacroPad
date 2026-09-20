@@ -1,5 +1,7 @@
+using System.Management;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using LibreHardwareMonitor.Hardware;
 
 namespace LumiPad.App;
@@ -7,14 +9,14 @@ namespace LumiPad.App;
 public sealed record PcGpuInfo(
     string Id,
     string Name,
-    double Load,
+    double? Load,
     HardwareType Type);
 
 public sealed record PcMonitorSnapshot(
     double CpuLoad,
     double? CpuTemperature,
     double? CpuClockMHz,
-    double GpuLoad,
+    double? GpuLoad,
     double? GpuTemperature,
     double? GpuClockMHz,
     string GpuId,
@@ -37,7 +39,8 @@ public sealed class PcMonitorService : IDisposable
         IsCpuEnabled = true,
         IsGpuEnabled = true,
         IsMemoryEnabled = true,
-        IsMotherboardEnabled = true
+        IsMotherboardEnabled = true,
+        IsControllerEnabled = true
     };
 
     private bool _opened;
@@ -57,21 +60,39 @@ public sealed class PcMonitorService : IDisposable
             EnsureOpen();
             UpdateAllHardware();
 
-            IHardware? cpuHardware = _computer.Hardware
+            IHardware? cpuHardware = AllHardware()
                 .FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
 
-            IHardware[] gpuHardware = _computer.Hardware
+            IHardware[] gpuHardware = AllHardware()
                 .Where(IsGpu)
+                .GroupBy(h => h.Identifier.ToString())
+                .Select(g => g.First())
                 .ToArray();
 
+            Dictionary<int, double?> wmiGpuLoads =
+                ReadWindowsGpuEngineLoads();
+
             PcGpuInfo[] gpuInfos = gpuHardware
-                .Select(h => new PcGpuInfo(
-                    h.Identifier.ToString(),
-                    string.IsNullOrWhiteSpace(h.Name)
-                        ? h.HardwareType.ToString()
-                        : h.Name.Trim(),
-                    ReadGpuLoad(h),
-                    h.HardwareType))
+                .Select((hardware, index) =>
+                {
+                    double? load =
+                        ReadGpuLoad(hardware);
+
+                    if ((!load.HasValue || load.Value <= 0.01) &&
+                        wmiGpuLoads.TryGetValue(index, out double? wmiLoad) &&
+                        wmiLoad.HasValue)
+                    {
+                        load = wmiLoad;
+                    }
+
+                    return new PcGpuInfo(
+                        hardware.Identifier.ToString(),
+                        string.IsNullOrWhiteSpace(hardware.Name)
+                            ? hardware.HardwareType.ToString()
+                            : hardware.Name.Trim(),
+                        load,
+                        hardware.HardwareType);
+                })
                 .ToArray();
 
             IHardware? selectedGpu = SelectGpu(
@@ -79,11 +100,21 @@ public sealed class PcMonitorService : IDisposable
                 gpuInfos,
                 selectedGpuId);
 
+            int selectedGpuIndex =
+                selectedGpu is null
+                    ? -1
+                    : Array.FindIndex(
+                        gpuHardware,
+                        h => string.Equals(
+                            h.Identifier.ToString(),
+                            selectedGpu.Identifier.ToString(),
+                            StringComparison.OrdinalIgnoreCase));
+
             PcGpuInfo selectedGpuInfo = selectedGpu is null
                 ? new PcGpuInfo(
                     "none",
                     "No GPU detected",
-                    0,
+                    null,
                     0)
                 : gpuInfos.First(g =>
                     string.Equals(
@@ -91,41 +122,67 @@ public sealed class PcMonitorService : IDisposable
                         selectedGpu.Identifier.ToString(),
                         StringComparison.OrdinalIgnoreCase));
 
-            // Windows GetSystemTimes is used as the dependable baseline for CPU
-            // usage. LibreHardwareMonitor is still used for clocks/temperature.
             double? windowsCpuLoad = ReadWindowsCpuLoad();
-            double lhmCpuLoad = ReadCpuLoad(cpuHardware);
-            double cpuLoad = windowsCpuLoad.HasValue
-                ? windowsCpuLoad.Value
-                : lhmCpuLoad;
+            double? lhmCpuLoad = ReadCpuLoad(cpuHardware);
 
-            // If the Windows sample is the very first one, LHM can fill the gap.
-            if (cpuLoad <= 0.01 && lhmCpuLoad > 0.01)
-                cpuLoad = lhmCpuLoad;
+            double cpuLoad =
+                windowsCpuLoad ??
+                lhmCpuLoad ??
+                0;
+
+            if (cpuLoad <= 0.01 &&
+                lhmCpuLoad.HasValue &&
+                lhmCpuLoad.Value > 0.01)
+            {
+                cpuLoad = lhmCpuLoad.Value;
+            }
 
             double? cpuTemp =
                 ReadTemperature(
                     cpuHardware,
                     "CPU Package",
                     "Package",
+                    "Tctl",
+                    "Tdie",
                     "Core");
+
+            cpuTemp ??=
+                ReadGlobalCpuTemperature();
+
+            cpuTemp ??=
+                ReadAcpiThermalZoneTemperature();
 
             double? cpuClock =
                 AverageCoreClock(cpuHardware);
 
-            double gpuLoad =
+            cpuClock ??=
+                ReadWindowsCpuClock();
+
+            double? gpuLoad =
                 selectedGpu is null
-                    ? 0
-                    : ReadGpuLoad(selectedGpu);
+                    ? null
+                    : selectedGpuInfo.Load;
+
+            if ((!gpuLoad.HasValue || gpuLoad.Value <= 0.01) &&
+                selectedGpuIndex >= 0 &&
+                wmiGpuLoads.TryGetValue(
+                    selectedGpuIndex,
+                    out double? selectedWmiLoad) &&
+                selectedWmiLoad.HasValue)
+            {
+                gpuLoad = selectedWmiLoad;
+            }
 
             double? gpuTemp =
                 selectedGpu is null
                     ? null
                     : ReadTemperature(
                         selectedGpu,
+                        "GPU Hot Spot",
                         "GPU Core",
                         "Hot Spot",
-                        "Core");
+                        "Core",
+                        "Temperature");
 
             double? gpuClock =
                 selectedGpu is null
@@ -145,7 +202,9 @@ public sealed class PcMonitorService : IDisposable
                 Math.Clamp(cpuLoad, 0, 100),
                 cpuTemp,
                 cpuClock,
-                Math.Clamp(gpuLoad, 0, 100),
+                gpuLoad.HasValue
+                    ? Math.Clamp(gpuLoad.Value, 0, 100)
+                    : null,
                 gpuTemp,
                 gpuClock,
                 selectedGpuInfo.Id,
@@ -169,14 +228,13 @@ public sealed class PcMonitorService : IDisposable
         _computer.Open();
         _opened = true;
 
-        // Several load sensors need two samples before they contain a useful
-        // value. Prime the hardware tree once instead of showing permanent 0%.
+        // Prime sensors that need more than one sample.
         UpdateAllHardware();
-        Thread.Sleep(160);
+        Thread.Sleep(220);
         UpdateAllHardware();
 
-        // Prime GetSystemTimes for the same reason.
         _ = ReadWindowsCpuLoad();
+        _ = ReadWindowsGpuEngineLoads();
     }
 
     private void UpdateAllHardware()
@@ -191,6 +249,29 @@ public sealed class PcMonitorService : IDisposable
 
         foreach (IHardware child in hardware.SubHardware)
             UpdateHardware(child);
+    }
+
+    private IEnumerable<IHardware> AllHardware()
+    {
+        foreach (IHardware hardware in _computer.Hardware)
+        {
+            yield return hardware;
+
+            foreach (IHardware child in HardwareRecursive(hardware))
+                yield return child;
+        }
+    }
+
+    private static IEnumerable<IHardware> HardwareRecursive(
+        IHardware hardware)
+    {
+        foreach (IHardware child in hardware.SubHardware)
+        {
+            yield return child;
+
+            foreach (IHardware nested in HardwareRecursive(child))
+                yield return nested;
+        }
     }
 
     private static bool IsGpu(IHardware hardware) =>
@@ -222,10 +303,8 @@ public sealed class PcMonitorService : IDisposable
                 return manual;
         }
 
-        // Auto mode follows the adapter that is actually doing the most work.
-        // When both are equally idle, prefer a discrete NVIDIA/AMD card.
         PcGpuInfo winner = infos
-            .OrderByDescending(g => g.Load)
+            .OrderByDescending(g => g.Load ?? -1)
             .ThenByDescending(g =>
                 g.Type == HardwareType.GpuNvidia ||
                 g.Type == HardwareType.GpuAmd
@@ -267,21 +346,24 @@ public sealed class PcMonitorService : IDisposable
                 !float.IsInfinity(s.Value.Value))
             .ToArray();
 
-    private static double ReadCpuLoad(IHardware? cpu)
+    private static double? ReadCpuLoad(IHardware? cpu)
     {
-        ISensor[] sensors = SensorsOfType(cpu, SensorType.Load);
+        ISensor[] sensors =
+            SensorsOfType(cpu, SensorType.Load);
 
         if (sensors.Length == 0)
-            return 0;
+            return null;
 
         double? total = sensors
             .Where(s =>
                 s.Name.Contains(
                     "CPU Total",
                     StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(
-                    s.Name,
+                s.Name.Contains(
                     "Total CPU",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Equals(
+                    "Total",
                     StringComparison.OrdinalIgnoreCase))
             .Select(s => (double?)s.Value!.Value)
             .FirstOrDefault();
@@ -294,20 +376,31 @@ public sealed class PcMonitorService : IDisposable
                 s.Name.Contains(
                     "Thread",
                     StringComparison.OrdinalIgnoreCase))
-            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
+            .Select(s =>
+                Math.Clamp(
+                    (double)s.Value!.Value,
+                    0,
+                    100))
             .ToArray();
 
-        double fallback = coreLoads.Length > 0
-            ? coreLoads.Average()
-            : sensors
-                .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
-                .DefaultIfEmpty(0)
-                .Max();
+        double? fallback =
+            coreLoads.Length > 0
+                ? coreLoads.Average()
+                : sensors
+                    .Select(s =>
+                        Math.Clamp(
+                            (double)s.Value!.Value,
+                            0,
+                            100))
+                    .DefaultIfEmpty()
+                    .Max();
 
-        // Some firmware/CPU combinations expose CPU Total but leave it at 0
-        // while the per-core counters are live.
-        if (!total.HasValue ||
-            (total.Value <= 0.01 && fallback > 0.01))
+        if (!total.HasValue)
+            return fallback;
+
+        if (total.Value <= 0.01 &&
+            fallback.HasValue &&
+            fallback.Value > 0.01)
         {
             return fallback;
         }
@@ -315,43 +408,98 @@ public sealed class PcMonitorService : IDisposable
         return Math.Clamp(total.Value, 0, 100);
     }
 
-    private static double ReadGpuLoad(IHardware gpu)
+    private static double? ReadGpuLoad(IHardware gpu)
     {
-        ISensor[] loads = SensorsOfType(gpu, SensorType.Load);
+        ISensor[] loads =
+            SensorsOfType(gpu, SensorType.Load);
 
         if (loads.Length == 0)
-            return 0;
+            return null;
 
-        // "GPU Core" is ideal when present and alive. On Intel/hybrid systems
-        // the useful sensor can instead be D3D 3D / Graphics / Render.
-        double preferred = loads
+        ISensor[] useful = loads
+            .Where(s =>
+                !s.Name.Contains(
+                    "Memory",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !s.Name.Contains(
+                    "Bus",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (useful.Length == 0)
+            useful = loads;
+
+        double preferred = useful
             .Where(s =>
                 s.Name.Contains(
                     "GPU Core",
                     StringComparison.OrdinalIgnoreCase) ||
                 s.Name.Contains(
-                    "D3D 3D",
+                    "3D",
                     StringComparison.OrdinalIgnoreCase) ||
                 s.Name.Contains(
                     "Graphics",
                     StringComparison.OrdinalIgnoreCase) ||
                 s.Name.Contains(
                     "Render",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "Compute",
                     StringComparison.OrdinalIgnoreCase))
-            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
-            .DefaultIfEmpty(0)
+            .Select(s =>
+                Math.Clamp(
+                    (double)s.Value!.Value,
+                    0,
+                    100))
+            .DefaultIfEmpty(-1)
             .Max();
 
-        double anyEngine = loads
+        double anyEngine = useful
+            .Select(s =>
+                Math.Clamp(
+                    (double)s.Value!.Value,
+                    0,
+                    100))
+            .DefaultIfEmpty(-1)
+            .Max();
+
+        double result =
+            Math.Max(preferred, anyEngine);
+
+        return result < 0
+            ? null
+            : result;
+    }
+
+    private double? ReadGlobalCpuTemperature()
+    {
+        var matches = AllHardware()
+            .Where(h => !IsGpu(h))
+            .SelectMany(h =>
+                SensorsOfType(
+                    h,
+                    SensorType.Temperature))
             .Where(s =>
-                !s.Name.Contains(
-                    "Memory",
-                    StringComparison.OrdinalIgnoreCase))
-            .Select(s => Math.Clamp((double)s.Value!.Value, 0, 100))
-            .DefaultIfEmpty(0)
-            .Max();
+                s.Value!.Value > 5f &&
+                s.Value!.Value < 125f &&
+                (s.Name.Contains(
+                     "CPU",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 s.Name.Contains(
+                     "Package",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 s.Name.Contains(
+                     "Tctl",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 s.Name.Contains(
+                     "Tdie",
+                     StringComparison.OrdinalIgnoreCase)))
+            .Select(s => (double)s.Value!.Value)
+            .ToArray();
 
-        return Math.Max(preferred, anyEngine);
+        return matches.Length == 0
+            ? null
+            : matches.Max();
     }
 
     private static double? ReadTemperature(
@@ -359,12 +507,12 @@ public sealed class PcMonitorService : IDisposable
         params string[] preferredNames)
     {
         ISensor[] sensors =
-            SensorsOfType(hardware, SensorType.Temperature);
-
-        // 0 C / 1 C is not a valid live PC sensor reading here; treating it as
-        // missing is much more useful than displaying a fake 0 degrees.
-        sensors = sensors
-            .Where(s => s.Value!.Value > 1f)
+            SensorsOfType(
+                hardware,
+                SensorType.Temperature)
+            .Where(s =>
+                s.Value!.Value > 5f &&
+                s.Value!.Value < 125f)
             .ToArray();
 
         if (sensors.Length == 0)
@@ -372,64 +520,225 @@ public sealed class PcMonitorService : IDisposable
 
         foreach (string preferredName in preferredNames)
         {
-            ISensor? preferred = sensors.FirstOrDefault(s =>
-                s.Name.Contains(
-                    preferredName,
-                    StringComparison.OrdinalIgnoreCase));
+            ISensor? preferred =
+                sensors.FirstOrDefault(s =>
+                    s.Name.Contains(
+                        preferredName,
+                        StringComparison.OrdinalIgnoreCase));
 
-            if (preferred?.Value is float value && value > 1f)
+            if (preferred?.Value is float value)
                 return value;
         }
 
-        return sensors.Max(s => (double)s.Value!.Value);
+        return sensors.Max(s =>
+            (double)s.Value!.Value);
     }
 
-    private static double? AverageCoreClock(IHardware? cpu)
+    private static double? AverageCoreClock(
+        IHardware? cpu)
     {
         double[] clocks =
-            SensorsOfType(cpu, SensorType.Clock)
-                .Where(s =>
-                    s.Value!.Value > 1 &&
-                    (s.Name.Contains(
-                         "Core",
-                         StringComparison.OrdinalIgnoreCase) ||
-                     s.Name.Contains(
-                         "CPU",
-                         StringComparison.OrdinalIgnoreCase)))
-                .Select(s => (double)s.Value!.Value)
-                .ToArray();
+            SensorsOfType(
+                cpu,
+                SensorType.Clock)
+            .Where(s =>
+                s.Value!.Value > 100 &&
+                (s.Name.Contains(
+                     "Core",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 s.Name.Contains(
+                     "CPU",
+                     StringComparison.OrdinalIgnoreCase) ||
+                 s.Name.Contains(
+                     "Bus",
+                     StringComparison.OrdinalIgnoreCase) == false))
+            .Select(s =>
+                (double)s.Value!.Value)
+            .ToArray();
 
         if (clocks.Length == 0)
             return null;
 
-        return clocks.Average();
+        // Ignore obvious bus/reference clocks when a CPU has multiple sensors.
+        double[] plausible =
+            clocks
+                .Where(v => v >= 200)
+                .ToArray();
+
+        return plausible.Length > 0
+            ? plausible.Average()
+            : clocks.Average();
     }
 
-    private static double? ReadGpuClock(IHardware gpu)
+    private static double? ReadGpuClock(
+        IHardware gpu)
     {
         ISensor[] clocks =
-            SensorsOfType(gpu, SensorType.Clock)
-                .Where(s => s.Value!.Value > 1)
-                .ToArray();
+            SensorsOfType(
+                gpu,
+                SensorType.Clock)
+            .Where(s =>
+                s.Value!.Value > 50)
+            .ToArray();
 
         if (clocks.Length == 0)
             return null;
 
-        ISensor? core = clocks.FirstOrDefault(s =>
-            s.Name.Contains(
-                "Core",
-                StringComparison.OrdinalIgnoreCase) ||
-            s.Name.Contains(
-                "Graphics",
-                StringComparison.OrdinalIgnoreCase));
+        ISensor? core =
+            clocks.FirstOrDefault(s =>
+                s.Name.Contains(
+                    "Core",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "Graphics",
+                    StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Contains(
+                    "GPU",
+                    StringComparison.OrdinalIgnoreCase));
 
-        if (core?.Value is float value && value > 1)
+        if (core?.Value is float value)
             return value;
 
         return clocks
             .Select(s => (double)s.Value!.Value)
             .DefaultIfEmpty()
             .Max();
+    }
+
+    private static Dictionary<int, double?>
+        ReadWindowsGpuEngineLoads()
+    {
+        var result =
+            new Dictionary<int, double?>();
+
+        try
+        {
+            using var searcher =
+                new ManagementObjectSearcher(
+                    @"root\cimv2",
+                    "SELECT Name, UtilizationPercentage " +
+                    "FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine");
+
+            foreach (ManagementObject item in searcher.Get())
+            {
+                string name =
+                    item["Name"]?.ToString() ?? "";
+
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                Match match =
+                    Regex.Match(
+                        name,
+                        @"phys_(\d+)",
+                        RegexOptions.IgnoreCase);
+
+                if (!match.Success ||
+                    !int.TryParse(
+                        match.Groups[1].Value,
+                        out int physicalIndex))
+                {
+                    continue;
+                }
+
+                if (!double.TryParse(
+                        item["UtilizationPercentage"]?.ToString(),
+                        out double load))
+                {
+                    continue;
+                }
+
+                load = Math.Clamp(load, 0, 100);
+
+                if (!result.TryGetValue(
+                        physicalIndex,
+                        out double? current) ||
+                    !current.HasValue ||
+                    load > current.Value)
+                {
+                    result[physicalIndex] = load;
+                }
+            }
+        }
+        catch
+        {
+            // Optional fallback. LHM remains the primary source.
+        }
+
+        return result;
+    }
+
+    private static double? ReadWindowsCpuClock()
+    {
+        try
+        {
+            using var searcher =
+                new ManagementObjectSearcher(
+                    "SELECT CurrentClockSpeed " +
+                    "FROM Win32_Processor");
+
+            double[] values =
+                searcher
+                    .Get()
+                    .Cast<ManagementObject>()
+                    .Select(o =>
+                        double.TryParse(
+                            o["CurrentClockSpeed"]?.ToString(),
+                            out double mhz)
+                            ? mhz
+                            : 0)
+                    .Where(v => v > 100)
+                    .ToArray();
+
+            return values.Length == 0
+                ? null
+                : values.Average();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double? ReadAcpiThermalZoneTemperature()
+    {
+        try
+        {
+            using var searcher =
+                new ManagementObjectSearcher(
+                    @"root\WMI",
+                    "SELECT CurrentTemperature " +
+                    "FROM MSAcpi_ThermalZoneTemperature");
+
+            double[] values =
+                searcher
+                    .Get()
+                    .Cast<ManagementObject>()
+                    .Select(o =>
+                    {
+                        if (!double.TryParse(
+                                o["CurrentTemperature"]?.ToString(),
+                                out double raw))
+                        {
+                            return double.NaN;
+                        }
+
+                        return raw / 10d - 273.15d;
+                    })
+                    .Where(v =>
+                        double.IsFinite(v) &&
+                        v >= 10 &&
+                        v <= 120)
+                    .ToArray();
+
+            return values.Length == 0
+                ? null
+                : values.Max();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private double? ReadWindowsCpuLoad()
@@ -455,21 +764,27 @@ public sealed class PcMonitorService : IDisposable
             return null;
         }
 
-        ulong idleDelta = idleNow - _lastCpuIdle;
-        ulong kernelDelta = kernelNow - _lastCpuKernel;
-        ulong userDelta = userNow - _lastCpuUser;
+        ulong idleDelta =
+            idleNow - _lastCpuIdle;
+        ulong kernelDelta =
+            kernelNow - _lastCpuKernel;
+        ulong userDelta =
+            userNow - _lastCpuUser;
 
         _lastCpuIdle = idleNow;
         _lastCpuKernel = kernelNow;
         _lastCpuUser = userNow;
 
-        ulong total = kernelDelta + userDelta;
+        ulong total =
+            kernelDelta + userDelta;
+
         if (total == 0)
             return null;
 
-        // Kernel time includes idle time.
         double busy =
-            100d * (total - Math.Min(idleDelta, total)) / total;
+            100d *
+            (total - Math.Min(idleDelta, total)) /
+            total;
 
         return Math.Clamp(busy, 0, 100);
     }
@@ -499,15 +814,22 @@ public sealed class PcMonitorService : IDisposable
         }
 
         ulong used =
-            memory.ullTotalPhys - memory.ullAvailPhys;
+            memory.ullTotalPhys -
+            memory.ullAvailPhys;
 
         const double gib =
-            1024d * 1024d * 1024d;
+            1024d *
+            1024d *
+            1024d;
 
-        usedGb = used / gib;
-        totalGb = memory.ullTotalPhys / gib;
+        usedGb =
+            used / gib;
+        totalGb =
+            memory.ullTotalPhys / gib;
         loadPercent =
-            used * 100d / memory.ullTotalPhys;
+            used *
+            100d /
+            memory.ullTotalPhys;
     }
 
     private void GetNetworkRates(
