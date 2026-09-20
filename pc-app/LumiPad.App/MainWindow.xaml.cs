@@ -18,6 +18,7 @@ using Windows.Media;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using MediaColor = System.Windows.Media.Color;
+using IO = System.IO;
 
 namespace LumiPad.App;
 
@@ -2690,14 +2691,14 @@ public partial class MainWindow : Window
                 HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
-        await using Stream input =
+        await using IO.Stream input =
             await response.Content.ReadAsStreamAsync();
-        await using FileStream output =
+        await using IO.FileStream output =
             new(
                 destination,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None);
+                IO.FileMode.Create,
+                IO.FileAccess.Write,
+                IO.FileShare.None);
 
         await input.CopyToAsync(output);
     }
@@ -2705,7 +2706,7 @@ public partial class MainWindow : Window
     private static string? FindUf2Drive(
         ISet<string>? exclude = null)
     {
-        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        foreach (IO.DriveInfo drive in IO.DriveInfo.GetDrives())
         {
             try
             {
@@ -2719,8 +2720,8 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                if (File.Exists(
-                        Path.Combine(root, "INFO_UF2.TXT")))
+                if (IO.File.Exists(
+                        IO.Path.Combine(root, "INFO_UF2.TXT")))
                 {
                     return root;
                 }
@@ -2739,13 +2740,13 @@ public partial class MainWindow : Window
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
-        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        foreach (IO.DriveInfo drive in IO.DriveInfo.GetDrives())
         {
             try
             {
                 if (drive.IsReady &&
-                    File.Exists(
-                        Path.Combine(
+                    IO.File.Exists(
+                        IO.Path.Combine(
                             drive.RootDirectory.FullName,
                             "INFO_UF2.TXT")))
                 {
@@ -2796,8 +2797,8 @@ public partial class MainWindow : Window
         SetDeviceControlsEnabled(true);
 
         string tempFile =
-            Path.Combine(
-                Path.GetTempPath(),
+            IO.Path.Combine(
+                IO.Path.GetTempPath(),
                 $"dial-desk-{Guid.NewGuid():N}.uf2");
 
         try
@@ -2850,11 +2851,11 @@ public partial class MainWindow : Window
                     $"Đang nạp {asset.Tag}…");
 
             string target =
-                Path.Combine(
+                IO.Path.Combine(
                     uf2Root,
                     "firmware.uf2");
 
-            File.Copy(
+            IO.File.Copy(
                 tempFile,
                 target,
                 true);
@@ -2890,8 +2891,8 @@ public partial class MainWindow : Window
         {
             try
             {
-                if (File.Exists(tempFile))
-                    File.Delete(tempFile);
+                if (IO.File.Exists(tempFile))
+                    IO.File.Delete(tempFile);
             }
             catch
             {
@@ -2926,22 +2927,22 @@ public partial class MainWindow : Window
             _serial.IsConnected);
 
         string updateRoot =
-            Path.Combine(
-                Path.GetTempPath(),
+            IO.Path.Combine(
+                IO.Path.GetTempPath(),
                 "LumiPadUpdate-" +
                 Guid.NewGuid().ToString("N"));
         string zipPath =
-            Path.Combine(
+            IO.Path.Combine(
                 updateRoot,
                 "app.zip");
         string stagePath =
-            Path.Combine(
+            IO.Path.Combine(
                 updateRoot,
                 "stage");
 
         try
         {
-            Directory.CreateDirectory(updateRoot);
+            IO.Directory.CreateDirectory(updateRoot);
 
             UpdateStatusText.Text =
                 L(
@@ -2956,7 +2957,7 @@ public partial class MainWindow : Window
                 asset.Url,
                 zipPath);
 
-            Directory.CreateDirectory(stagePath);
+            IO.Directory.CreateDirectory(stagePath);
             ZipFile.ExtractToDirectory(
                 zipPath,
                 stagePath,
@@ -2967,33 +2968,33 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException(
                     "Current executable path is unavailable.");
             string targetDir =
-                Path.GetDirectoryName(currentExe) ??
+                IO.Path.GetDirectoryName(currentExe) ??
                 throw new InvalidOperationException(
                     "Current app directory is unavailable.");
             string exeName =
-                Path.GetFileName(currentExe);
+                IO.Path.GetFileName(currentExe);
 
             string stagedExe =
                 Directory
                     .EnumerateFiles(
                         stagePath,
                         exeName,
-                        SearchOption.AllDirectories)
+                        IO.SearchOption.AllDirectories)
                     .FirstOrDefault()
                 ?? Directory
                     .EnumerateFiles(
                         stagePath,
                         "*.exe",
-                        SearchOption.AllDirectories)
+                        IO.SearchOption.AllDirectories)
                     .FirstOrDefault()
                 ?? throw new InvalidOperationException(
                     "Downloaded app package has no executable.");
 
             string sourceDir =
-                Path.GetDirectoryName(stagedExe)!;
+                IO.Path.GetDirectoryName(stagedExe)!;
 
             string scriptPath =
-                Path.Combine(
+                IO.Path.Combine(
                     updateRoot,
                     "install-update.ps1");
 
@@ -3013,7 +3014,7 @@ try {{
     Remove-Item -LiteralPath '{updateRoot.Replace("'", "''")}' -Recurse -Force -ErrorAction SilentlyContinue
 }}";
 
-            File.WriteAllText(
+            IO.File.WriteAllText(
                 scriptPath,
                 script,
                 new UTF8Encoding(false));
