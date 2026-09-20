@@ -9,9 +9,9 @@ namespace LumiPad.App;
 ///
 /// Raw HID is a fixed 32-byte payload. HidSharp includes the HID report ID as
 /// byte zero, therefore the transport uses 33-byte input/output reports.
-/// Normal QMK products use report ID 0; PIXEL PRO uses Arduino HID Vendor
-/// report ID 6. Lumi fragments UTF-8 protocol lines over those
-/// reports and verifies the target with HELLO before accepting the device.
+/// PIXEL PRO exposes a dedicated QMK/VIA-compatible Raw HID interface using
+/// report ID 0. Lumi fragments UTF-8 protocol lines over the same 32-byte
+/// Raw HID reports and verifies the target with HELLO before accepting it.
 /// </summary>
 public sealed class QmkRawHidLink : IDeviceLink
 {
@@ -60,6 +60,7 @@ public sealed class QmkRawHidLink : IDeviceLink
     public bool SupportsVariableArtwork => false;
     public bool SupportsBatteryInfo => HasCapability("BAT");
     public bool SupportsPcMonitor => HasCapability("PCMON");
+    public bool SupportsFirmwareOta => HasCapability("FWOTA");
 
     private bool HasCapability(string capability) =>
         _capabilities.Contains(capability);
@@ -740,6 +741,162 @@ public sealed class QmkRawHidLink : IDeviceLink
 
     public void SetSolid(byte r, byte g, byte b) =>
         FireAndForget($"RGB|SOLID|{r}|{g}|{b}");
+
+    public async Task InstallFirmwareAsync(
+        byte[] image,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!SupportsFirmwareOta)
+        {
+            throw new NotSupportedException(
+                "This PIXEL PRO firmware does not support in-app updates yet.");
+        }
+
+        if (image is null || image.Length == 0)
+            throw new ArgumentException("Firmware image is empty.", nameof(image));
+
+        string? begin =
+            await QueryLineAsync(
+                $"FWBEGIN|{image.Length}",
+                5000,
+                cancellationToken);
+
+        if (begin is null ||
+            !begin.StartsWith("FWREADY|", StringComparison.Ordinal))
+        {
+            throw new IOException(
+                $"PIXEL PRO rejected firmware begin: {begin ?? "no response"}");
+        }
+
+        const int chunkSize = 180;
+        int offset = 0;
+        progress?.Report(0);
+
+        try
+        {
+            while (offset < image.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                int length = Math.Min(chunkSize, image.Length - offset);
+                string payload =
+                    Convert.ToBase64String(image, offset, length);
+
+                int expected = offset + length;
+                bool acknowledged = false;
+
+                for (int attempt = 0; attempt < 3 && !acknowledged; attempt++)
+                {
+                    string? ack =
+                        await QueryLineAsync(
+                            $"FWCHUNK|{offset}|{payload}",
+                            5000,
+                            cancellationToken);
+
+                    if (TryParseFirmwarePosition(ack, "FWACK", out int position) &&
+                        position >= expected)
+                    {
+                        acknowledged = true;
+                        offset = expected;
+                        break;
+                    }
+
+                    string? status =
+                        await QueryLineAsync(
+                            "FWSTAT",
+                            2500,
+                            cancellationToken);
+
+                    if (TryParseFirmwareStatus(status, out int written, out int total) &&
+                        total == image.Length &&
+                        written >= expected)
+                    {
+                        acknowledged = true;
+                        offset = expected;
+                        break;
+                    }
+                }
+
+                if (!acknowledged)
+                {
+                    throw new IOException(
+                        $"Firmware transfer stopped near byte {offset}.");
+                }
+
+                progress?.Report(
+                    (int)Math.Clamp(
+                        Math.Round(offset * 100.0 / image.Length),
+                        0,
+                        99));
+            }
+
+            string? done =
+                await QueryLineAsync(
+                    "FWEND",
+                    10000,
+                    cancellationToken);
+
+            if (done is null ||
+                !done.StartsWith("FWDONE|", StringComparison.Ordinal))
+            {
+                throw new IOException(
+                    $"PIXEL PRO did not confirm firmware: {done ?? "no response"}");
+            }
+
+            progress?.Report(100);
+        }
+        catch
+        {
+            try
+            {
+                await QueryLineAsync(
+                    "FWABORT",
+                    1500,
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
+    }
+
+    private static bool TryParseFirmwarePosition(
+        string? response,
+        string prefix,
+        out int position)
+    {
+        position = 0;
+
+        if (string.IsNullOrWhiteSpace(response))
+            return false;
+
+        string[] parts = response.Split('|');
+        return parts.Length >= 2 &&
+               string.Equals(parts[0], prefix, StringComparison.Ordinal) &&
+               int.TryParse(parts[1], out position);
+    }
+
+    private static bool TryParseFirmwareStatus(
+        string? response,
+        out int written,
+        out int total)
+    {
+        written = 0;
+        total = 0;
+
+        if (string.IsNullOrWhiteSpace(response))
+            return false;
+
+        string[] parts = response.Split('|');
+        return parts.Length == 4 &&
+               string.Equals(parts[0], "FWSTAT", StringComparison.Ordinal) &&
+               parts[1] == "1" &&
+               int.TryParse(parts[2], out written) &&
+               int.TryParse(parts[3], out total);
+    }
 
     public Task RestartKeyboardAsync() =>
         SendLineAsync("SYS|RESTART");
