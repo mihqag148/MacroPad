@@ -150,6 +150,9 @@ public sealed class PcMonitorService : IDisposable
                 ReadGlobalCpuTemperature();
 
             cpuTemp ??=
+                ReadExternalMonitorCpuTemperature();
+
+            cpuTemp ??=
                 ReadAcpiThermalZoneTemperature();
 
             double? cpuClock =
@@ -666,6 +669,75 @@ public sealed class PcMonitorService : IDisposable
         }
 
         return result;
+    }
+
+    private static double? ReadExternalMonitorCpuTemperature()
+    {
+        string[] scopes =
+        [
+            @"root\LibreHardwareMonitor",
+            @"root\OpenHardwareMonitor"
+        ];
+
+        foreach (string scopePath in scopes)
+        {
+            try
+            {
+                var scope =
+                    new ManagementScope(
+                        $@"\\.\{scopePath}");
+                scope.Connect();
+
+                using var searcher =
+                    new ManagementObjectSearcher(
+                        scope,
+                        new ObjectQuery(
+                            "SELECT Name, Value, SensorType FROM Sensor"));
+
+                double[] values =
+                    searcher
+                        .Get()
+                        .Cast<ManagementObject>()
+                        .Where(o =>
+                            string.Equals(
+                                o["SensorType"]?.ToString(),
+                                "Temperature",
+                                StringComparison.OrdinalIgnoreCase))
+                        .Where(o =>
+                        {
+                            string name =
+                                o["Name"]?.ToString() ?? "";
+
+                            return
+                                name.Contains("CPU", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Tctl", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Core Max", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .Select(o =>
+                        {
+                            return double.TryParse(
+                                o["Value"]?.ToString(),
+                                out double value)
+                                    ? value
+                                    : double.NaN;
+                        })
+                        .Where(v =>
+                            double.IsFinite(v) &&
+                            v >= 5 &&
+                            v <= 125)
+                        .ToArray();
+
+                if (values.Length > 0)
+                    return values.Max();
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
     }
 
     private static double? ReadWindowsCpuClock()
