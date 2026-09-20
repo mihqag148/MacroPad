@@ -2975,7 +2975,7 @@ public partial class MainWindow : Window
                 IO.Path.GetFileName(currentExe);
 
             string stagedExe =
-                Directory
+                IO.Directory
                     .EnumerateFiles(
                         stagePath,
                         exeName,
