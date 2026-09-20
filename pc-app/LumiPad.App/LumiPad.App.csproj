@@ -4,7 +4,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- Lumi Macropad v1.14.0 · fast Bluetooth media -->
+  <!-- Lumi Macropad v1.14.1 · PIXEL PRO in-app firmware update -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -19,9 +19,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.14.0</Version>
-    <AssemblyVersion>1.14.0.0</AssemblyVersion>
-    <FileVersion>1.14.0.0</FileVersion>
+    <Version>1.14.1</Version>
+    <AssemblyVersion>1.14.1.0</AssemblyVersion>
+    <FileVersion>1.14.1.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Content Include="Definitions\PIXEL-PRO-VIA.json">
