@@ -30,6 +30,17 @@ public static class ProductCatalog
             true,
             DeviceDriverKind.LumiZmk);
 
+
+    public static ProductDefinition PixelPro { get; } =
+        CreateQmkProduct(
+            "pixel-pro",
+            "PIXEL PRO",
+            "USB macro control pad",
+            "PP-01",
+            0x303A,
+            0x4009,
+            supportsBattery: false);
+
     public static ProductDefinition CreateQmkProduct(
         string id,
         string name,
@@ -50,6 +61,7 @@ public static class ProductCatalog
 
     public static IReadOnlyList<ProductDefinition> All { get; } =
     [
-        DialDesk
+        DialDesk,
+        PixelPro
     ];
 }
