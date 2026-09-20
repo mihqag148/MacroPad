@@ -44,6 +44,12 @@ public partial class MainWindow : Window
     private const string UpdateReleaseApi =
         "https://api.github.com/repos/mihqag148/MacroPad/releases/latest";
     private bool _updateBusy;
+    private bool _checkingUpdates;
+    private bool _appUpdateAvailable;
+    private bool _firmwareUpdateAvailable;
+    private string _latestAppVersion = "";
+    private string _latestFirmwareVersion = "";
+    private string _latestReleaseTag = "";
 
     private byte _r = 255;
     private byte _g = 120;
@@ -59,6 +65,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _actionEventTimer = new();
     private readonly DispatcherTimer _productStatusTimer = new();
     private readonly DispatcherTimer _pcMonitorTimer = new();
+    private readonly DispatcherTimer _updateCheckTimer = new();
     private readonly List<string> _logLines = new();
     private AutoProfileSettings _autoProfileSettings = new();
     private IReadOnlyList<RunningAppInfo> _runningApps = Array.Empty<RunningAppInfo>();
@@ -242,6 +249,10 @@ public partial class MainWindow : Window
         _pcMonitorTimer.Tick += async (_, _) =>
             await PollPcMonitorAsync();
 
+        _updateCheckTimer.Interval = TimeSpan.FromMinutes(30);
+        _updateCheckTimer.Tick += async (_, _) =>
+            await CheckForUpdatesAsync(silent: true);
+
         AttachDeviceLinkEvents(_serial);
 
         System.Windows.Application.Current.DispatcherUnhandledException += (_, args) =>
@@ -306,6 +317,8 @@ public partial class MainWindow : Window
             _autoReconnectEnabled = true;
             AddLog("INFO", "APP", "Auto-connect enabled by default (USB first, Bluetooth fallback)");
             await DetectAsync();
+            await CheckForUpdatesAsync(silent: true);
+            _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
             _autoProfileTimer.Start();
             _runningAppsTimer.Start();
@@ -933,6 +946,15 @@ public partial class MainWindow : Window
         ["Deep sleep after"] = "Ngủ sâu sau",
         ["UPDATES"] = "CẬP NHẬT",
         ["One-click updates"] = "Cập nhật một chạm",
+        ["Check now"] = "Kiểm tra ngay",
+        ["LumiPad app"] = "Ứng dụng LumiPad",
+        ["Keyboard firmware"] = "Firmware bàn phím",
+        ["Checking…"] = "Đang kiểm tra…",
+        ["Checking for updates…"] = "Đang kiểm tra cập nhật…",
+        ["Update available"] = "Có bản mới",
+        ["Up to date"] = "Đã mới nhất",
+        ["Connect keyboard to read firmware version"] = "Kết nối bàn phím để đọc phiên bản firmware",
+        ["Connect by USB to update firmware"] = "Cắm USB để cập nhật firmware",
         ["Update firmware"] = "Cập nhật firmware",
         ["Update app"] = "Cập nhật ứng dụng",
         ["Ready"] = "Sẵn sàng",
@@ -2050,10 +2072,18 @@ public partial class MainWindow : Window
 
         if (FirmwareUpdateButton is not null)
             FirmwareUpdateButton.IsEnabled =
-                !_updateBusy && connected && _serial.IsUsbConnected;
+                !_updateBusy &&
+                _firmwareUpdateAvailable &&
+                connected &&
+                _serial.IsUsbConnected;
 
         if (AppUpdateButton is not null)
-            AppUpdateButton.IsEnabled = !_updateBusy;
+            AppUpdateButton.IsEnabled =
+                !_updateBusy && _appUpdateAvailable;
+
+        if (CheckUpdatesButton is not null)
+            CheckUpdatesButton.IsEnabled =
+                !_updateBusy && !_checkingUpdates;
 
         if (SleepKeyboardButton is not null)
             SleepKeyboardButton.IsEnabled = connected;
@@ -2312,6 +2342,7 @@ public partial class MainWindow : Window
             await UpdatePanelInfoAsync();
             UpdateTransportIndicators();
             UpdateSleepButtonUi();
+            await CheckForUpdatesAsync(silent: true);
         }
 
         ConnectUsbButton.IsEnabled = true;
@@ -2410,6 +2441,7 @@ public partial class MainWindow : Window
                 UpdateTransportIndicators();
                 UpdateSleepButtonUi();
                 await UpdateProductOverviewAsync();
+                await CheckForUpdatesAsync(silent: true);
             }
             catch (OperationCanceledException)
             {
@@ -2627,6 +2659,328 @@ public partial class MainWindow : Window
         }
     }
 
+
+    private sealed record LatestReleaseInfo(
+        string Tag,
+        string AppVersion,
+        string FirmwareVersion,
+        string ManifestUrl);
+
+    private string CurrentAppVersion()
+    {
+        Version? version =
+            System.Reflection.Assembly
+                .GetExecutingAssembly()
+                .GetName()
+                .Version;
+
+        return version is null
+            ? "0.0.0"
+            : $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
+    }
+
+    private string? CurrentFirmwareVersion()
+    {
+        string hello = _serial.FirmwareHello ?? "";
+
+        foreach (string part in hello.Split('|'))
+        {
+            if (part.StartsWith(
+                    "FW=",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                string value = part[3..].Trim();
+                return string.IsNullOrWhiteSpace(value)
+                    ? null
+                    : value;
+            }
+        }
+
+        return null;
+    }
+
+    private static Version ParseVersionLoose(string value)
+    {
+        string clean =
+            (value ?? "")
+                .Trim()
+                .TrimStart('v', 'V');
+
+        string numeric =
+            new string(
+                clean.TakeWhile(
+                    c => char.IsDigit(c) || c == '.')
+                     .ToArray());
+
+        if (Version.TryParse(numeric, out Version? version))
+            return version;
+
+        return new Version(0, 0, 0);
+    }
+
+    private static bool IsNewerVersion(
+        string latest,
+        string current) =>
+        ParseVersionLoose(latest) >
+        ParseVersionLoose(current);
+
+    private async Task<LatestReleaseInfo> GetLatestReleaseInfoAsync()
+    {
+        using var response =
+            await UpdateHttp.GetAsync(UpdateReleaseApi);
+        response.EnsureSuccessStatusCode();
+
+        using JsonDocument release =
+            JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync());
+
+        string tag =
+            release.RootElement.TryGetProperty(
+                "tag_name",
+                out JsonElement tagElement)
+                ? tagElement.GetString() ?? ""
+                : "";
+
+        string manifestUrl = "";
+
+        if (release.RootElement.TryGetProperty(
+                "assets",
+                out JsonElement assets))
+        {
+            foreach (JsonElement asset in assets.EnumerateArray())
+            {
+                string name =
+                    asset.GetProperty("name").GetString() ?? "";
+
+                if (!string.Equals(
+                        name,
+                        "release-manifest.json",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                manifestUrl =
+                    asset.GetProperty(
+                        "browser_download_url").GetString() ?? "";
+                break;
+            }
+        }
+
+        string appVersion =
+            tag.TrimStart('v', 'V');
+        string firmwareVersion = appVersion;
+
+        if (!string.IsNullOrWhiteSpace(manifestUrl))
+        {
+            using var manifestResponse =
+                await UpdateHttp.GetAsync(manifestUrl);
+            manifestResponse.EnsureSuccessStatusCode();
+
+            using JsonDocument manifest =
+                JsonDocument.Parse(
+                    await manifestResponse.Content.ReadAsStringAsync());
+
+            if (manifest.RootElement.TryGetProperty(
+                    "appVersion",
+                    out JsonElement appElement))
+            {
+                appVersion =
+                    appElement.GetString() ?? appVersion;
+            }
+            else if (manifest.RootElement.TryGetProperty(
+                         "version",
+                         out JsonElement legacyElement))
+            {
+                appVersion =
+                    legacyElement.GetString() ?? appVersion;
+            }
+
+            if (manifest.RootElement.TryGetProperty(
+                    "firmwareVersion",
+                    out JsonElement fwElement))
+            {
+                firmwareVersion =
+                    fwElement.GetString() ?? firmwareVersion;
+            }
+        }
+
+        return new LatestReleaseInfo(
+            tag,
+            appVersion,
+            firmwareVersion,
+            manifestUrl);
+    }
+
+    private void RefreshUpdateUi()
+    {
+        if (AppUpdateVersionText is null ||
+            FirmwareUpdateVersionText is null)
+        {
+            return;
+        }
+
+        string currentApp = CurrentAppVersion();
+        string? currentFirmware =
+            _serial.IsConnected
+                ? CurrentFirmwareVersion()
+                : null;
+
+        AppUpdateVersionText.Text =
+            $"Current v{currentApp} · Latest " +
+            (string.IsNullOrWhiteSpace(_latestAppVersion)
+                ? "--"
+                : $"v{_latestAppVersion}");
+
+        FirmwareUpdateVersionText.Text =
+            "Current " +
+            (currentFirmware is null
+                ? (_serial.IsConnected ? "legacy / unknown" : "--")
+                : $"v{currentFirmware}") +
+            " · Latest " +
+            (string.IsNullOrWhiteSpace(_latestFirmwareVersion)
+                ? "--"
+                : $"v{_latestFirmwareVersion}");
+
+        if (AppUpdateStateText is not null)
+        {
+            AppUpdateStateText.Text =
+                _appUpdateAvailable
+                    ? L("Update available", "Có bản mới")
+                    : L("Up to date", "Đã mới nhất");
+        }
+
+        if (FirmwareUpdateStateText is not null)
+        {
+            if (!_serial.IsConnected)
+            {
+                FirmwareUpdateStateText.Text =
+                    L(
+                        "Connect keyboard to read firmware version",
+                        "Kết nối bàn phím để đọc phiên bản firmware");
+            }
+            else if (_firmwareUpdateAvailable)
+            {
+                FirmwareUpdateStateText.Text =
+                    _serial.IsUsbConnected
+                        ? L("Update available", "Có bản mới")
+                        : L(
+                            "Connect by USB to update firmware",
+                            "Cắm USB để cập nhật firmware");
+            }
+            else
+            {
+                FirmwareUpdateStateText.Text =
+                    L("Up to date", "Đã mới nhất");
+            }
+        }
+
+        int count =
+            (_appUpdateAvailable ? 1 : 0) +
+            (_firmwareUpdateAvailable ? 1 : 0);
+
+        if (UpdateStatusText is not null)
+        {
+            UpdateStatusText.Text =
+                count switch
+                {
+                    0 => L(
+                        "Everything is up to date.",
+                        "Tất cả đã là bản mới nhất."),
+                    1 => L(
+                        "1 update available.",
+                        "Có 1 bản cập nhật mới."),
+                    _ => L(
+                        "2 updates available.",
+                        "Có 2 bản cập nhật mới.")
+                };
+        }
+
+        SetDeviceControlsEnabled(
+            _serial.IsConnected);
+    }
+
+    private async Task CheckForUpdatesAsync(bool silent)
+    {
+        if (_checkingUpdates || _updateBusy)
+            return;
+
+        _checkingUpdates = true;
+
+        try
+        {
+            if (!silent && UpdateStatusText is not null)
+            {
+                UpdateStatusText.Text =
+                    L(
+                        "Checking for updates…",
+                        "Đang kiểm tra cập nhật…");
+            }
+
+            LatestReleaseInfo info =
+                await GetLatestReleaseInfoAsync();
+
+            _latestReleaseTag = info.Tag;
+            _latestAppVersion = info.AppVersion;
+            _latestFirmwareVersion =
+                info.FirmwareVersion;
+
+            string currentApp =
+                CurrentAppVersion();
+            string? currentFirmware =
+                CurrentFirmwareVersion();
+
+            _appUpdateAvailable =
+                IsNewerVersion(
+                    _latestAppVersion,
+                    currentApp);
+
+            _firmwareUpdateAvailable =
+                _serial.IsConnected &&
+                (currentFirmware is null ||
+                 IsNewerVersion(
+                    _latestFirmwareVersion,
+                    currentFirmware));
+
+            RefreshUpdateUi();
+
+            AddLog(
+                "INFO",
+                "UPDATE",
+                $"Check complete: app {currentApp}->{_latestAppVersion}, " +
+                $"firmware {currentFirmware ?? "legacy"}->{_latestFirmwareVersion}");
+        }
+        catch (Exception ex)
+        {
+            if (UpdateStatusText is not null)
+            {
+                UpdateStatusText.Text =
+                    L(
+                        $"Update check failed: {ex.Message}",
+                        $"Kiểm tra cập nhật lỗi: {ex.Message}");
+            }
+
+            AddLog(
+                "WARN",
+                "UPDATE",
+                $"Update check failed: {ex.Message}");
+        }
+        finally
+        {
+            _checkingUpdates = false;
+
+            if (CheckUpdatesButton is not null)
+                CheckUpdatesButton.IsEnabled =
+                    !_updateBusy;
+        }
+    }
+
+    private async void CheckUpdates_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync(silent: false);
+    }
 
     private async Task<(string Tag, string Url)> FindLatestAssetAsync(
         string assetName)
@@ -2874,6 +3228,7 @@ public partial class MainWindow : Window
                 L(
                     $"Firmware update complete · {asset.Tag}",
                     $"Cập nhật firmware hoàn tất · {asset.Tag}");
+            await CheckForUpdatesAsync(silent: true);
         }
         catch (Exception ex)
         {

@@ -304,3 +304,17 @@ LumiPad Settings now includes:
   running app, replaces its files, then launches LumiPad again automatically.
 
 Release assets are produced by `.github/workflows/publish-latest.yml`.
+
+
+### Automatic update notifications v1.13.0
+
+- Firmware HELLO now reports `FW=<version>`.
+- LumiPad checks the latest GitHub release at startup, after reconnect, after a
+  firmware update, and every 30 minutes.
+- Settings shows current and latest versions independently for the Windows app
+  and keyboard firmware.
+- Update buttons are enabled only when a newer version exists.
+- Firmware update additionally requires USB; BLE users are prompted to plug in
+  USB before the one-click UF2 flash begins.
+- Older firmware without an FW version is treated as updateable so it can move
+  onto the version-aware update system.

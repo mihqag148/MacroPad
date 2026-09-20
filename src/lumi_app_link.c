@@ -24,12 +24,14 @@
 #include "lumi_rgb.h"
 #include "lumi_ui_config.h"
 #include "lumi_diag.h"
+#include "lumi_version.h"
 
 LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
 #define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
+#define LUMIPAD_HELLO_BASE "LUMIPAD|3|FW=" LUMI_FIRMWARE_VERSION
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
 #define LUMI_CHAR_UUID     BT_UUID_128_ENCODE(0xD8A90002, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -55,7 +57,7 @@ static size_t artwork_upload_total;
 static size_t artwork_upload_received;
 static uint16_t artwork_upload_width = LUMI_ARTWORK_W;
 static uint16_t artwork_upload_height = LUMI_ARTWORK_H;
-static char lumi_status[96] = "LUMIPAD|3|SAVER:EMPTY";
+static char lumi_status[96] = LUMIPAD_HELLO_BASE "|SAVER:EMPTY";
 K_MUTEX_DEFINE(bitmap_lock);
 
 #define DIAG_CAPACITY 16
@@ -565,8 +567,8 @@ static void handle_savbegin(char *save) {
 
     snprintf(lumi_status, sizeof(lumi_status),
              ok
-                 ? "LUMIPAD|3|SAVER:UPLOADING:0/%u"
-                 : "LUMIPAD|3|SAVER:ERROR",
+                 ? LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:0/%u"
+                 : LUMIPAD_HELLO_BASE "|SAVER:ERROR",
              (unsigned int)count);
     lumi_diag_report(ok ? 'I' : 'E', "SAVBEGIN frames=%u interval=%u %s",
               (unsigned int)count, (unsigned int)fallback_interval,
@@ -579,7 +581,7 @@ static void handle_savchunk(char *save) {
     char *base64 = strtok_r(NULL, "|", &save);
 
     if (!index_s || !offset_s || !base64) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK missing field");
         return;
     }
@@ -593,7 +595,7 @@ static void handle_savchunk(char *save) {
         strlen(base64));
 
     if (rc != 0 || decoded_len == 0U) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK base64 rc=%d len=%u", rc, (unsigned int)decoded_len);
         return;
     }
@@ -603,7 +605,7 @@ static void handle_savchunk(char *save) {
 
     if (!lumi_ui_saver_anim_chunk(
             index, offset, saver_chunk_tmp, decoded_len)) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report('E', "SAVCHUNK write frame=%u off=%u len=%u",
                   (unsigned int)index, (unsigned int)offset,
                   (unsigned int)decoded_len);
@@ -612,7 +614,7 @@ static void handle_savchunk(char *save) {
 
     if ((size_t)offset + decoded_len >= LUMI_SAVER_FRAME_BYTES) {
         snprintf(lumi_status, sizeof(lumi_status),
-                 "LUMIPAD|3|SAVER:UPLOADING:%u",
+                 LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:%u",
                  (unsigned int)(index + 1U));
         lumi_diag_report('I', "Saver frame %u complete", (unsigned int)(index + 1U));
     }
@@ -622,7 +624,7 @@ static void handle_savchunk(char *save) {
 static void handle_imgbegin(char *save) {
     char *total_s = strtok_r(NULL, "|", &save);
     if (!total_s) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         return;
     }
 
@@ -632,8 +634,8 @@ static void handle_imgbegin(char *save) {
     snprintf(
         lumi_status,
         sizeof(lumi_status),
-        ok ? "LUMIPAD|3|SAVER:UPLOADING:0/1"
-           : "LUMIPAD|3|SAVER:ERROR");
+        ok ? LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:0/1"
+           : LUMIPAD_HELLO_BASE "|SAVER:ERROR");
 
     lumi_diag_report(
         ok ? 'I' : 'E',
@@ -647,7 +649,7 @@ static void handle_imgchunk(char *save) {
     char *payload = strtok_r(NULL, "|", &save);
 
     if (!offset_s || !payload) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         return;
     }
 
@@ -660,7 +662,7 @@ static void handle_imgchunk(char *save) {
         strlen(payload));
 
     if (rc != 0 || decoded_len == 0U) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report(
             'E',
             "IMGCHUNK base64 rc=%d len=%u",
@@ -675,7 +677,7 @@ static void handle_imgchunk(char *save) {
             offset,
             saver_chunk_tmp,
             decoded_len)) {
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:ERROR");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report(
             'E',
             "IMGCHUNK write off=%u len=%u",
@@ -688,7 +690,7 @@ static void handle_imgchunk(char *save) {
         snprintf(
             lumi_status,
             sizeof(lumi_status),
-            "LUMIPAD|3|SAVER:UPLOADING:1/1");
+            LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:1/1");
         lumi_diag_report('I', "Static saver image complete");
     }
 }
@@ -1119,7 +1121,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                "LUMIPAD|3|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON\r\n");
+                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -1206,8 +1208,8 @@ static void handle_line(char *line, bool from_usb) {
             lumi_status,
             sizeof(lumi_status),
             saver_ok
-                ? "LUMIPAD|3|SAVER:READY"
-                : "LUMIPAD|3|SAVER:ERROR");
+                ? LUMIPAD_HELLO_BASE "|SAVER:READY"
+                : LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report(
             saver_ok ? 'I' : 'E',
             saver_ok ? "IMGEND READY" : "IMGEND ERROR");
@@ -1222,8 +1224,8 @@ static void handle_line(char *line, bool from_usb) {
                         lumi_ui_saver_anim_is_valid();
         snprintf(lumi_status, sizeof(lumi_status),
                  saver_ok
-                     ? "LUMIPAD|3|SAVER:READY"
-                     : "LUMIPAD|3|SAVER:ERROR");
+                     ? LUMIPAD_HELLO_BASE "|SAVER:READY"
+                     : LUMIPAD_HELLO_BASE "|SAVER:ERROR");
         lumi_diag_report(saver_ok ? 'I' : 'E',
                   saver_ok ? "SAVEND READY" : "SAVEND ERROR");
         if (from_usb) {
@@ -1234,7 +1236,7 @@ static void handle_line(char *line, bool from_usb) {
         }
     } else if (strcmp(root, "SAVCLEAR") == 0) {
         lumi_ui_saver_anim_clear();
-        snprintf(lumi_status, sizeof(lumi_status), "LUMIPAD|3|SAVER:EMPTY");
+        snprintf(lumi_status, sizeof(lumi_status), LUMIPAD_HELLO_BASE "|SAVER:EMPTY");
     } else if (strcmp(root, "CLEAR") == 0) {
         lumi_now_playing_clear();
     } else {
@@ -1288,8 +1290,8 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         strstr(lumi_status, "SAVER:UPLOADING") == NULL &&
         strstr(lumi_status, "SAVER:ERROR") == NULL) {
         status = lumi_ui_saver_anim_is_valid()
-            ? "LUMIPAD|3|SAVER:READY"
-            : "LUMIPAD|3|SAVER:EMPTY";
+            ? LUMIPAD_HELLO_BASE "|SAVER:READY"
+            : LUMIPAD_HELLO_BASE "|SAVER:EMPTY";
     }
 
     ssize_t rc = bt_gatt_attr_read(conn, attr, buf, len, offset,
@@ -1305,8 +1307,8 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
             lumi_status,
             sizeof(lumi_status),
             lumi_ui_saver_anim_is_valid()
-                ? "LUMIPAD|3|SAVER:READY"
-                : "LUMIPAD|3|SAVER:EMPTY");
+                ? LUMIPAD_HELLO_BASE "|SAVER:READY"
+                : LUMIPAD_HELLO_BASE "|SAVER:EMPTY");
     }
 
     return rc;

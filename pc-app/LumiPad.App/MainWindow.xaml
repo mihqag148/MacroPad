@@ -1753,29 +1753,104 @@
                                             Background="{DynamicResource Line}"
                                             Margin="0,20,0,16"/>
 
-                                    <TextBlock Text="UPDATES"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="One-click updates"
-                                               FontSize="17"
-                                               FontWeight="SemiBold"
-                                               Margin="0,5,0,8"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="UPDATES"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                            <TextBlock Text="One-click updates"
+                                                       FontSize="17"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,5,0,0"/>
+                                        </StackPanel>
+                                        <Button x:Name="CheckUpdatesButton"
+                                                Grid.Column="1"
+                                                Content="Check now"
+                                                Click="CheckUpdates_Click"
+                                                VerticalAlignment="Center"
+                                                Margin="8,0,0,0"/>
+                                    </Grid>
+
                                     <TextBlock x:Name="UpdateStatusText"
-                                               Text="Ready"
+                                               Text="Checking for updates…"
                                                Foreground="{DynamicResource Muted}"
                                                FontSize="11"
                                                TextWrapping="Wrap"
-                                               Margin="0,0,0,10"/>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="FirmwareUpdateButton"
-                                                Content="Update firmware"
-                                                Click="FirmwareUpdate_Click"/>
-                                        <Button x:Name="AppUpdateButton"
-                                                Content="Update app"
-                                                Click="AppUpdate_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
+                                               Margin="0,8,0,12"/>
+
+                                    <Border Background="{DynamicResource Card2}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="12"
+                                            Padding="12"
+                                            Margin="0,0,0,9">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="LumiPad app"
+                                                           FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="AppUpdateVersionText"
+                                                           Text="Current -- · Latest --"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           FontSize="11"
+                                                           Margin="0,3,0,0"/>
+                                                <TextBlock x:Name="AppUpdateStateText"
+                                                           Text="Checking…"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           FontSize="11"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button x:Name="AppUpdateButton"
+                                                    Grid.Column="1"
+                                                    Content="Update app"
+                                                    Click="AppUpdate_Click"
+                                                    IsEnabled="False"
+                                                    VerticalAlignment="Center"
+                                                    Margin="10,0,0,0"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Background="{DynamicResource Card2}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="12"
+                                            Padding="12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="Keyboard firmware"
+                                                           FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="FirmwareUpdateVersionText"
+                                                           Text="Current -- · Latest --"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           FontSize="11"
+                                                           Margin="0,3,0,0"/>
+                                                <TextBlock x:Name="FirmwareUpdateStateText"
+                                                           Text="Checking…"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           FontSize="11"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button x:Name="FirmwareUpdateButton"
+                                                    Grid.Column="1"
+                                                    Content="Update firmware"
+                                                    Click="FirmwareUpdate_Click"
+                                                    IsEnabled="False"
+                                                    VerticalAlignment="Center"
+                                                    Margin="10,0,0,0"/>
+                                        </Grid>
+                                    </Border>
 
                                     <StackPanel Orientation="Horizontal"
                                                 Margin="0,16,0,0">
