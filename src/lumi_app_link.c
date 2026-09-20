@@ -1035,7 +1035,7 @@ static void handle_pc_monitor(char *save) {
         (uint8_t)CLAMP(atoi(cpu_load), 0, 100),
         (int16_t)atoi(cpu_temp),
         (uint16_t)MAX(atoi(cpu_clock), 0),
-        (uint8_t)CLAMP(atoi(gpu_load), 0, 100),
+        (int16_t)CLAMP(atoi(gpu_load), -1, 100),
         (int16_t)atoi(gpu_temp),
         (uint16_t)MAX(atoi(gpu_clock), 0),
         (uint8_t)CLAMP(atoi(ram_load), 0, 100),
