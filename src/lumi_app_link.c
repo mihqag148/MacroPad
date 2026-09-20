@@ -303,7 +303,6 @@ static void handle_np(char *save) {
 }
 
 static void handle_rgb(char *save) {
-    lumi_ui_note_activity();
     char *cmd = strtok_r(NULL, "|", &save);
     if (!cmd) return;
 
@@ -396,7 +395,6 @@ static void handle_art(char *save) {
 }
 
 static void handle_cfg(char *save) {
-    lumi_ui_note_activity();
     char *cmd = strtok_r(NULL, "|", &save);
     if (!cmd) {
         return;
@@ -464,6 +462,20 @@ static void handle_cfg(char *save) {
             lumi_diag_report('I', "Sleep timeout=%us", (unsigned int)value);
             lumi_ui_set_sleep_timeout(value);
         }
+    } else if (strcmp(cmd, "RGBIDLE") == 0) {
+        char *seconds = strtok_r(NULL, "|", &save);
+        if (seconds) {
+            uint32_t value = (uint32_t)strtoul(seconds, NULL, 10);
+            lumi_diag_report('I', "RGB idle timeout=%us", (unsigned int)value);
+            lumi_ui_set_rgb_idle_timeout(value);
+        }
+    } else if (strcmp(cmd, "DEEPSLEEP") == 0) {
+        char *seconds = strtok_r(NULL, "|", &save);
+        if (seconds) {
+            uint32_t value = (uint32_t)strtoul(seconds, NULL, 10);
+            lumi_diag_report('I', "Deep sleep timeout=%us", (unsigned int)value);
+            lumi_ui_set_deep_sleep_timeout(value);
+        }
     } else if (strcmp(cmd, "PROFILE") == 0) {
         char *profile_s = strtok_r(NULL, "|", &save);
         if (profile_s) {
@@ -483,6 +495,10 @@ static void handle_cfg(char *save) {
                     profile,
                     (unsigned int)layer_id,
                     rc);
+
+                if (rc == 0) {
+                    lumi_ui_note_activity();
+                }
             }
         }
     }

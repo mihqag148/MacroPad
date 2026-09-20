@@ -167,8 +167,13 @@ static struct pc_monitor_state pc_monitor_state;
 
 K_MUTEX_DEFINE(lumi_ui_config_lock);
 static uint32_t ui_last_activity_ms;
+static uint32_t key_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
 static uint32_t sleep_delay_ms = 120000U;
+static uint32_t rgb_idle_delay_ms = 60000U;
+static uint32_t deep_sleep_delay_ms = 0U;
+static bool rgb_idle_suspended;
+static bool deep_sleep_pending;
 static bool saver_enabled = true;
 static uint8_t saver_style = LUMI_SAVER_OFF;
 static uint32_t wallpaper_color_a = 0x000000;
@@ -181,6 +186,10 @@ static bool media_active = false;
 static bool soft_sleep = false;
 static bool saver_force_show = false;
 static bool saver_source_pc_monitor = false;
+static lv_timer_t *pressed_lv_timer;
+static lv_timer_t *popup_lv_timer;
+static lv_timer_t *pc_monitor_lv_timer;
+static lv_timer_t *screensaver_lv_timer;
 static void pc_metric_format(
     uint8_t metric,
     const struct pc_monitor_state *state,
@@ -855,9 +864,20 @@ K_WORK_DELAYABLE_DEFINE(page_poll_work, poll_page);
 
 static void poll_page(struct k_work *work) {
     ARG_UNUSED(work);
-    lumi_page_refresh_state(NULL);
-    k_work_submit_to_queue(zmk_display_work_q(), &lumi_page_work);
-    k_work_schedule(&page_poll_work, K_MSEC(500));
+
+    bool sleeping;
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    sleeping = soft_sleep;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (!sleeping) {
+        lumi_page_refresh_state(NULL);
+        k_work_submit_to_queue(zmk_display_work_q(), &lumi_page_work);
+    }
+
+    k_work_schedule(
+        &page_poll_work,
+        sleeping ? K_SECONDS(2) : K_MSEC(500));
 }
 
 struct output_state {
@@ -895,7 +915,7 @@ static int position_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *event = as_zmk_position_state_changed(eh);
 
     if (event && event->state) {
-        lumi_ui_note_activity();
+        lumi_ui_note_key_activity();
 
         /* Encoder push / non-keycode layer behavior has no keycode event.
          * Regular keys are classified below so media controls can stay on
@@ -941,7 +961,7 @@ static int popup_keycode_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    lumi_ui_note_activity();
+    lumi_ui_note_key_activity();
     bool keep_music_visible = false;
 
     if (keycode_matches(event, C_VOL_UP)) {
@@ -2130,7 +2150,6 @@ bool lumi_ui_saver_anim_end(void) {
         saver_media_valid = false;
     }
 
-    lumi_ui_note_activity();
     return ok;
 }
 
@@ -2200,7 +2219,6 @@ bool lumi_ui_saver_image_end(void) {
         saver_media_valid = false;
     }
 
-    lumi_ui_note_activity();
     return ok;
 }
 
@@ -2219,7 +2237,6 @@ void lumi_ui_saver_anim_clear(void) {
     saver_prefetch_valid = false;
     saver_prefetch_next_valid = false;
     saver_static_drawn = false;
-    lumi_ui_note_activity();
 }
 
 static void lumi_panel_refresh_work_handler(struct k_work *work) {
@@ -2235,6 +2252,27 @@ static void lumi_panel_refresh_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_refresh_work, lumi_panel_refresh_work_handler);
 
+static void lumi_ui_set_eco_timers(bool sleeping) {
+    lv_timer_t *timers[] = {
+        pressed_lv_timer,
+        popup_lv_timer,
+        pc_monitor_lv_timer,
+        screensaver_lv_timer,
+    };
+
+    for (size_t i = 0U; i < ARRAY_SIZE(timers); i++) {
+        if (!timers[i]) {
+            continue;
+        }
+
+        if (sleeping) {
+            lv_timer_pause(timers[i]);
+        } else {
+            lv_timer_resume(timers[i]);
+        }
+    }
+}
+
 static void lumi_panel_backlight_on_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
     (void)lumi_panel_set_backlight(true);
@@ -2246,6 +2284,7 @@ K_WORK_DELAYABLE_DEFINE(
 
 static void lumi_panel_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
+    lumi_ui_set_eco_timers(true);
     (void)k_work_cancel_delayable(&lumi_panel_backlight_on_work);
     (void)lumi_panel_set_sleep(true);
 }
@@ -2256,6 +2295,7 @@ static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     if (lumi_panel_set_sleep(false) == 0) {
+        lumi_ui_set_eco_timers(false);
         lumi_panel_refresh_work_handler(NULL);
         (void)k_work_schedule(
             &lumi_panel_backlight_on_work,
@@ -2265,25 +2305,46 @@ static void lumi_panel_wake_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_wake_work, lumi_panel_wake_work_handler);
 
-void lumi_ui_note_activity(void) {
+static void lumi_ui_note_activity_internal(bool physical_key) {
     bool was_sleeping;
+    bool resume_rgb;
+    uint32_t now = k_uptime_get_32();
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-    ui_last_activity_ms = k_uptime_get_32();
+    ui_last_activity_ms = now;
+    deep_sleep_pending = false;
+
+    if (physical_key) {
+        key_last_activity_ms = now;
+        rgb_idle_suspended = false;
+    }
+
     was_sleeping = soft_sleep;
     soft_sleep = false;
     saver_force_show = false;
+    resume_rgb = !rgb_idle_suspended;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    /* Any real input/app activity must re-enable the RGB worker.
-     * Soft sleep additionally wakes the ST7789 panel.
-     */
-    lumi_rgb_set_suspended(false);
+    if (resume_rgb) {
+        lumi_rgb_set_suspended(false);
+    }
 
     if (was_sleeping) {
-        lumi_diag_report('I', "Wake requested by activity");
+        lumi_diag_report(
+            'I',
+            physical_key
+                ? "Wake requested by key/encoder"
+                : "Wake requested by meaningful activity");
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_wake_work);
     }
+}
+
+void lumi_ui_note_activity(void) {
+    lumi_ui_note_activity_internal(false);
+}
+
+void lumi_ui_note_key_activity(void) {
+    lumi_ui_note_activity_internal(true);
 }
 
 void lumi_ui_show_screensaver_now(void) {
@@ -2320,10 +2381,10 @@ void lumi_ui_set_media_active(bool active) {
     media_active = active;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    /* Repeated paused/playing telemetry must not continuously reset the idle
-     * timer. Only the actual state transition counts as user/media activity.
+    /* Starting/opening music wakes the screen once. Repeated telemetry and
+     * pause/stop events never wake it or keep resetting the idle timer.
      */
-    if (changed) {
+    if (changed && active) {
         lumi_ui_note_activity();
     }
 }
@@ -2353,8 +2414,6 @@ void lumi_ui_set_screensaver(bool enabled, uint8_t style,
     saver_color_b = ((uint32_t)r2 << 16) | ((uint32_t)g2 << 8) | b2;
     saver_style_dirty = true;
     k_mutex_unlock(&lumi_ui_config_lock);
-
-    lumi_ui_note_activity();
 }
 
 void lumi_ui_set_screensaver_delay(uint32_t seconds) {
@@ -2362,7 +2421,6 @@ void lumi_ui_set_screensaver_delay(uint32_t seconds) {
     saver_delay_ms = seconds * 1000U;
     saver_enabled = seconds > 0U;
     k_mutex_unlock(&lumi_ui_config_lock);
-    lumi_ui_note_activity();
 }
 
 void lumi_ui_set_screensaver_source(bool pc_monitor) {
@@ -2373,14 +2431,36 @@ void lumi_ui_set_screensaver_source(bool pc_monitor) {
 
     pc_monitor_saver_active = false;
     update_pc_monitor_visibility();
-    lumi_ui_note_activity();
 }
 
 void lumi_ui_set_sleep_timeout(uint32_t seconds) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     sleep_delay_ms = seconds * 1000U;
     k_mutex_unlock(&lumi_ui_config_lock);
-    lumi_ui_note_activity();
+}
+
+void lumi_ui_set_rgb_idle_timeout(uint32_t seconds) {
+    bool sleeping;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    rgb_idle_delay_ms = seconds * 1000U;
+    sleeping = soft_sleep;
+
+    if (seconds == 0U) {
+        rgb_idle_suspended = false;
+    }
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (seconds == 0U && !sleeping) {
+        lumi_rgb_set_suspended(false);
+    }
+}
+
+void lumi_ui_set_deep_sleep_timeout(uint32_t seconds) {
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    deep_sleep_delay_ms = seconds * 1000U;
+    deep_sleep_pending = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
 }
 
 void lumi_ui_sleep_now(void) {
@@ -2412,37 +2492,111 @@ void lumi_ui_wake_now(void) {
 static void lumi_sleep_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
 
+static bool lumi_usb_power_present(void) {
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+    return zmk_usb_is_powered();
+#else
+    return false;
+#endif
+}
+
 static void lumi_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
-    uint32_t timeout;
-    bool active_media;
+    uint32_t soft_timeout;
+    uint32_t rgb_timeout;
+    uint32_t deep_timeout;
+    uint32_t last_activity;
+    uint32_t last_key_activity;
     bool already_sleeping;
+    bool rgb_timed_out;
+    bool deep_pending;
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-    timeout = sleep_delay_ms;
-    active_media = media_active;
+    soft_timeout = sleep_delay_ms;
+    rgb_timeout = rgb_idle_delay_ms;
+    deep_timeout = deep_sleep_delay_ms;
+    last_activity = ui_last_activity_ms;
+    last_key_activity = key_last_activity_ms;
     already_sleeping = soft_sleep;
+    rgb_timed_out = rgb_idle_suspended;
+    deep_pending = deep_sleep_pending;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     uint32_t now = k_uptime_get_32();
 
-    if (timeout > 0U &&
-        !active_media &&
+    if (rgb_timeout > 0U &&
+        !rgb_timed_out &&
+        (uint32_t)(now - last_key_activity) >= rgb_timeout) {
+
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        rgb_idle_suspended = true;
+        k_mutex_unlock(&lumi_ui_config_lock);
+
+        lumi_diag_report(
+            'I',
+            "RGB idle timeout=%us",
+            (unsigned int)(rgb_timeout / 1000U));
+        lumi_rgb_set_suspended(true);
+        rgb_timed_out = true;
+    }
+
+    /* Now Playing suppresses only the screensaver. It does not suppress
+     * soft sleep, so the user's Sleep-after setting still wins.
+     */
+    if (soft_timeout > 0U &&
         !already_sleeping &&
-        (uint32_t)(now - ui_last_activity_ms) >= timeout) {
+        (uint32_t)(now - last_activity) >= soft_timeout) {
 
         k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
         soft_sleep = true;
         k_mutex_unlock(&lumi_ui_config_lock);
 
-        lumi_diag_report('I', "Entering soft sleep timeout=%us",
-                         (unsigned int)(timeout / 1000U));
+        lumi_diag_report(
+            'I',
+            "Entering BLE eco sleep timeout=%us",
+            (unsigned int)(soft_timeout / 1000U));
         lumi_rgb_set_suspended(true);
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
+        already_sleeping = true;
     }
 
-    k_work_reschedule(&lumi_sleep_work, K_SECONDS(1));
+    if (deep_timeout > 0U &&
+        !deep_pending &&
+        !lumi_usb_power_present() &&
+        (uint32_t)(now - last_activity) >= deep_timeout) {
+
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        deep_sleep_pending = true;
+        soft_sleep = true;
+        k_mutex_unlock(&lumi_ui_config_lock);
+
+        lumi_diag_report(
+            'I',
+            "Entering deep sleep timeout=%us",
+            (unsigned int)(deep_timeout / 1000U));
+
+        lumi_rgb_set_suspended(true);
+        (void)lumi_panel_set_backlight(false);
+        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
+        k_sleep(K_MSEC(120));
+
+        int rc = zmk_pm_suspend_devices();
+        if (rc < 0) {
+            lumi_diag_report('E', "Deep sleep suspend failed rc=%d", rc);
+            zmk_pm_resume_devices();
+
+            k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+            deep_sleep_pending = false;
+            k_mutex_unlock(&lumi_ui_config_lock);
+        } else {
+            sys_poweroff();
+        }
+    }
+
+    k_work_reschedule(
+        &lumi_sleep_work,
+        already_sleeping ? K_SECONDS(5) : K_SECONDS(1));
 }
 
 static lv_obj_t *pc_monitor_label(
@@ -2753,6 +2907,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     root_screen = screen;
     ui_last_activity_ms = k_uptime_get_32();
+    key_last_activity_ms = ui_last_activity_ms;
     lv_obj_remove_style_all(screen);
     lv_obj_set_size(screen, 320, 172);
     lv_obj_set_style_bg_color(screen, lv_color_hex(wallpaper_color_a), 0);
@@ -3036,10 +3191,13 @@ lv_obj_add_flag(
 
 k_work_schedule(&page_poll_work, K_MSEC(500));
 
-lv_timer_create(refresh_pressed, 20, NULL);
-lv_timer_create(refresh_popup, 20, NULL);
-lv_timer_create(refresh_pc_monitor_timer, 500, NULL);
-lv_timer_create(refresh_screensaver, SAVER_MIN_FRAME_MS, NULL);
+pressed_lv_timer = lv_timer_create(refresh_pressed, 20, NULL);
+popup_lv_timer = lv_timer_create(refresh_popup, 20, NULL);
+pc_monitor_lv_timer = lv_timer_create(refresh_pc_monitor_timer, 500, NULL);
+screensaver_lv_timer = lv_timer_create(
+    refresh_screensaver,
+    SAVER_MIN_FRAME_MS,
+    NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
