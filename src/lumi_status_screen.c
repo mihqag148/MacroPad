@@ -427,55 +427,32 @@ static void refresh_pc_monitor_labels(void) {
         &state,
         stale);
 
-    pc_render_footer(
-        pc_net_down,
-        slots[3],
-        &state,
-        stale);
-    pc_render_footer(
-        pc_net_up,
-        slots[4],
-        &state,
-        stale);
-    pc_render_footer(
-        pc_fps_value,
-        slots[5],
-        &state,
-        stale);
-
     if (stale) {
-        lv_label_set_text(
-            pc_monitor_status,
-            "CPU --C   GPU --C   RAM --%");
+        lv_label_set_text(pc_net_down, "CPU --C");
+        lv_label_set_text(pc_net_up, "GPU --C");
+        lv_label_set_text(pc_fps_value, "RAM --%");
     } else {
-        char cpu_temp[8];
-        char gpu_temp[8];
-
         if (state.cpu_temp_c < 0) {
-            snprintf(cpu_temp, sizeof(cpu_temp), "--C");
+            lv_label_set_text(pc_net_down, "CPU --C");
         } else {
-            snprintf(
-                cpu_temp,
-                sizeof(cpu_temp),
-                "%dC",
+            lv_label_set_text_fmt(
+                pc_net_down,
+                "CPU %dC",
                 (int)state.cpu_temp_c);
         }
 
         if (state.gpu_temp_c < 0) {
-            snprintf(gpu_temp, sizeof(gpu_temp), "--C");
+            lv_label_set_text(pc_net_up, "GPU --C");
         } else {
-            snprintf(
-                gpu_temp,
-                sizeof(gpu_temp),
-                "%dC",
+            lv_label_set_text_fmt(
+                pc_net_up,
+                "GPU %dC",
                 (int)state.gpu_temp_c);
         }
 
         lv_label_set_text_fmt(
-            pc_monitor_status,
-            "CPU %s   GPU %s   RAM %u%%",
-            cpu_temp,
-            gpu_temp,
+            pc_fps_value,
+            "RAM %u%%",
             (unsigned int)state.ram_load);
     }
 }
@@ -2528,40 +2505,43 @@ static void init_pc_monitor(lv_obj_t *screen) {
     pc_net_down =
         pc_monitor_label(
             network,
-            "NET DOWN --",
-            &lv_font_montserrat_12,
-            0xFFFFFF);
-    lv_obj_set_pos(pc_net_down, 10, 6);
-    lv_obj_set_width(pc_net_down, 96);
-    lv_label_set_long_mode(pc_net_down, LV_LABEL_LONG_DOT);
+            "CPU --C",
+            &lv_font_montserrat_16,
+            0x64D2FF);
+    lv_obj_set_pos(pc_net_down, 0, 10);
+    lv_obj_set_width(pc_net_down, 101);
+    lv_obj_set_style_text_align(
+        pc_net_down,
+        LV_TEXT_ALIGN_CENTER,
+        0);
 
     pc_net_up =
         pc_monitor_label(
             network,
-            "NET UP --",
-            &lv_font_montserrat_12,
-            0xFFFFFF);
-    lv_obj_set_pos(pc_net_up, 108, 6);
-    lv_obj_set_width(pc_net_up, 96);
-    lv_label_set_long_mode(pc_net_up, LV_LABEL_LONG_DOT);
+            "GPU --C",
+            &lv_font_montserrat_16,
+            0xBF5AF2);
+    lv_obj_set_pos(pc_net_up, 101, 10);
+    lv_obj_set_width(pc_net_up, 101);
+    lv_obj_set_style_text_align(
+        pc_net_up,
+        LV_TEXT_ALIGN_CENTER,
+        0);
 
     pc_fps_value =
         pc_monitor_label(
             network,
-            "FPS --",
-            &lv_font_montserrat_12,
-            0xFFFFFF);
-    lv_obj_set_pos(pc_fps_value, 212, 6);
-    lv_obj_set_width(pc_fps_value, 82);
-    lv_label_set_long_mode(pc_fps_value, LV_LABEL_LONG_DOT);
+            "RAM --%",
+            &lv_font_montserrat_16,
+            0x30D158);
+    lv_obj_set_pos(pc_fps_value, 202, 10);
+    lv_obj_set_width(pc_fps_value, 101);
+    lv_obj_set_style_text_align(
+        pc_fps_value,
+        LV_TEXT_ALIGN_CENTER,
+        0);
 
-    pc_monitor_status =
-        pc_monitor_label(
-            network,
-            "CPU --C   GPU --C   RAM --%",
-            &lv_font_montserrat_12,
-            0x8E8E93);
-    lv_obj_set_pos(pc_monitor_status, 10, 22);
+    pc_monitor_status = NULL;
 
     lv_obj_add_flag(
         pc_monitor_overlay,
