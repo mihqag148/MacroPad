@@ -39,7 +39,7 @@ void lumi_ui_pc_monitor_update(
     uint8_t cpu_load,
     int16_t cpu_temp_c,
     uint16_t cpu_clock_mhz,
-    uint8_t gpu_load,
+    int16_t gpu_load,
     int16_t gpu_temp_c,
     uint16_t gpu_clock_mhz,
     uint8_t ram_load,
