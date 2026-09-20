@@ -38,10 +38,9 @@ jobs:
         shell: bash
         run: |
           APP_VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' pc-app/LumiPad.App/LumiPad.App.csproj)
-          FW_VERSION=$(grep -oPm1 '(?<=LUMI_FIRMWARE_VERSION ")[^"]+' include/lumi_version.h)
           echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
-          echo "firmware_version=$FW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "firmware_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$APP_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Wait for firmware artifact

@@ -325,3 +325,19 @@ Release assets are produced by `.github/workflows/publish-latest.yml`.
 - DEVICE is now the first card in the left Settings column.
 - GENERAL is moved to the right column directly above SYSTEM.
 - No Settings functionality changed.
+
+
+### Unified app + firmware version v1.13.2
+
+There is now one release-version source: the LumiPad app `<Version>` in
+`pc-app/LumiPad.App/LumiPad.App.csproj`.
+
+- CMake reads that value and injects it into firmware as
+  `LUMI_FIRMWARE_VERSION`.
+- Firmware HELLO therefore reports exactly the same version as the release.
+- `release-manifest.json` uses the same version for app and firmware.
+- The ZMK firmware workflow is triggered when the app project version changes.
+
+Result: bumping the app from v1.13.2 to v1.13.3 automatically builds firmware
+that reports `FW=1.13.3`, so LumiPad can immediately show and enable the
+firmware Update button without manually editing a second version file.

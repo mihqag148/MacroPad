@@ -3,9 +3,9 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- Lumi Macropad v1.13.1 · settings card layout -->
+  <!-- Lumi Macropad v1.13.2 · unified app firmware version -->
   <PropertyGroup>
-    <!-- v1.13.1 settings card layout -->
+    <!-- v1.13.2 unified app firmware version -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -18,9 +18,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.13.1</Version>
-    <AssemblyVersion>1.13.1.0</AssemblyVersion>
-    <FileVersion>1.13.1.0</FileVersion>
+    <Version>1.13.2</Version>
+    <AssemblyVersion>1.13.2.0</AssemblyVersion>
+    <FileVersion>1.13.2.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
