@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
 #define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
-#define LUMIPAD_HELLO_BASE "LUMIPAD|3|FW=" LUMI_FIRMWARE_VERSION
+#define LUMIPAD_HELLO_BASE "LUMIPAD|4|FW=" LUMI_FIRMWARE_VERSION
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
 #define LUMI_CHAR_UUID     BT_UUID_128_ENCODE(0xD8A90002, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -196,7 +196,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|3|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON";
+        "CAPS|4|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST";
 
     if (from_usb) {
         write_text_usb(response);
@@ -781,6 +781,47 @@ static void handle_txtchunk(char *save) {
     k_mutex_unlock(&bitmap_lock);
 }
 
+static void handle_txtchunk64(char *save) {
+    char *kind_s = strtok_r(NULL, "|", &save);
+    char *offset_s = strtok_r(NULL, "|", &save);
+    char *base64 = strtok_r(NULL, "|", &save);
+
+    if (!kind_s || !offset_s || !base64 || text_upload_kind == 0) {
+        lumi_diag_report('E', "TXTCHUNK64 invalid state");
+        return;
+    }
+
+    size_t offset = (size_t)strtoul(offset_s, NULL, 10);
+    uint8_t chunk[256];
+    size_t decoded_len = 0U;
+
+    int rc = base64_decode(
+        chunk,
+        sizeof(chunk),
+        &decoded_len,
+        (const uint8_t *)base64,
+        strlen(base64));
+
+    if (rc != 0 ||
+        kind_s[0] != text_upload_kind ||
+        offset != text_upload_received ||
+        offset + decoded_len > text_upload_total) {
+        lumi_diag_report(
+            'E',
+            "TXTCHUNK64 rc=%d kind=%c off=%u len=%u",
+            rc,
+            kind_s[0],
+            (unsigned int)offset,
+            (unsigned int)decoded_len);
+        return;
+    }
+
+    k_mutex_lock(&bitmap_lock, K_FOREVER);
+    memcpy(&bitmap_tmp[offset], chunk, decoded_len);
+    text_upload_received += decoded_len;
+    k_mutex_unlock(&bitmap_lock);
+}
+
 static void handle_txtend(char *save) {
     char *kind_s = strtok_r(NULL, "|", &save);
 
@@ -1121,7 +1162,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON\r\n");
+                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -1155,6 +1196,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_txtbegin(save);
     } else if (strcmp(root, "TXTCHUNK") == 0) {
         handle_txtchunk(save);
+    } else if (strcmp(root, "TXTCHUNK64") == 0) {
+        handle_txtchunk64(save);
     } else if (strcmp(root, "TXTEND") == 0) {
         handle_txtend(save);
     } else if (strcmp(root, "TXT") == 0) {

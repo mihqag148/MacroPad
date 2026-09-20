@@ -360,3 +360,20 @@ Do not wake either from background PC Monitor, telemetry or CFG/RGB sync traffic
 The RGB timeout remains independent from the display Sleep timeout. Every
 meaningful wake resets the RGB idle timer, so RGB does not immediately turn
 back off after Auto Profile or Media wakes the device.
+
+
+### Fast Bluetooth Now Playing v1.14.0
+
+Protocol v4 adds the `MEDIAFAST` capability.
+
+- Now Playing metadata, transfer BEGIN and END commands remain acknowledged.
+- Artwork payload chunks use paced BLE Write Without Response on protocol v4.
+- Text bitmap chunks use Base64 (`TXTCHUNK64`) instead of HEX, reducing
+  encoding overhead from 100% to roughly 33%.
+- The fast writer uses short dynamic bursts (more conservative for a 20-byte
+  BLE payload) so Windows does not flood the controller queue.
+- Legacy protocol-v3 firmware automatically stays on the old reliable
+  Write-With-Response path.
+- Artwork remains 48x48 RGB332 over BLE; visual quality is unchanged.
+- Diagnostics log the actual text/artwork transfer duration and negotiated BLE
+  payload size for hardware verification.

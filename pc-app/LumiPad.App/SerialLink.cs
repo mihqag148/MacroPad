@@ -63,6 +63,9 @@ public sealed class SerialLink : IDeviceLink
         SupportsCapability("BAT");
     public bool SupportsPcMonitor =>
         SupportsCapability("PCMON");
+    public bool SupportsFastMedia =>
+        _protocolVersion >= 4 &&
+        SupportsCapability("MEDIAFAST");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -108,6 +111,13 @@ public sealed class SerialLink : IDeviceLink
             {
                 _capabilities.Add(cap);
             }
+
+            // Protocol v4 adds the paced WriteWithoutResponse media stream.
+            // Keeping it behind v4 prevents new apps from using the fast path
+            // against older protocol-v3 firmware whose BLE status read has no
+            // explicit CAPS field.
+            if (_protocolVersion >= 4)
+                _capabilities.Add("MEDIAFAST");
         }
 
         Log(
@@ -808,7 +818,11 @@ public sealed class SerialLink : IDeviceLink
         int generation)
     {
         byte[] packed = Convert.FromHexString(bitmap.Hex);
-        const int rawChunk = 360;
+        bool fastBle =
+            _bleCharacteristic is not null &&
+            SupportsFastMedia;
+        int rawChunk = fastBle ? 240 : 360;
+        var started = DateTimeOffset.UtcNow;
 
         if (!await SendRealtimeLineAsync(
                 $"TXTBEGIN|{kind}|{bitmap.Width}|{height}|{packed.Length}"))
@@ -822,15 +836,53 @@ public sealed class SerialLink : IDeviceLink
                 return false;
 
             int len = Math.Min(rawChunk, packed.Length - offset);
-            string hex = Convert.ToHexString(packed, offset, len);
-            if (!await SendRealtimeLineAsync(
-                    $"TXTCHUNK|{kind}|{offset}|{hex}"))
+
+            if (fastBle)
             {
-                return false;
+                // Packed text is already 1-bit. Base64 adds ~33% overhead,
+                // versus HEX's 100% overhead in the legacy protocol.
+                string base64 =
+                    Convert.ToBase64String(packed, offset, len);
+
+                if (!await SendFastMediaLineAsync(
+                        $"TXTCHUNK64|{kind}|{offset}|{base64}"))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                string hex =
+                    Convert.ToHexString(packed, offset, len);
+
+                if (!await SendRealtimeLineAsync(
+                        $"TXTCHUNK|{kind}|{offset}|{hex}"))
+                {
+                    return false;
+                }
             }
         }
 
-        return await SendRealtimeLineAsync($"TXTEND|{kind}");
+        // Let the controller drain queued write commands before the
+        // acknowledged TXTEND request. ATT preserves ordering; this short
+        // guard also avoids overrunning conservative Windows BLE stacks.
+        if (fastBle)
+            await Task.Delay(8);
+
+        bool ok =
+            await SendRealtimeLineAsync($"TXTEND|{kind}");
+
+        if (ok)
+        {
+            Log(
+                "INFO",
+                $"Now Playing text {kind} sent in " +
+                $"{(DateTimeOffset.UtcNow - started).TotalMilliseconds:F0} ms " +
+                $"({packed.Length} bytes, BLE payload={_blePayloadSize}, " +
+                $"fast={fastBle})");
+        }
+
+        return ok;
     }
 
     private static byte[] DownsampleRgb332(
@@ -911,6 +963,10 @@ public sealed class SerialLink : IDeviceLink
             bool compactBle =
                 _bleCharacteristic is not null &&
                 SupportsVariableArtwork;
+            bool fastBle =
+                _bleCharacteristic is not null &&
+                SupportsFastMedia;
+            var started = DateTimeOffset.UtcNow;
 
             int width = compactBle ? bleSize : fullSize;
             int height = compactBle ? bleSize : fullSize;
@@ -939,31 +995,39 @@ public sealed class SerialLink : IDeviceLink
                 int len = Math.Min(rawChunk, payload.Length - offset);
                 string base64 =
                     Convert.ToBase64String(payload, offset, len);
+                string line =
+                    $"ARTCHUNK|{offset}|{base64}";
 
-                if (!await SendRealtimeLineAsync(
-                        $"ARTCHUNK|{offset}|{base64}"))
-                {
+                bool ok = fastBle
+                    ? await SendFastMediaLineAsync(line)
+                    : await SendRealtimeLineAsync(line);
+
+                if (!ok)
                     return false;
-                }
 
                 chunkNumber++;
-                if ((chunkNumber % 6) == 0)
+
+                // Only legacy acknowledged transfers need a periodic media
+                // heartbeat. The v4 fast path completes far sooner.
+                if (!fastBle && (chunkNumber % 6) == 0)
                 {
-                    // Keep the firmware media session alive while acknowledged
-                    // BLE writes are in flight.
                     if (!await SendRealtimeLineAsync(heartbeatLine))
                         return false;
                 }
             }
+
+            if (fastBle)
+                await Task.Delay(8);
 
             if (!await SendRealtimeLineAsync("ARTEND"))
                 return false;
 
             Log(
                 "INFO",
-                compactBle
-                    ? $"Now Playing artwork sent compact BLE: {width}x{height}, {payload.Length} bytes"
-                    : $"Now Playing artwork sent: {payload.Length} bytes");
+                $"Now Playing artwork sent in " +
+                $"{(DateTimeOffset.UtcNow - started).TotalMilliseconds:F0} ms: " +
+                $"{width}x{height}, {payload.Length} bytes, " +
+                $"BLE payload={_blePayloadSize}, fast={fastBle}");
 
             return true;
         }
@@ -1821,6 +1885,65 @@ public sealed class SerialLink : IDeviceLink
 
     public Task<bool> ClearPcMonitorAsync() =>
         SendRealtimeLineAsync("PCMONCLR");
+
+    private async Task<bool> SendFastMediaLineAsync(string line)
+    {
+        // Protocol v4 fast path is only used for media payload chunks.
+        // Begin/end/control packets still use acknowledged writes.
+        if (_bleCharacteristic is null || !SupportsFastMedia)
+            return await SendRealtimeLineAsync(line);
+
+        await _writeGate.WaitAsync();
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
+            var characteristic = _bleCharacteristic;
+            int chunkSize = Math.Max(20, _blePayloadSize);
+
+            // Windows can queue WriteWithoutResponse far faster than the radio
+            // can drain it. Pace short bursts instead of sleeping after every
+            // fragment. Small-MTU links get a more conservative burst.
+            int burstFragments = chunkSize <= 32 ? 3 : 6;
+            int pauseMs = chunkSize <= 32 ? 4 : 2;
+            int burstCount = 0;
+
+            for (int offset = 0; offset < data.Length; offset += chunkSize)
+            {
+                int len = Math.Min(chunkSize, data.Length - offset);
+                using var writer = new DataWriter();
+                writer.WriteBytes(data.AsSpan(offset, len).ToArray());
+
+                var status = await characteristic.WriteValueAsync(
+                    writer.DetachBuffer(),
+                    GattWriteOption.WriteWithoutResponse);
+
+                if (status != GattCommunicationStatus.Success)
+                {
+                    throw new IOException(
+                        $"Bluetooth fast-media write failed: {status}");
+                }
+
+                burstCount++;
+                if ((burstCount % burstFragments) == 0 &&
+                    offset + len < data.Length)
+                {
+                    await Task.Delay(pauseMs);
+                }
+            }
+
+            RecordLinkSuccess();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RecordLinkFailure("Fast media write", ex);
+            return false;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
 
     private async Task<bool> SendRealtimeLineAsync(string line)
     {
