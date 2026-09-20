@@ -1392,6 +1392,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private static void SetSystemResourceColor(
+        System.Windows.ResourceKey key,
+        string hex)
+    {
+        if (System.Windows.Media.ColorConverter.ConvertFromString(hex) is MediaColor color)
+        {
+            System.Windows.Application.Current.Resources[key] =
+                new SolidColorBrush(color);
+        }
+    }
+
     private void ApplyTheme()
     {
         if (_lightTheme)
@@ -1399,25 +1410,43 @@ public partial class MainWindow : Window
             SetResourceColor("Bg", "#F2F2F7");
             SetResourceColor("Card", "#FFFFFF");
             SetResourceColor("Card2", "#F8F8FA");
-            SetResourceColor("ControlBg", "#FFFFFF");
-            SetResourceColor("TextPrimary", "#111113");
+            SetResourceColor("ControlBg", "#F2F2F5");
+            SetResourceColor("TextPrimary", "#171719");
             SetResourceColor("Muted", "#6E6E73");
-            SetResourceColor("Line", "#D1D1D6");
+            SetResourceColor("Line", "#D5D5DA");
             SetResourceColor("Accent", "#FF7A00");
-            SetResourceColor("Selection", "#FFE6D0");
+            SetResourceColor("Selection", "#F5E8DE");
+
+            SetSystemResourceColor(System.Windows.SystemColors.WindowBrushKey, "#FFFFFF");
+            SetSystemResourceColor(System.Windows.SystemColors.ControlBrushKey, "#F2F2F5");
+            SetSystemResourceColor(System.Windows.SystemColors.WindowTextBrushKey, "#171719");
+            SetSystemResourceColor(System.Windows.SystemColors.ControlTextBrushKey, "#171719");
+            SetSystemResourceColor(System.Windows.SystemColors.HighlightBrushKey, "#F5E8DE");
+            SetSystemResourceColor(System.Windows.SystemColors.HighlightTextBrushKey, "#171719");
+            SetSystemResourceColor(System.Windows.SystemColors.InactiveSelectionHighlightBrushKey, "#ECECEF");
+
             ThemeButton.Content = "Dark mode";
         }
         else
         {
-            SetResourceColor("Bg", "#080808");
-            SetResourceColor("Card", "#151515");
-            SetResourceColor("Card2", "#1D1D1F");
-            SetResourceColor("ControlBg", "#27272A");
-            SetResourceColor("TextPrimary", "#FFFFFF");
-            SetResourceColor("Muted", "#9A9AA0");
-            SetResourceColor("Line", "#3A3A3C");
+            SetResourceColor("Bg", "#0D0D0F");
+            SetResourceColor("Card", "#16171A");
+            SetResourceColor("Card2", "#1B1C20");
+            SetResourceColor("ControlBg", "#202126");
+            SetResourceColor("TextPrimary", "#ECECF0");
+            SetResourceColor("Muted", "#9899A1");
+            SetResourceColor("Line", "#303138");
             SetResourceColor("Accent", "#FF7A00");
-            SetResourceColor("Selection", "#3A2414");
+            SetResourceColor("Selection", "#2B2521");
+
+            SetSystemResourceColor(System.Windows.SystemColors.WindowBrushKey, "#1B1C20");
+            SetSystemResourceColor(System.Windows.SystemColors.ControlBrushKey, "#202126");
+            SetSystemResourceColor(System.Windows.SystemColors.WindowTextBrushKey, "#ECECF0");
+            SetSystemResourceColor(System.Windows.SystemColors.ControlTextBrushKey, "#ECECF0");
+            SetSystemResourceColor(System.Windows.SystemColors.HighlightBrushKey, "#2B2521");
+            SetSystemResourceColor(System.Windows.SystemColors.HighlightTextBrushKey, "#F4F4F6");
+            SetSystemResourceColor(System.Windows.SystemColors.InactiveSelectionHighlightBrushKey, "#252529");
+
             ThemeButton.Content = "Light mode";
         }
     }
