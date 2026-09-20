@@ -190,3 +190,18 @@ row-gpios
         };
     };
 };
+
+
+/* AO3400 backlight switch gate.
+ * P0.08 is unused by the matrix, encoder, TFT and WS2812 buses.
+ * The GPIO hog keeps the N-MOSFET OFF during Zephyr startup; add a physical
+ * 100k gate-to-GND resistor as well so it also stays off during reset/bootloader.
+ */
+&gpio0 {
+    lumi_panel_bl_gate_hog {
+        gpio-hog;
+        gpios = <8 GPIO_ACTIVE_HIGH>;
+        output-low;
+        line-name = "lumi-tft-backlight-gate";
+    };
+};

@@ -14,7 +14,66 @@ static const struct spi_dt_spec bus =
     SPI_DT_SPEC_GET(PANEL, SPI_OP_MODE_MASTER | SPI_WORD_SET(8), 0);
 static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 
+/* AO3400 N-MOSFET gate used only for TFT backlight switching. */
+#define LUMI_BL_GATE_PIN 8U
+static const struct device *const bl_gate_gpio =
+    DEVICE_DT_GET(DT_NODELABEL(gpio0));
+static bool bl_gate_ready;
+
+static int lumi_panel_backlight_init(void) {
+    if (!device_is_ready(bl_gate_gpio)) {
+        lumi_diag_report('E', "Backlight GPIO not ready");
+        return -ENODEV;
+    }
+
+    int err = gpio_pin_configure(
+        bl_gate_gpio,
+        LUMI_BL_GATE_PIN,
+        GPIO_OUTPUT_LOW);
+    if (err) {
+        lumi_diag_report('E', "Backlight GPIO init rc=%d", err);
+        return err;
+    }
+
+    bl_gate_ready = true;
+    return 0;
+}
+
+int lumi_panel_set_backlight(bool enabled) {
+    if (!bl_gate_ready) {
+        int err = lumi_panel_backlight_init();
+        if (err) {
+            return err;
+        }
+    }
+
+    int err = gpio_pin_set(
+        bl_gate_gpio,
+        LUMI_BL_GATE_PIN,
+        enabled ? 1 : 0);
+    if (err) {
+        lumi_diag_report(
+            'E',
+            "Backlight %s rc=%d",
+            enabled ? "ON" : "OFF",
+            err);
+        return err;
+    }
+
+    lumi_diag_report(
+        'I',
+        "Backlight %s",
+        enabled ? "ON" : "OFF");
+    return 0;
+}
+
 int lumi_panel_init(void) {
+    /* Keep the backlight dark until the complete LVGL screen is built.
+     * This hides the ST7789's undefined RAM contents during power-up.
+     */
+    (void)lumi_panel_backlight_init();
+    (void)lumi_panel_set_backlight(false);
+
     /* Keep the known-good ST7789 baseline timing. This panel has no TE
      * feedback wired, so forcing FRCTRL2/porch cannot synchronize RAMWR.
      */
@@ -67,6 +126,14 @@ int lumi_panel_set_sleep(bool sleeping) {
     }
 
     k_msleep(sleeping ? 5 : 10);
+
+    if (sleeping) {
+        (void)lumi_panel_set_backlight(false);
+    } else {
+        /* Keep the backlight off until LVGL has invalidated/redrawn the UI. */
+        (void)lumi_panel_set_backlight(false);
+    }
+
     lumi_diag_report('I', "Panel display %s", sleeping ? "OFF" : "ON");
     return 0;
 }

@@ -2187,8 +2187,18 @@ static void lumi_panel_refresh_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_refresh_work, lumi_panel_refresh_work_handler);
 
+static void lumi_panel_backlight_on_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    (void)lumi_panel_set_backlight(true);
+}
+
+K_WORK_DELAYABLE_DEFINE(
+    lumi_panel_backlight_on_work,
+    lumi_panel_backlight_on_work_handler);
+
 static void lumi_panel_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
+    (void)k_work_cancel_delayable(&lumi_panel_backlight_on_work);
     (void)lumi_panel_set_sleep(true);
 }
 
@@ -2199,6 +2209,9 @@ static void lumi_panel_wake_work_handler(struct k_work *work) {
 
     if (lumi_panel_set_sleep(false) == 0) {
         lumi_panel_refresh_work_handler(NULL);
+        (void)k_work_schedule(
+            &lumi_panel_backlight_on_work,
+            K_MSEC(80));
     }
 }
 
@@ -2981,6 +2994,14 @@ lv_timer_create(refresh_pc_monitor_timer, 500, NULL);
 lv_timer_create(refresh_screensaver, SAVER_MIN_FRAME_MS, NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
+
+/* The physical 100k pulldown + P0.08 GPIO hog keep the backlight off during
+ * reset and display init. Turn it on only after LVGL has had time to flush the
+ * boot splash, eliminating the visible white/random RAM flash at power-up.
+ */
+(void)k_work_schedule(
+    &lumi_panel_backlight_on_work,
+    K_MSEC(120));
 
 return screen;
 }
