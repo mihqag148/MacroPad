@@ -593,6 +593,12 @@ public sealed class QmkRawHidLink : IDeviceLink
     public void SetSleepTimeout(int seconds) =>
         FireAndForget($"CFG|SLEEP|{Math.Max(0, seconds)}");
 
+    public void SetRgbIdleTimeout(int seconds) =>
+        FireAndForget($"CFG|RGBIDLE|{Math.Max(0, seconds)}");
+
+    public void SetDeepSleepTimeout(int seconds) =>
+        FireAndForget($"CFG|DEEPSLEEP|{Math.Max(0, seconds)}");
+
     public async Task<(uint Seq, string Level, string Message)?>
         ReadFirmwareLogAsync(uint afterSeq)
     {

@@ -251,3 +251,24 @@ This wiring uses the module's own BLK input directly; no AO3400 is required.
   Changing a footer slot in the app immediately changes the keyboard display.
 - Footer text stays compact for the 101 px columns, for example:
   `CPU 52C`, `GPU 48C`, `RAM 43%`, `DOWN 12.4M`, `UP 850K`, `FPS 144`.
+
+
+### ECO sleep and dynamic deep sleep v1.11.0
+
+Power behavior is now split into user-configurable stages:
+
+- **RGB idle timeout**: based only on physical key/encoder inactivity. The RGB
+  LEDs can turn off before the display sleeps.
+- **Screensaver timeout**: still does not replace the Now Playing screen while
+  music is playing.
+- **Soft sleep timeout**: still applies while music is playing. Example:
+  screensaver 15 s + sleep 60 s keeps Now Playing visible until 60 s, then
+  blanks the panel/backlight while BLE remains connected.
+- **Deep sleep timeout**: configured in Settings. On battery power, firmware
+  suspends ZMK devices and enters nRF52840 System OFF. Bluetooth disconnects;
+  pressing a matrix key wakes/reboots the keyboard and the app reconnects.
+- Background CFG/RGB/PC Monitor traffic does not count as wake activity.
+  Soft sleep wakes only for physical key/encoder input, an Auto Profile switch,
+  starting/opening music, or an explicit manual wake/show action.
+- LVGL high-frequency timers are paused during soft sleep and the page polling
+  loop drops from 500 ms to 2 s while asleep.

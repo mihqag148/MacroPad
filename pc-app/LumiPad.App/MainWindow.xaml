@@ -779,6 +779,22 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
 
+                                <TextBlock Text="Turn LEDs off after"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Margin="0,28,0,8"/>
+                                <ComboBox x:Name="RgbIdleDelayCombo"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="RgbIdleDelayCombo_SelectionChanged">
+                                    <ComboBoxItem Content="15 seconds" Tag="15"/>
+                                    <ComboBoxItem Content="30 seconds" Tag="30"/>
+                                    <ComboBoxItem Content="1 minute" Tag="60"/>
+                                    <ComboBoxItem Content="2 minutes" Tag="120"/>
+                                    <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                    <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                    <ComboBoxItem Content="Never" Tag="0"/>
+                                </ComboBox>
+
                                 <Border Height="1"
                                         Background="{DynamicResource Line}"
                                         Margin="0,30,0,20"/>
@@ -1712,6 +1728,26 @@
                                                     Margin="8,0,0,0"/>
                                         </Grid>
                                     </Border>
+
+                                    <TextBlock Text="Deep sleep after"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,18,0,6"/>
+                                    <ComboBox x:Name="DeepSleepDelayCombo"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="DeepSleepDelayCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Never" Tag="0"/>
+                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                        <ComboBoxItem Content="15 minutes" Tag="900"/>
+                                        <ComboBoxItem Content="30 minutes" Tag="1800"/>
+                                        <ComboBoxItem Content="1 hour" Tag="3600"/>
+                                        <ComboBoxItem Content="2 hours" Tag="7200"/>
+                                    </ComboBox>
+                                    <TextBlock Text="Deep sleep disconnects Bluetooth and uses very little power. Press a key to reboot and reconnect."
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,6,0,0"/>
 
                                     <StackPanel Orientation="Horizontal"
                                                 Margin="0,16,0,0">

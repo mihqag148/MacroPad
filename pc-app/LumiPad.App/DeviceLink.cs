@@ -60,6 +60,8 @@ public interface IDeviceProtocol
     void SetScreensaverSource(bool pcMonitor);
     void SetScreensaverDelay(int seconds);
     void SetSleepTimeout(int seconds);
+    void SetRgbIdleTimeout(int seconds);
+    void SetDeepSleepTimeout(int seconds);
 
     Task<(uint Seq, string Level, string Message)?> ReadFirmwareLogAsync(
         uint afterSeq);

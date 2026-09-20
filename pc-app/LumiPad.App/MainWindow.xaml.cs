@@ -74,6 +74,8 @@ public partial class MainWindow : Window
     private bool _rgbAuto;
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
+    private int _rgbIdleDelaySeconds = 60;
+    private int _deepSleepDelaySeconds = 0;
     private int _rgbBrightness = 25;
     private int _rgbSpeed = 50;
     private bool _rgbEnabled = true;
@@ -910,6 +912,11 @@ public partial class MainWindow : Window
         ["Switch"] = "Bật / Tắt",
         ["Brightness"] = "Độ sáng",
         ["Effect Speed"] = "Tốc độ hiệu ứng",
+        ["Turn LEDs off after"] = "Tắt LED sau",
+        ["Deep sleep after"] = "Ngủ sâu sau",
+        ["Deep sleep disconnects Bluetooth and uses very little power. Press a key to reboot and reconnect."] = "Ngủ sâu sẽ ngắt Bluetooth và tiết kiệm điện tối đa. Nhấn phím để khởi động lại và kết nối lại.",
+        ["1 hour"] = "1 giờ",
+        ["2 hours"] = "2 giờ",
         ["Selected color"] = "Màu đã chọn",
         ["ZMK Studio"] = "ZMK Studio",
         ["Embedded zmk.studio"] = "ZMK Studio tích hợp",
@@ -1177,6 +1184,8 @@ public partial class MainWindow : Window
         public RgbProfileSetting[]? RgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
+        public int RgbIdleDelaySeconds { get; set; } = 60;
+        public int DeepSleepDelaySeconds { get; set; } = 0;
         public string? ScreensaverMediaPath { get; set; }
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public bool PcMonitorEnabled { get; set; } = true;
@@ -1225,6 +1234,8 @@ public partial class MainWindow : Window
 
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
+            _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
+            _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
             _screensaverMediaPath = settings.ScreensaverMediaPath;
             _screensaverScaleMode = settings.ScreensaverScaleMode;
             _screensaverSource =
@@ -1288,6 +1299,8 @@ public partial class MainWindow : Window
                     .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
+                RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
+                DeepSleepDelaySeconds = _deepSleepDelaySeconds,
                 ScreensaverMediaPath = _screensaverMediaPath,
                 ScreensaverScaleMode = SelectedScreensaverScaleMode(),
                 PcMonitorEnabled = _pcMonitorEnabled,
@@ -1321,6 +1334,8 @@ public partial class MainWindow : Window
         SelectComboTag(RgbProfileCombo, _rgbProfileIndex.ToString());
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
+        SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
+        SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
@@ -2403,6 +2418,8 @@ public partial class MainWindow : Window
                 "PcMonitor",
                 StringComparison.Ordinal));
         _serial.SetSleepTimeout(_sleepDelaySeconds);
+        _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
+        _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
     }
 
     private void ScreensaverSourceCombo_SelectionChanged(
@@ -2493,6 +2510,52 @@ public partial class MainWindow : Window
             BottomStatus.Text = L(
                 _sleepDelaySeconds == 0 ? "Sleep: Never" : $"Sleep: {_sleepDelaySeconds}s",
                 _sleepDelaySeconds == 0 ? "Ngủ: Không bao giờ" : $"Ngủ: {_sleepDelaySeconds} giây");
+        }
+    }
+
+    private void RgbIdleDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _rgbIdleDelaySeconds =
+            ComboSeconds(sender, _rgbIdleDelaySeconds);
+
+        if (_uiReady)
+            SaveAppSettings();
+
+        if (_uiReady && _serial.IsConnected)
+        {
+            _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
+            BottomStatus.Text = L(
+                _rgbIdleDelaySeconds == 0
+                    ? "LED idle timeout: Never"
+                    : $"LED idle timeout: {_rgbIdleDelaySeconds}s",
+                _rgbIdleDelaySeconds == 0
+                    ? "Tắt LED khi rảnh: Không bao giờ"
+                    : $"Tắt LED khi rảnh: {_rgbIdleDelaySeconds} giây");
+        }
+    }
+
+    private void DeepSleepDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _deepSleepDelaySeconds =
+            ComboSeconds(sender, _deepSleepDelaySeconds);
+
+        if (_uiReady)
+            SaveAppSettings();
+
+        if (_uiReady && _serial.IsConnected)
+        {
+            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
+            BottomStatus.Text = L(
+                _deepSleepDelaySeconds == 0
+                    ? "Deep sleep: Never"
+                    : $"Deep sleep: {_deepSleepDelaySeconds}s",
+                _deepSleepDelaySeconds == 0
+                    ? "Ngủ sâu: Không bao giờ"
+                    : $"Ngủ sâu: {_deepSleepDelaySeconds} giây");
         }
     }
 

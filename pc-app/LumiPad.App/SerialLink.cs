@@ -1668,6 +1668,12 @@ public sealed class SerialLink : IDeviceLink
     public void SetSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|SLEEP|{Math.Max(0, seconds)}");
 
+    public void SetRgbIdleTimeout(int seconds) =>
+        _ = SendLineAsync($"CFG|RGBIDLE|{Math.Max(0, seconds)}");
+
+    public void SetDeepSleepTimeout(int seconds) =>
+        _ = SendLineAsync($"CFG|DEEPSLEEP|{Math.Max(0, seconds)}");
+
     public void SetActiveProfile(int profile)
     {
         if (!SupportsProfileSwitch)
