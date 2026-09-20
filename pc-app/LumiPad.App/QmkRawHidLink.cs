@@ -415,7 +415,7 @@ public sealed class QmkRawHidLink : IDeviceLink
             int fragment = report[p + 5];
             int length = Math.Min(
                 FramePayloadBytes,
-                report[p + 6]);
+                (int)report[p + 6]);
 
             if ((flags & FlagStart) != 0)
             {
