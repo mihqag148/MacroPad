@@ -3309,7 +3309,7 @@ public partial class MainWindow : Window
 
             if (connection is null)
             {
-                throw new IOException(
+                throw new IO.IOException(
                     L(
                         "Firmware installed, but PIXEL PRO did not reconnect yet. Press RESET once, then Connect USB.",
                         "Đã nạp firmware nhưng PIXEL PRO chưa kết nối lại. Nhấn RESET một lần rồi bấm Kết nối USB."));
