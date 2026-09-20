@@ -20,7 +20,8 @@ namespace LumiPad.App;
 
 public partial class MainWindow : Window
 {
-    private readonly SerialLink _serial = new();
+    private readonly IDeviceLink _serial =
+        DeviceLinkFactory.Create(ProductCatalog.DialDesk);
     private readonly NowPlayingService _nowPlaying = new();
     private readonly PcMonitorService _pcMonitorService = new();
 

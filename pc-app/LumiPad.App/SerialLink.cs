@@ -8,7 +8,7 @@ using Windows.Storage.Streams;
 
 namespace LumiPad.App;
 
-public sealed class SerialLink : IDisposable
+public sealed class SerialLink : IDeviceLink
 {
     private static readonly Guid ServiceUuid = Guid.Parse("D8A90001-6B5A-4C3B-9F2A-7C4E4C554D49");
     private static readonly Guid CharacteristicUuid = Guid.Parse("D8A90002-6B5A-4C3B-9F2A-7C4E4C554D49");

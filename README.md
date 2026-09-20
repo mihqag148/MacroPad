@@ -149,3 +149,23 @@ Final verified package: Lumi Macropad v1.7.1.
 - App yêu cầu quyền Administrator để LibreHardwareMonitor có thể đọc CPU/GPU temperature qua driver phần cứng.
 - CPU temperature có thêm fallback qua LibreHardwareMonitor/OpenHardwareMonitor WMI và ACPI.
 - 6 metric layout được nhúng vào mọi gói PCMON realtime, nên DIAL DESK luôn cập nhật layout kể cả khi gói PCCFG riêng bị trễ/mất.
+
+
+### Multi-firmware app architecture v1.8.0
+
+Lumi Macropad no longer makes the main UI depend directly on the DIAL DESK
+`SerialLink` implementation. The app now has separate contracts for connection
+and product commands:
+
+- `IDeviceTransport`: USB/Bluetooth connection lifecycle.
+- `IDeviceProtocol`: Media, RGB, screensaver, Action, PC Monitor, diagnostics,
+  battery and device-control commands.
+- `IDeviceLink`: combines transport and protocol for the UI.
+- `DeviceLinkFactory`: selects a driver from the product definition.
+- `DeviceDriverKind`: currently defines `LumiZmk`, `QmkRawHid` and
+  `Esp32Companion`.
+
+DIAL DESK still uses the existing `SerialLink` and the same Lumi protocol, so
+this refactor does not change its USB CDC/BLE UUIDs or current features.
+A future QMK product can add a Raw HID implementation of `IDeviceLink` and a
+ProductCatalog entry without rewriting MainWindow or the shared app features.
