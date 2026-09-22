@@ -129,7 +129,7 @@ bàn phím để giao tiếp với app, vì vậy vẫn được giữ tại đ�
 
 Tên USB, BLE và splash là **RYNOR ONE**. Giữ nguyên shield `lumi_macropad`,
 Kconfig symbols, pinout, VID/PID, UUID và protocol để tương thích firmware/app cũ.
-App giữ ID cấu hình `dial-desk` để không mất cấu hình đã lưu.
+App dùng ID sản phẩm `rynor-one` đồng nhất với tên RYNOR ONE.
 
 PIXEL PRO có [repo firmware riêng](https://github.com/mihqag148/PIXEL-PRO---Lumi-Macropad).
 Mã tham khảo QMK Raw HID được giữ tại `qmk/lumi_raw_hid` và copy sang repo PIXEL PRO;
