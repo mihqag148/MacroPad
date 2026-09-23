@@ -294,3 +294,14 @@ for previous/next frame scrubbing.
 - The companion protocol can query `PROFILE` and receives the actual active
   ZMK profile index and layer name so LumiPad can keep RGB, Action context and
   other profile-aware RYNOR UI synchronized with the keyboard.
+
+
+### MAIN profile live icons v1.14.17
+
+P1/MAIN now recognizes the user's live ZMK bindings and shows semantic icons for:
+Sticky Layer, Win+Shift+S screenshot, Home, Page Up, Ctrl+Win+Left/Right desktop
+switching, End, Page Down, Ctrl+Shift+Z redo, Ctrl+Z undo, Ctrl+C copy and Ctrl+V paste.
+
+Each keycode icon is only applied when the live ZMK binding matches. K1 checks the
+actual Sticky Layer behavior name, so future ZMK Studio remaps fall back instead of
+leaving a stale icon.
