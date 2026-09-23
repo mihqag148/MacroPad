@@ -3,6 +3,12 @@
 
 / {
     behaviors {
+        lumi_rgb: lumi_rgb {
+            compatible = "zmk,behavior-lumi-rgb";
+            #binding-cells = <1>;
+            display-name = "Lumi RGB";
+        };
+
         lumi_action: lumi_action {
             compatible = "zmk,behavior-lumi-action";
             #binding-cells = <1>;
@@ -10,8 +16,7 @@
         };
     };
 
-    // Hold these two keys together to unlock ZMK Studio:
-    // physical key 1 (COPY/PLAY/UNDO) + physical key 12 (ESC).
+    // Hold physical key 1 + key 12 together to unlock ZMK Studio.
     combos {
         compatible = "zmk,combos";
 
@@ -25,43 +30,94 @@
     keymap {
         compatible = "zmk,keymap";
 
-      office {
-    display-name = "OFFICE";
+        office { // Profile 1
+            display-name = "OFFICE";
+            bindings = <
+                &kp LC(C)      &kp LC(V)      &kp LC(X)      &kp LC(Z)
+                &kp LC(Y)      &kp LC(A)      &kp LC(S)      &kp LC(F)
+                &kp ENTER      &kp BACKSPACE  &kp TAB        &kp ESC
+                &to 1
+            >;
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
 
-    bindings = <
-        &kp LC(C)      &kp LC(V)      &kp LC(X)      &kp LC(Z)
-        &kp LC(Y)      &kp LC(A)      &kp LC(S)      &kp LC(F)
-        &kp ENTER      &kp BACKSPACE  &kp TAB        &kp ESC
+        media { // Profile 2
+            display-name = "MEDIA";
+            bindings = <
+                &kp C_PLAY_PAUSE   &kp C_PREVIOUS      &kp C_NEXT         &kp C_MUTE
+                &kp C_REWIND       &kp C_FAST_FORWARD  &kp C_STOP         &kp F11
+                &kp C_AC_BACK      &kp C_AC_FORWARD    &kp HOME           &kp END
+                &to 2
+            >;
+            // Encoder handles volume, so no volume buttons are wasted on the 12-key grid.
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
 
-        &to 1
-    >;
+        bambu { // Profile 3
+            display-name = "BAMBU STUDIO";
+            bindings = <
+                &kp LC(R)       &kp LC(LS(G))  &kp LC(G)      &kp LC(I)
+                &kp M           &kp R           &kp S          &kp F
+                &kp C           &kp A           &kp LS(R)      &kp LC(S)
+                &to 3
+            >;
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
 
-    sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
-};
+        fusion360 { // Profile 4
+            display-name = "FUSION 360";
+            bindings = <
+                &kp E  &kp Q  &kp F  &kp H
+                &kp M  &kp I  &kp P  &kp D
+                &kp L  &kp R  &kp C  &kp J
+                &to 4
+            >;
+            sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
+        };
 
-       media {
-    display-name = "MEDIA";
+        capcut { // Profile 5
+            display-name = "CAPCUT";
+            bindings = <
+                &kp LC(B)      &kp Q          &kp W          &kp DELETE
+                &kp LC(Z)      &kp LC(LS(Z))  &kp LC(D)      &kp SPACE
+                &kp LEFT       &kp RIGHT      &kp LC(E)      &kp LC(S)
+                &to 5
+            >;
+            // Encoder scrubs one frame at a time.
+            sensor-bindings = <&inc_dec_kp RIGHT LEFT>;
+        };
 
-    bindings = <
-        &kp C_PLAY_PAUSE  &kp C_PREVIOUS   &kp C_NEXT        &kp C_MUTE
-        &kp C_VOL_DN      &kp C_VOL_UP      &kp C_AC_BACK     &kp C_AC_FORWARD
-        &kp HOME          &kp END           &kp PG_UP         &kp PG_DN
+        delta_force { // Profile 6
+            display-name = "DELTA FORCE";
+            bindings = <
+                &kp Y       &kp X       &kp V       &kp G
+                &kp N       &kp J       &kp K       &kp EQUAL
+                &kp M       &kp LC(M)   &kp U       &kp H
+                &to 6
+            >;
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
 
-        &to 2
-    >;
+        wuwa { // Profile 7
+            display-name = "WUWA";
+            bindings = <
+                &kp M   &kp J   &kp B   &kp C
+                &kp L   &kp O   &kp F1  &kp F2
+                &kp F3  &kp F4  &kp U   &kp T
+                &to 7
+            >;
+            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
+        };
 
-    sensor-bindings = <&inc_dec_kp C_NEXT C_PREVIOUS>;
-};
-        fusion360 {
-    display-name = "FUSION 360";
-
-    bindings = <
-        &kp LC(Z)  &kp LC(Y)  &kp LC(S)  &kp LC(C)
-        &kp LC(V)  &kp DELETE &kp F      &kp V
-        &kp M      &kp E      &kp L      &kp ESC
-
-        &to 0
-    >;
-
-    sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
+        pcmonitor { // Profile 8 - telemetry page
+            display-name = "PC MONITOR";
+            bindings = <
+                &none &none &none &none
+                &none &none &none &none
+                &none &none &none &none
+                &to 0
+            >;
+            sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
+        };
+    };
 };
