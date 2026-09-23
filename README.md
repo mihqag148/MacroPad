@@ -247,18 +247,6 @@ Protocol v4 adds the `MEDIAFAST` capability.
 - Diagnostics log the actual text/artwork transfer duration and negotiated BLE
   payload size for hardware verification.
 
-### Battery charging percentage filter v1.14.10
-
-nice!nano v2 measures VDDH, so plugging USB can make the stock ZMK battery
-reading jump directly to 100%. RYNOR ONE now keeps the last trustworthy
-unplugged percentage and estimates charging progress gradually while USB is
-present. The display and BLE Battery Service use the filtered value.
-
-Without a dedicated fuel-gauge IC this charging percentage is an estimate
-(roughly a 5-hour 0→100% model for a 1200 mAh battery charged at about 300 mA), not true coulomb-counted capacity. After USB
-is removed, the firmware returns to the real battery-voltage reading.
-
-
 ### Default profiles v1.14.12
 
 Encoder push cycles through the eight built-in profiles:
@@ -284,3 +272,13 @@ for previous/next frame scrubbing.
 - Any physical key press or encoder push hides Now Playing and returns to the
   main key grid for 10 seconds. Encoder rotation remains available for volume
   without forcing the Media page closed.
+
+
+### Battery restore + profile icons v1.14.14
+
+- Restored the original ZMK battery status widget used before v1.14.10.
+  The custom charging-time estimator and BLE battery override are removed.
+- Added semantic LVGL icons for the built-in MEDIA, BAMBU STUDIO, FUSION 360,
+  CAPCUT, DELTA FORCE and WUWA key layouts.
+- Icon overrides verify the expected default keycode first, so a Studio remap
+  falls back to the live keycode display instead of showing a stale action icon.
