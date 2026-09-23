@@ -1731,9 +1731,16 @@ static bool saver_flash_load_metadata(void) {
         header.frame_count == 1U &&
         header.data_size == LUMI_SAVER_IMAGE_BYTES;
 
+    bool packed_ok =
+        header.format == SAVER_FORMAT_RYQ1 &&
+        header.frame_bytes == 0U &&
+        header.frame_count >= 1U &&
+        header.data_size >= SAVER_PACKED_HEADER_BYTES &&
+        header.data_size <= SAVER_PACKED_MAX_BYTES;
+
     if (header.magic != SAVER_FLASH_MAGIC ||
         header.version != SAVER_FLASH_VERSION ||
-        (!gif_ok && !static_ok)) {
+        (!gif_ok && !static_ok && !packed_ok)) {
         lumi_diag_report(
             'W',
             "Saver metadata invalid magic=%08x fmt=%u frames=%u",
@@ -1744,31 +1751,43 @@ static bool saver_flash_load_metadata(void) {
     }
 
     saver_media_format = header.format;
-    saver_media_frame_count = header.frame_count;
-    saver_timing_set_uniform(
-        saver_media_frame_count,
-        static_ok ? 1000U : header.interval_ms);
+    saver_packed_reset_state();
 
-    struct saver_flash_timing timing = {0};
-    int timing_rc = flash_area_read(
-        saver_flash,
-        SAVER_FLASH_TIMING_OFFSET,
-        &timing,
-        sizeof(timing));
-
-    if (saver_media_format == SAVER_FORMAT_RGB332 &&
-        timing_rc == 0 &&
-        timing.magic == SAVER_FLASH_TIMING_MAGIC &&
-        timing.frame_count == saver_media_frame_count) {
-
-        for (uint8_t i = 0U;
-             i < saver_media_frame_count;
-             i++) {
-            saver_media_frame_intervals[i] =
-                timing.interval_ms[i];
+    if (packed_ok) {
+        if (!saver_packed_load_header(header.data_size, true) ||
+            saver_packed_frame_count != header.frame_count ||
+            saver_packed_storage_width != header.width ||
+            saver_packed_storage_height != header.height) {
+            lumi_diag_report('W', "RYQ1 header mismatch");
+            return false;
         }
+    } else {
+        saver_media_frame_count = header.frame_count;
+        saver_timing_set_uniform(
+            saver_media_frame_count,
+            static_ok ? 1000U : header.interval_ms);
 
-        saver_timing_recalculate();
+        struct saver_flash_timing timing = {0};
+        int timing_rc = flash_area_read(
+            saver_flash,
+            SAVER_FLASH_TIMING_OFFSET,
+            &timing,
+            sizeof(timing));
+
+        if (saver_media_format == SAVER_FORMAT_RGB332 &&
+            timing_rc == 0 &&
+            timing.magic == SAVER_FLASH_TIMING_MAGIC &&
+            timing.frame_count == saver_media_frame_count) {
+
+            for (uint8_t i = 0U;
+                 i < saver_media_frame_count;
+                 i++) {
+                saver_media_frame_intervals[i] =
+                    timing.interval_ms[i];
+            }
+
+            saver_timing_recalculate();
+        }
     }
 
     saver_media_index = 0U;
