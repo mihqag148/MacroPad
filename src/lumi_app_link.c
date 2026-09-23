@@ -32,6 +32,7 @@ LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 #define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
 #define LUMIPAD_HELLO_BASE "LUMIPAD|4|FW=" LUMI_FIRMWARE_VERSION
+#define KEYMAP_AUTOSAVE_INTERVAL_MS 1000
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
 #define LUMI_CHAR_UUID     BT_UUID_128_ENCODE(0xD8A90002, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -1420,6 +1421,9 @@ static void lumi_app_thread(void) {
 
     lumi_diag_report('I', "Firmware diagnostics online");
 
+    int64_t next_keymap_autosave_at =
+        k_uptime_get() + KEYMAP_AUTOSAVE_INTERVAL_MS;
+
     for (;;) {
         unsigned char c;
         bool read_any = false;
@@ -1427,6 +1431,29 @@ static void lumi_app_thread(void) {
         while (uart_poll_in(app_uart, &c) == 0) {
             read_any = true;
             feed_bytes(usb_line, &usb_len, &c, 1, true);
+        }
+
+        int64_t now = k_uptime_get();
+        if (now >= next_keymap_autosave_at) {
+            int pending = zmk_keymap_check_unsaved_changes();
+
+            if (pending > 0) {
+                int rc = zmk_keymap_save_changes();
+                lumi_diag_report(
+                    rc == 0 ? 'I' : 'E',
+                    rc == 0
+                        ? "ZMK keymap autosaved"
+                        : "ZMK keymap autosave rc=%d",
+                    rc);
+            } else if (pending < 0) {
+                lumi_diag_report(
+                    'E',
+                    "ZMK keymap pending check rc=%d",
+                    pending);
+            }
+
+            next_keymap_autosave_at =
+                now + KEYMAP_AUTOSAVE_INTERVAL_MS;
         }
 
         if (!read_any) {
