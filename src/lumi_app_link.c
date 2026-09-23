@@ -531,6 +531,81 @@ static void handle_sys(char *save) {
     }
 }
 
+static void handle_savpbegin(char *save) {
+    char *total_s = strtok_r(NULL, "|", &save);
+
+    if (!total_s) {
+        snprintf(lumi_status, sizeof(lumi_status),
+                 LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+        return;
+    }
+
+    size_t total = (size_t)strtoul(total_s, NULL, 10);
+    bool ok = lumi_ui_saver_packed_begin(total);
+
+    snprintf(lumi_status, sizeof(lumi_status),
+             ok
+                 ? LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:PACKED"
+                 : LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+
+    lumi_diag_report(
+        ok ? 'I' : 'E',
+        "SAVPBEGIN bytes=%u %s",
+        (unsigned int)total,
+        ok ? "OK" : "ERROR");
+}
+
+static void handle_savpchunk(char *save) {
+    char *offset_s = strtok_r(NULL, "|", &save);
+    char *base64 = strtok_r(NULL, "|", &save);
+
+    if (!offset_s || !base64) {
+        snprintf(lumi_status, sizeof(lumi_status),
+                 LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+        lumi_diag_report('E', "SAVPCHUNK missing field");
+        return;
+    }
+
+    size_t decoded_len = 0U;
+    int rc = base64_decode(
+        saver_chunk_tmp,
+        sizeof(saver_chunk_tmp),
+        &decoded_len,
+        (const uint8_t *)base64,
+        strlen(base64));
+
+    if (rc != 0 || decoded_len == 0U) {
+        snprintf(lumi_status, sizeof(lumi_status),
+                 LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+        lumi_diag_report(
+            'E',
+            "SAVPCHUNK base64 rc=%d len=%u",
+            rc,
+            (unsigned int)decoded_len);
+        return;
+    }
+
+    uint32_t offset =
+        (uint32_t)strtoul(offset_s, NULL, 10);
+
+    if (!lumi_ui_saver_packed_chunk(
+            offset,
+            saver_chunk_tmp,
+            decoded_len)) {
+        snprintf(lumi_status, sizeof(lumi_status),
+                 LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+        lumi_diag_report(
+            'E',
+            "SAVPCHUNK write off=%u len=%u",
+            (unsigned int)offset,
+            (unsigned int)decoded_len);
+        return;
+    }
+
+    snprintf(lumi_status, sizeof(lumi_status),
+             LUMIPAD_HELLO_BASE "|SAVER:UPLOADING:PACKED");
+}
+
 static void handle_savbegin(char *save) {
     char *count_s = strtok_r(NULL, "|", &save);
     char *interval_s = strtok_r(NULL, "|", &save);
@@ -1241,6 +1316,22 @@ static void handle_line(char *line, bool from_usb) {
     } else if (strcmp(root, "ART") == 0) {
         /* Legacy single-line format kept for older apps. */
         handle_art(save);
+    } else if (strcmp(root, "SAVPBEGIN") == 0) {
+        handle_savpbegin(save);
+        if (from_usb) {
+            write_text_usb(
+                strstr(lumi_status, "SAVER:ERROR") != NULL
+                    ? "SAVACK|ERROR\r\n"
+                    : "SAVACK|BEGIN\r\n");
+        }
+    } else if (strcmp(root, "SAVPCHUNK") == 0) {
+        handle_savpchunk(save);
+        if (from_usb) {
+            write_text_usb(
+                strstr(lumi_status, "SAVER:ERROR") != NULL
+                    ? "SAVACK|ERROR\r\n"
+                    : "SAVACK|CHUNK\r\n");
+        }
     } else if (strcmp(root, "SAVBEGIN") == 0) {
         handle_savbegin(save);
         if (from_usb) {
@@ -1285,6 +1376,22 @@ static void handle_line(char *line, bool from_usb) {
         lumi_diag_report(
             saver_ok ? 'I' : 'E',
             saver_ok ? "IMGEND READY" : "IMGEND ERROR");
+        if (from_usb) {
+            write_text_usb(
+                saver_ok
+                    ? "SAVACK|READY\r\n"
+                    : "SAVACK|ERROR\r\n");
+        }
+    } else if (strcmp(root, "SAVPEND") == 0) {
+        bool saver_ok = lumi_ui_saver_packed_end() &&
+                        lumi_ui_saver_anim_is_valid();
+        snprintf(lumi_status, sizeof(lumi_status),
+                 saver_ok
+                     ? LUMIPAD_HELLO_BASE "|SAVER:READY"
+                     : LUMIPAD_HELLO_BASE "|SAVER:ERROR");
+        lumi_diag_report(
+            saver_ok ? 'I' : 'E',
+            saver_ok ? "SAVPEND READY" : "SAVPEND ERROR");
         if (from_usb) {
             write_text_usb(
                 saver_ok
