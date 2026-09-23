@@ -128,7 +128,7 @@ static lv_obj_t *boot_overlay;
 static lv_obj_t *boot_progress;
 static uint32_t boot_started_ms;
 #define BOOT_BACKLIGHT_DELAY_MS 500U
-#define BOOT_SPLASH_VISIBLE_MS 2500U
+#define BOOT_SPLASH_VISIBLE_MS 1500U
 
 static lv_obj_t *pc_monitor_overlay;
 static lv_obj_t *pc_cpu_title;
@@ -2418,7 +2418,7 @@ static void lumi_panel_backlight_on_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     /* On cold boot the splash has already been drawn into ST7789 RAM while
-     * BLK is LOW. Start the visible 2.5 s loading window exactly when BLK
+     * BLK is LOW. Start the visible 1.5 s loading window exactly when BLK
      * turns on, so the user never sees the panel's random power-up RAM.
      */
     if (boot_overlay && boot_started_ms == 0U) {
@@ -3365,7 +3365,7 @@ screensaver_lv_timer = lv_timer_create(
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
 /* P0.08/BLK stays LOW through display init. Wait 0.5 s after the UI is built,
- * then reveal the already-rendered splash for a full visible 2.5 s.
+ * then reveal the already-rendered splash for about 1.5 s.
  */
 (void)k_work_schedule(
     &lumi_panel_backlight_on_work,
