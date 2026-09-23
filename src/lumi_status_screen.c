@@ -2582,6 +2582,88 @@ bool lumi_ui_saver_anim_end(void) {
     return ok;
 }
 
+bool lumi_ui_saver_packed_begin(size_t total_bytes) {
+    if (total_bytes < SAVER_PACKED_HEADER_BYTES ||
+        total_bytes > SAVER_PACKED_MAX_BYTES) {
+        return false;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_media_valid = false;
+    saver_media_format = SAVER_FORMAT_RYQ1;
+    saver_media_frame_count = 0U;
+    saver_media_received_mask = 0U;
+    saver_image_received_bytes = 0U;
+    saver_packed_reset_state();
+    saver_packed_expected_bytes = (uint32_t)total_bytes;
+    saver_packed_received_bytes = 0U;
+    saver_static_drawn = false;
+    saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (saver_flash_prepare_upload() != 0) {
+        saver_packed_reset_state();
+        return false;
+    }
+
+    return true;
+}
+
+bool lumi_ui_saver_packed_chunk(
+    uint32_t offset,
+    const uint8_t *data,
+    size_t len) {
+
+    if (!data ||
+        saver_media_format != SAVER_FORMAT_RYQ1 ||
+        saver_packed_expected_bytes < SAVER_PACKED_HEADER_BYTES ||
+        len == 0U ||
+        offset != saver_packed_received_bytes ||
+        (uint64_t)offset + len > saver_packed_expected_bytes) {
+        return false;
+    }
+
+    if (saver_flash_write_bytes(offset, data, len) != 0) {
+        return false;
+    }
+
+    saver_packed_received_bytes += (uint32_t)len;
+    return true;
+}
+
+bool lumi_ui_saver_packed_end(void) {
+    bool ok =
+        saver_media_format == SAVER_FORMAT_RYQ1 &&
+        saver_packed_expected_bytes >= SAVER_PACKED_HEADER_BYTES &&
+        saver_packed_received_bytes == saver_packed_expected_bytes;
+
+    if (ok) {
+        saver_packed_data_size = saver_packed_expected_bytes;
+        ok = saver_packed_load_header(
+                 saver_packed_data_size,
+                 true) &&
+             saver_flash_commit_header() == 0;
+    }
+
+    if (ok) {
+        saver_media_valid = true;
+        saver_media_index = 0U;
+        saver_media_epoch_ms = 0U;
+        saver_prefetch_valid = false;
+        saver_prefetch_next_valid = false;
+        saver_static_drawn = false;
+        saver_packed_cursor = saver_packed_frames_offset;
+        saver_packed_frame_index = 0U;
+        saver_packed_next_frame_at = 0U;
+        saver_packed_playback_started = false;
+    } else {
+        saver_media_valid = false;
+    }
+
+    return ok;
+}
+
 bool lumi_ui_saver_image_begin(size_t total_bytes) {
     if (total_bytes != LUMI_SAVER_IMAGE_BYTES) {
         return false;
