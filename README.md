@@ -316,3 +316,12 @@ leaving a stale icon.
 - The normal ZMK Studio Save button remains supported; the autosave path is a
   firmware-side safety net.
 - ZMK settings/keymap storage is explicitly enabled in the RYNOR ONE config.
+
+
+### Navigation key icons v1.14.19
+
+- HOME now uses a dedicated home icon.
+- END now uses a dedicated end/stop icon instead of sharing the Page Down arrow.
+- PAGE UP and PAGE DOWN now use distinct page + direction icons, so they are
+  visually different from normal Up/Down arrows and from each other.
+- The same navigation icons are used for live ZMK Studio remaps.
