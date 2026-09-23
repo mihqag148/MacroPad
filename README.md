@@ -255,5 +255,5 @@ unplugged percentage and estimates charging progress gradually while USB is
 present. The display and BLE Battery Service use the filtered value.
 
 Without a dedicated fuel-gauge IC this charging percentage is an estimate
-(roughly a 3-hour 0→100% model), not true coulomb-counted capacity. After USB
+(roughly a 5-hour 0→100% model for a 1200 mAh battery charged at about 300 mA), not true coulomb-counted capacity. After USB
 is removed, the firmware returns to the real battery-voltage reading.
