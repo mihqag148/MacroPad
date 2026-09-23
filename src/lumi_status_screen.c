@@ -6,7 +6,6 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/display.h>
-#include <zephyr/bluetooth/services/bas.h>
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
@@ -16,18 +15,16 @@
 #include <zmk/activity.h>
 #include <zmk/behavior.h>
 #include <zmk/ble.h>
-#include <zmk/battery.h>
 #include <zmk/display.h>
 #include <zmk/display/status_screen.h>
+#include <zmk/display/widgets/battery_status.h>
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/ble_active_profile_changed.h>
-#include <zmk/events/battery_state_changed.h>
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
-#include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/keys.h>
 #include <zmk/keymap.h>
 #include <zmk/pm.h>
@@ -47,7 +44,7 @@
 
 static lv_obj_t *tiles[KEY_COUNT], *icons[KEY_COUNT], *captions[KEY_COUNT];
 static lv_obj_t *layer_label, *output_label;
-static lv_obj_t *battery_label;
+static struct zmk_widget_battery_status battery_widget;
 static atomic_t held_keys, tapped_keys;
 static atomic_t popup_action;
 
@@ -60,158 +57,6 @@ static lv_obj_t *saver_orb1;
 static lv_obj_t *saver_orb2;
 static lv_obj_t *saver_glass;
 static lv_obj_t *saver_title;
-
-/* nice!nano v2 measures VDDH. While USB is connected VDDH reflects USB/charger
- * voltage, so stock ZMK can immediately report 100%. Keep the last trustworthy
- * unplugged percentage and estimate charge progress while USB is present.
- * 0->100 is intentionally modeled as roughly five hours; without a fuel gauge
- * this is an estimate, not coulomb-counted capacity.
- */
-#define LUMI_BATTERY_EST_FULL_MS (5ULL * 60ULL * 60ULL * 1000ULL)
-#define LUMI_BATTERY_REFRESH_MS 30000U
-
-K_MUTEX_DEFINE(lumi_battery_lock);
-static bool lumi_battery_usb_present;
-static bool lumi_battery_have_real;
-static uint8_t lumi_battery_real_level;
-static uint8_t lumi_battery_charge_base;
-static uint8_t lumi_battery_display_level;
-static uint32_t lumi_battery_charge_started_ms;
-
-static uint8_t lumi_battery_estimate_locked(uint32_t now_ms) {
-    if (!lumi_battery_usb_present) {
-        return lumi_battery_have_real ? lumi_battery_real_level
-                                      : MIN(zmk_battery_state_of_charge(), 100U);
-    }
-
-    uint32_t elapsed_ms = now_ms - lumi_battery_charge_started_ms;
-    uint32_t gained =
-        (uint32_t)(((uint64_t)elapsed_ms * 100ULL) / LUMI_BATTERY_EST_FULL_MS);
-    uint32_t level = (uint32_t)lumi_battery_charge_base + gained;
-    return (uint8_t)MIN(level, 100U);
-}
-
-static void lumi_battery_sync_usb_locked(uint32_t now_ms) {
-    bool usb_present = zmk_usb_is_powered();
-
-    if (usb_present == lumi_battery_usb_present) {
-        return;
-    }
-
-    if (usb_present) {
-        uint8_t raw = MIN(zmk_battery_state_of_charge(), 100U);
-        uint8_t base = lumi_battery_have_real ? lumi_battery_real_level : raw;
-
-        /* If there is no trustworthy unplugged sample (for example the unit
-         * booted while already plugged in), raw may already be 100%. There is
-         * no hardware information available to reconstruct the true SOC.
-         */
-        lumi_battery_charge_base = base;
-        lumi_battery_display_level = base;
-        lumi_battery_charge_started_ms = now_ms;
-    } else {
-        /* Preserve the estimated charged level until the next real battery
-         * sample arrives after USB is removed.
-         */
-        uint8_t estimated = lumi_battery_estimate_locked(now_ms);
-        lumi_battery_real_level = estimated;
-        lumi_battery_have_real = true;
-        lumi_battery_display_level = estimated;
-    }
-
-    lumi_battery_usb_present = usb_present;
-}
-
-static void lumi_battery_bas_work_handler(struct k_work *work);
-K_WORK_DELAYABLE_DEFINE(lumi_battery_bas_work, lumi_battery_bas_work_handler);
-
-static void lumi_battery_render(void) {
-    if (!battery_label) {
-        return;
-    }
-
-    uint8_t level;
-    bool usb_present;
-    uint32_t now_ms = k_uptime_get_32();
-
-    k_mutex_lock(&lumi_battery_lock, K_FOREVER);
-    lumi_battery_sync_usb_locked(now_ms);
-    level = lumi_battery_estimate_locked(now_ms);
-    lumi_battery_display_level = level;
-    usb_present = lumi_battery_usb_present;
-    k_mutex_unlock(&lumi_battery_lock);
-
-    char text[12];
-    if (usb_present) {
-        snprintf(text, sizeof(text), LV_SYMBOL_CHARGE " %3u%%", level);
-    } else {
-        snprintf(text, sizeof(text), "%3u%%", level);
-    }
-    lv_label_set_text(battery_label, text);
-
-#if IS_ENABLED(CONFIG_BT_BAS)
-    /* ZMK's stock battery worker may have just published the raw VDDH-derived
-     * 100% value. Correct BAS shortly afterwards with the filtered value.
-     */
-    k_work_reschedule(&lumi_battery_bas_work, K_MSEC(150));
-#endif
-}
-
-static void lumi_battery_display_work_handler(struct k_work *work) {
-    ARG_UNUSED(work);
-    lumi_battery_render();
-}
-K_WORK_DEFINE(lumi_battery_display_work, lumi_battery_display_work_handler);
-
-static void lumi_battery_bas_work_handler(struct k_work *work) {
-    ARG_UNUSED(work);
-#if IS_ENABLED(CONFIG_BT_BAS)
-    uint8_t level;
-    uint32_t now_ms = k_uptime_get_32();
-
-    k_mutex_lock(&lumi_battery_lock, K_FOREVER);
-    lumi_battery_sync_usb_locked(now_ms);
-    level = lumi_battery_estimate_locked(now_ms);
-    lumi_battery_display_level = level;
-    k_mutex_unlock(&lumi_battery_lock);
-
-    if (bt_bas_get_battery_level() != level) {
-        (void)bt_bas_set_battery_level(level);
-    }
-#endif
-}
-
-static int lumi_battery_event_listener(const zmk_event_t *eh) {
-    const struct zmk_battery_state_changed *battery_event =
-        as_zmk_battery_state_changed(eh);
-    const struct zmk_usb_conn_state_changed *usb_event =
-        as_zmk_usb_conn_state_changed(eh);
-    uint32_t now_ms = k_uptime_get_32();
-
-    k_mutex_lock(&lumi_battery_lock, K_FOREVER);
-    lumi_battery_sync_usb_locked(now_ms);
-
-    if (battery_event && !lumi_battery_usb_present) {
-        lumi_battery_real_level = MIN(battery_event->state_of_charge, 100U);
-        lumi_battery_have_real = true;
-        lumi_battery_display_level = lumi_battery_real_level;
-    }
-
-    ARG_UNUSED(usb_event);
-    k_mutex_unlock(&lumi_battery_lock);
-
-    k_work_submit_to_queue(zmk_display_work_q(), &lumi_battery_display_work);
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
-ZMK_LISTENER(lumi_battery, lumi_battery_event_listener);
-ZMK_SUBSCRIPTION(lumi_battery, zmk_battery_state_changed);
-ZMK_SUBSCRIPTION(lumi_battery, zmk_usb_conn_state_changed);
-
-static void refresh_lumi_battery(lv_timer_t *timer) {
-    ARG_UNUSED(timer);
-    lumi_battery_render();
-}
 
 #define SAVER_STRIPE_SRC_ROWS 16U
 #define SAVER_STRIPE_DST_ROWS (SAVER_STRIPE_SRC_ROWS * 2U)
@@ -866,6 +711,145 @@ static void describe_key(uint32_t code, struct key_caption *out) {
     }
 }
 
+static void set_profile_key_visual(
+    struct key_caption *out,
+    const char *text,
+    const char *icon,
+    uint32_t color
+) {
+    snprintf(out->text, sizeof(out->text), "%s", text);
+    out->icon = icon;
+    out->color = color;
+}
+
+/* Give the built-in application/game profiles semantic icons instead of
+ * showing the same keyboard glyph for every single-letter shortcut. Each
+ * override verifies the expected keycode first, so a Studio remap falls back
+ * to describe_key() and never leaves a stale/misleading icon on screen.
+ */
+static void describe_profile_key(
+    zmk_keymap_layer_index_t layer,
+    uint8_t position,
+    uint32_t code,
+    struct key_caption *out
+) {
+#define PROFILE_ICON(pos_, code_, text_, icon_, color_) \
+    case (pos_): \
+        if (code == (code_)) { \
+            set_profile_key_visual(out, (text_), (icon_), (color_)); \
+        } \
+        break
+
+    switch (layer) {
+    case 1: /* P2 MEDIA */
+        switch (position) {
+        PROFILE_ICON(0, C_PLAY_PAUSE, "PLAY/PAUSE", LV_SYMBOL_PLAY, 0x30D158);
+        PROFILE_ICON(1, C_PREVIOUS, "PREVIOUS", LV_SYMBOL_PREV, 0x64D2FF);
+        PROFILE_ICON(2, C_NEXT, "NEXT", LV_SYMBOL_NEXT, 0x64D2FF);
+        PROFILE_ICON(3, C_MUTE, "MUTE", LV_SYMBOL_MUTE, 0xFF453A);
+        PROFILE_ICON(4, C_REWIND, "REWIND", LV_SYMBOL_LEFT, 0x5AC8FA);
+        PROFILE_ICON(5, C_FAST_FORWARD, "FORWARD", LV_SYMBOL_RIGHT, 0x5AC8FA);
+        PROFILE_ICON(6, C_STOP, "STOP", LV_SYMBOL_STOP, 0xFF453A);
+        PROFILE_ICON(7, F11, "FULLSCREEN", LV_SYMBOL_IMAGE, 0xBF5AF2);
+        PROFILE_ICON(8, C_AC_BACK, "BACK", LV_SYMBOL_LEFT, 0x64D2FF);
+        PROFILE_ICON(9, C_AC_FORWARD, "FORWARD", LV_SYMBOL_RIGHT, 0x64D2FF);
+        PROFILE_ICON(10, HOME, "HOME", LV_SYMBOL_HOME, 0xFF9F0A);
+        PROFILE_ICON(11, END, "END", LV_SYMBOL_DOWN, 0xBF5AF2);
+        }
+        break;
+
+    case 2: /* P3 BAMBU STUDIO */
+        switch (position) {
+        PROFILE_ICON(0, LC(R), "SLICE", LV_SYMBOL_CUT, 0xFF9F0A);
+        PROFILE_ICON(1, LC(LS(G)), "PRINT", LV_SYMBOL_UPLOAD, 0x30D158);
+        PROFILE_ICON(2, LC(G), "EXPORT", LV_SYMBOL_SAVE, 0x64D2FF);
+        PROFILE_ICON(3, LC(I), "IMPORT", LV_SYMBOL_DOWNLOAD, 0x64D2FF);
+        PROFILE_ICON(4, M, "MOVE", LV_SYMBOL_GPS, 0x5AC8FA);
+        PROFILE_ICON(5, R, "ROTATE", LV_SYMBOL_REFRESH, 0xBF5AF2);
+        PROFILE_ICON(6, S, "SCALE", LV_SYMBOL_PLUS, 0xFFD60A);
+        PROFILE_ICON(7, F, "LAY FACE", LV_SYMBOL_DOWN, 0x30D158);
+        PROFILE_ICON(8, C, "CUT", LV_SYMBOL_CUT, 0xFF453A);
+        PROFILE_ICON(9, A, "ARRANGE", LV_SYMBOL_LIST, 0x64D2FF);
+        PROFILE_ICON(10, LS(R), "AUTO ORIENT", LV_SYMBOL_REFRESH, 0x30D158);
+        PROFILE_ICON(11, LC(S), "SAVE", LV_SYMBOL_SAVE, 0xFF9F0A);
+        }
+        break;
+
+    case 3: /* P4 FUSION 360 */
+        switch (position) {
+        PROFILE_ICON(0, E, "EXTRUDE", LV_SYMBOL_UP, 0x30D158);
+        PROFILE_ICON(1, Q, "PRESS PULL", LV_SYMBOL_PLUS, 0x5AC8FA);
+        PROFILE_ICON(2, F, "FILLET", LV_SYMBOL_EDIT, 0xBF5AF2);
+        PROFILE_ICON(3, H, "HOLE", LV_SYMBOL_MINUS, 0xFF453A);
+        PROFILE_ICON(4, M, "MOVE", LV_SYMBOL_GPS, 0x64D2FF);
+        PROFILE_ICON(5, I, "MEASURE", LV_SYMBOL_EYE_OPEN, 0xFFD60A);
+        PROFILE_ICON(6, P, "PROJECT", LV_SYMBOL_IMAGE, 0x5AC8FA);
+        PROFILE_ICON(7, D, "DIMENSION", LV_SYMBOL_EDIT, 0xFF9F0A);
+        PROFILE_ICON(8, L, "LINE", LV_SYMBOL_MINUS, 0x64D2FF);
+        PROFILE_ICON(9, R, "RECTANGLE", LV_SYMBOL_LIST, 0x30D158);
+        PROFILE_ICON(10, C, "CIRCLE", LV_SYMBOL_LOOP, 0xBF5AF2);
+        PROFILE_ICON(11, J, "JOINT", LV_SYMBOL_SETTINGS, 0xFF9F0A);
+        }
+        break;
+
+    case 4: /* P5 CAPCUT */
+        switch (position) {
+        PROFILE_ICON(0, LC(B), "SPLIT", LV_SYMBOL_CUT, 0xFF453A);
+        PROFILE_ICON(1, Q, "TRIM LEFT", LV_SYMBOL_LEFT, 0x64D2FF);
+        PROFILE_ICON(2, W, "TRIM RIGHT", LV_SYMBOL_RIGHT, 0x64D2FF);
+        PROFILE_ICON(3, DELETE, "DELETE", LV_SYMBOL_TRASH, 0xFF453A);
+        PROFILE_ICON(4, LC(Z), "UNDO", LV_SYMBOL_LEFT, 0x0A84FF);
+        PROFILE_ICON(5, LC(LS(Z)), "REDO", LV_SYMBOL_RIGHT, 0xBF5AF2);
+        PROFILE_ICON(6, LC(D), "DUPLICATE", LV_SYMBOL_COPY, 0x5AC8FA);
+        PROFILE_ICON(7, SPACE, "PLAY/PAUSE", LV_SYMBOL_PLAY, 0x30D158);
+        PROFILE_ICON(8, LEFT, "PREV FRAME", LV_SYMBOL_PREV, 0x64D2FF);
+        PROFILE_ICON(9, RIGHT, "NEXT FRAME", LV_SYMBOL_NEXT, 0x64D2FF);
+        PROFILE_ICON(10, LC(E), "EXPORT", LV_SYMBOL_UPLOAD, 0xFF9F0A);
+        PROFILE_ICON(11, LC(S), "SAVE", LV_SYMBOL_SAVE, 0x30D158);
+        }
+        break;
+
+    case 5: /* P6 DELTA FORCE */
+        switch (position) {
+        PROFILE_ICON(0, Y, "TACTICAL", LV_SYMBOL_SETTINGS, 0xFF9F0A);
+        PROFILE_ICON(1, X, "TACT GEAR", LV_SYMBOL_SETTINGS, 0xBF5AF2);
+        PROFILE_ICON(2, V, "GADGET 1", LV_SYMBOL_PLUS, 0x30D158);
+        PROFILE_ICON(3, G, "GADGET 2", LV_SYMBOL_PLUS, 0x5AC8FA);
+        PROFILE_ICON(4, N, "OPTIC", LV_SYMBOL_EYE_OPEN, 0xFFD60A);
+        PROFILE_ICON(5, J, "BIPOD", LV_SYMBOL_DOWN, 0x64D2FF);
+        PROFILE_ICON(6, K, "RANGE", LV_SYMBOL_GPS, 0x5AC8FA);
+        PROFILE_ICON(7, EQUAL, "AUTO RUN", LV_SYMBOL_RIGHT, 0x30D158);
+        PROFILE_ICON(8, M, "MAP", LV_SYMBOL_GPS, 0xFFD60A);
+        PROFILE_ICON(9, LC(M), "MUTE SQUAD", LV_SYMBOL_MUTE, 0xFF453A);
+        PROFILE_ICON(10, U, "FLASHLIGHT", LV_SYMBOL_EYE_OPEN, 0xFF9F0A);
+        PROFILE_ICON(11, H, "INTERACT", LV_SYMBOL_OK, 0x30D158);
+        }
+        break;
+
+    case 6: /* P7 WUWA */
+        switch (position) {
+        PROFILE_ICON(0, M, "MAP", LV_SYMBOL_GPS, 0xFFD60A);
+        PROFILE_ICON(1, J, "QUEST", LV_SYMBOL_LIST, 0x64D2FF);
+        PROFILE_ICON(2, B, "BACKPACK", LV_SYMBOL_DIRECTORY, 0xFF9F0A);
+        PROFILE_ICON(3, C, "RESONATOR", LV_SYMBOL_AUDIO, 0xBF5AF2);
+        PROFILE_ICON(4, L, "TEAM", LV_SYMBOL_LIST, 0x30D158);
+        PROFILE_ICON(5, O, "UTILITIES", LV_SYMBOL_SETTINGS, 0x5AC8FA);
+        PROFILE_ICON(6, F1, "EVENT", LV_SYMBOL_BELL, 0xFF9F0A);
+        PROFILE_ICON(7, F2, "GUIDEBOOK", LV_SYMBOL_FILE, 0x64D2FF);
+        PROFILE_ICON(8, F3, "CONVENE", LV_SYMBOL_SHUFFLE, 0xBF5AF2);
+        PROFILE_ICON(9, F4, "PODCAST", LV_SYMBOL_AUDIO, 0x5AC8FA);
+        PROFILE_ICON(10, U, "CO-OP", LV_SYMBOL_WIFI, 0x30D158);
+        PROFILE_ICON(11, T, "UTILITY", LV_SYMBOL_SETTINGS, 0xFFD60A);
+        }
+        break;
+
+    default:
+        break;
+    }
+
+#undef PROFILE_ICON
+}
+
 static struct page_state read_page(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
     struct page_state state = {0};
@@ -887,6 +871,7 @@ static struct page_state read_page(const zmk_event_t *eh) {
             snprintf(key->text, sizeof(key->text), "--");
         } else if (strcmp(binding->behavior_dev, DEVICE_DT_NAME(DT_NODELABEL(kp))) == 0) {
             describe_key(binding->param1, key);
+            describe_profile_key(index, i, binding->param1, key);
         } else {
             /* Never keep a stale COPY/etc label for a remapped behavior. */
             snprintf(key->text, sizeof(key->text), "%.8s %u",
@@ -3205,59 +3190,53 @@ lv_obj_set_width(
 lumi_output_init();
 
 
-/* Battery
- * Do not use ZMK's stock battery widget here: while USB is attached the
- * nice!nano VDDH reading can look like a full cell and jump straight to 100%.
- */
-battery_label = lv_label_create(screen);
+/* Battery */
+
+zmk_widget_battery_status_init(
+    &battery_widget,
+    screen
+);
+
+lv_obj_t *battery =
+    zmk_widget_battery_status_obj(
+        &battery_widget
+    );
+
 lv_obj_set_style_text_font(
-    battery_label,
+    battery,
     &lv_font_montserrat_14,
     0
 );
+
 lv_obj_set_style_text_letter_space(
-    battery_label,
+    battery,
     1,
     0
 );
+
 lv_obj_set_style_text_color(
-    battery_label,
+    battery,
     lv_color_white(),
     0
 );
+
 lv_obj_set_width(
-    battery_label,
+    battery,
     82
 );
+
 lv_obj_set_style_text_align(
-    battery_label,
+    battery,
     LV_TEXT_ALIGN_RIGHT,
     0
 );
+
 lv_obj_set_pos(
-    battery_label,
+    battery,
     226,
     6
 );
 
-k_mutex_lock(&lumi_battery_lock, K_FOREVER);
-{
-    uint8_t raw_level = MIN(zmk_battery_state_of_charge(), 100U);
-    lumi_battery_usb_present = zmk_usb_is_powered();
-    lumi_battery_display_level = raw_level;
-
-    if (!lumi_battery_usb_present || raw_level < 100U) {
-        lumi_battery_real_level = raw_level;
-        lumi_battery_have_real = true;
-    }
-
-    lumi_battery_charge_base =
-        lumi_battery_have_real ? lumi_battery_real_level : raw_level;
-    lumi_battery_charge_started_ms = k_uptime_get_32();
-}
-k_mutex_unlock(&lumi_battery_lock);
-lumi_battery_render();
-    
 popup = lv_obj_create(screen);
 lv_obj_remove_style_all(popup);
 
@@ -3381,10 +3360,6 @@ pc_monitor_lv_timer = lv_timer_create(refresh_pc_monitor_timer, 500, NULL);
 screensaver_lv_timer = lv_timer_create(
     refresh_screensaver,
     SAVER_MIN_FRAME_MS,
-    NULL);
-lv_timer_create(
-    refresh_lumi_battery,
-    LUMI_BATTERY_REFRESH_MS,
     NULL);
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
