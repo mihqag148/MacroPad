@@ -660,6 +660,14 @@ struct page_state {
     struct key_caption keys[KEY_COUNT];
 };
 
+/* Dedicated navigation icons. Use only LVGL built-in symbols so these render
+ * with the existing Montserrat/symbol font set on the RYNOR ONE display.
+ */
+#define LUMI_ICON_HOME       LV_SYMBOL_HOME
+#define LUMI_ICON_END        LV_SYMBOL_STOP
+#define LUMI_ICON_PAGE_UP    LV_SYMBOL_LIST LV_SYMBOL_UP
+#define LUMI_ICON_PAGE_DOWN  LV_SYMBOL_LIST LV_SYMBOL_DOWN
+
 static void describe_key(uint32_t code, struct key_caption *out) {
     const char *text = NULL;
     out->icon = LV_SYMBOL_KEYBOARD;
@@ -688,10 +696,10 @@ static void describe_key(uint32_t code, struct key_caption *out) {
     case C_VOL_UP: text = "VOL +"; out->icon = LV_SYMBOL_VOLUME_MAX; out->color = 0x0A84FF; break;
     case C_AC_BACK: text = "BACK"; out->icon = LV_SYMBOL_LEFT; out->color = 0x5AC8FA; break;
     case C_AC_FORWARD: text = "FORWARD"; out->icon = LV_SYMBOL_RIGHT; out->color = 0x5AC8FA; break;
-    case HOME: text = "HOME"; out->icon = LV_SYMBOL_HOME; out->color = 0xFF9F0A; break;
-    case END: text = "END"; out->icon = LV_SYMBOL_DOWN; out->color = 0xBF5AF2; break;
-    case PG_UP: text = "PAGE UP"; out->icon = LV_SYMBOL_UP; out->color = 0xBF5AF2; break;
-    case PG_DN: text = "PAGE DOWN"; out->icon = LV_SYMBOL_DOWN; out->color = 0xBF5AF2; break;
+    case HOME: text = "HOME"; out->icon = LUMI_ICON_HOME; out->color = 0xFF9F0A; break;
+    case END: text = "END"; out->icon = LUMI_ICON_END; out->color = 0xFF9F0A; break;
+    case PG_UP: text = "PAGE UP"; out->icon = LUMI_ICON_PAGE_UP; out->color = 0xBF5AF2; break;
+    case PG_DN: text = "PAGE DOWN"; out->icon = LUMI_ICON_PAGE_DOWN; out->color = 0xBF5AF2; break;
     default: break;
     }
 
@@ -744,12 +752,12 @@ static void describe_profile_key(
     case 0: /* P1 MAIN / OFFICE - live ZMK bindings */
         switch (position) {
         PROFILE_ICON(1, LG(LS(S)), "SCREENSHOT", LV_SYMBOL_IMAGE, 0x5AC8FA);
-        PROFILE_ICON(2, HOME, "HOME", LV_SYMBOL_HOME, 0xFF9F0A);
-        PROFILE_ICON(3, PG_UP, "PAGE UP", LV_SYMBOL_UP, 0xBF5AF2);
+        PROFILE_ICON(2, HOME, "HOME", LUMI_ICON_HOME, 0xFF9F0A);
+        PROFILE_ICON(3, PG_UP, "PAGE UP", LUMI_ICON_PAGE_UP, 0xBF5AF2);
         PROFILE_ICON(4, LC(LG(LEFT)), "DESKTOP LEFT", LV_SYMBOL_LEFT, 0x64D2FF);
         PROFILE_ICON(5, LC(LG(RIGHT)), "DESKTOP RIGHT", LV_SYMBOL_RIGHT, 0x64D2FF);
-        PROFILE_ICON(6, END, "END", LV_SYMBOL_DOWN, 0xFF9F0A);
-        PROFILE_ICON(7, PG_DN, "PAGE DOWN", LV_SYMBOL_DOWN, 0xBF5AF2);
+        PROFILE_ICON(6, END, "END", LUMI_ICON_END, 0xFF9F0A);
+        PROFILE_ICON(7, PG_DN, "PAGE DOWN", LUMI_ICON_PAGE_DOWN, 0xBF5AF2);
         PROFILE_ICON(8, LC(LS(Z)), "REDO", LV_SYMBOL_RIGHT, 0xBF5AF2);
         PROFILE_ICON(9, LC(Z), "UNDO", LV_SYMBOL_LEFT, 0x0A84FF);
         PROFILE_ICON(10, LC(C), "COPY", LV_SYMBOL_COPY, 0x64D2FF);
@@ -769,8 +777,8 @@ static void describe_profile_key(
         PROFILE_ICON(7, F11, "FULLSCREEN", LV_SYMBOL_IMAGE, 0xBF5AF2);
         PROFILE_ICON(8, C_AC_BACK, "BACK", LV_SYMBOL_LEFT, 0x64D2FF);
         PROFILE_ICON(9, C_AC_FORWARD, "FORWARD", LV_SYMBOL_RIGHT, 0x64D2FF);
-        PROFILE_ICON(10, HOME, "HOME", LV_SYMBOL_HOME, 0xFF9F0A);
-        PROFILE_ICON(11, END, "END", LV_SYMBOL_DOWN, 0xBF5AF2);
+        PROFILE_ICON(10, HOME, "HOME", LUMI_ICON_HOME, 0xFF9F0A);
+        PROFILE_ICON(11, END, "END", LUMI_ICON_END, 0xFF9F0A);
         }
         break;
 
