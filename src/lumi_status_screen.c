@@ -64,10 +64,10 @@ static lv_obj_t *saver_title;
 /* nice!nano v2 measures VDDH. While USB is connected VDDH reflects USB/charger
  * voltage, so stock ZMK can immediately report 100%. Keep the last trustworthy
  * unplugged percentage and estimate charge progress while USB is present.
- * 0->100 is intentionally modeled as roughly three hours; without a fuel gauge
+ * 0->100 is intentionally modeled as roughly five hours; without a fuel gauge
  * this is an estimate, not coulomb-counted capacity.
  */
-#define LUMI_BATTERY_EST_FULL_MS (3ULL * 60ULL * 60ULL * 1000ULL)
+#define LUMI_BATTERY_EST_FULL_MS (5ULL * 60ULL * 60ULL * 1000ULL)
 #define LUMI_BATTERY_REFRESH_MS 30000U
 
 K_MUTEX_DEFINE(lumi_battery_lock);
