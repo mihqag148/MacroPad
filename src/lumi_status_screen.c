@@ -72,6 +72,12 @@ static bool saver_rgb332_lut_ready;
 #define SAVER_FLASH_VERSION 2U
 #define SAVER_FORMAT_RGB332 0U
 #define SAVER_FORMAT_RGB565_STATIC 1U
+#define SAVER_FORMAT_RYQ1 2U
+#define SAVER_PACKED_MODE_RGB565 0U
+#define SAVER_PACKED_MODE_RGB332 1U
+#define SAVER_PACKED_FLAGS 0x03U
+#define SAVER_PACKED_HEADER_BYTES 26U
+#define SAVER_PACKED_MAX_BYTES (336U * 1024U)
 #define SAVER_FLASH_DATA_OFFSET 0x1000U
 #define SAVER_FLASH_PAGE_SIZE 0x1000U
 #define SAVER_FLASH_MAX_PAGES 86U
@@ -114,6 +120,22 @@ static uint8_t saver_media_format = SAVER_FORMAT_RGB332;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
 static uint32_t saver_image_received_bytes;
+static uint32_t saver_packed_expected_bytes;
+static uint32_t saver_packed_received_bytes;
+static uint32_t saver_packed_data_size;
+static uint16_t saver_packed_storage_width;
+static uint16_t saver_packed_storage_height;
+static uint16_t saver_packed_frame_count;
+static uint16_t saver_packed_fps;
+static uint32_t saver_packed_duration_ms;
+static uint32_t saver_packed_frames_offset;
+static uint32_t saver_packed_cursor;
+static uint32_t saver_packed_next_frame_at;
+static uint16_t saver_packed_frame_index;
+static uint8_t saver_packed_color_mode;
+static bool saver_packed_header_ready;
+static bool saver_packed_playback_started;
+static lv_color_t saver_packed_line_buf[320U];
 static bool saver_static_drawn;
 static uint16_t saver_media_interval_ms = 40;
 static uint16_t saver_media_frame_intervals[LUMI_SAVER_MAX_FRAMES];
