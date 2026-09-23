@@ -72,6 +72,12 @@ static bool saver_rgb332_lut_ready;
 #define SAVER_FLASH_VERSION 2U
 #define SAVER_FORMAT_RGB332 0U
 #define SAVER_FORMAT_RGB565_STATIC 1U
+#define SAVER_FORMAT_RYQ1 2U
+#define SAVER_PACKED_MODE_RGB565 0U
+#define SAVER_PACKED_MODE_RGB332 1U
+#define SAVER_PACKED_FLAGS 0x03U
+#define SAVER_PACKED_HEADER_BYTES 26U
+#define SAVER_PACKED_MAX_BYTES (336U * 1024U)
 #define SAVER_FLASH_DATA_OFFSET 0x1000U
 #define SAVER_FLASH_PAGE_SIZE 0x1000U
 #define SAVER_FLASH_MAX_PAGES 86U
@@ -114,6 +120,25 @@ static uint8_t saver_media_format = SAVER_FORMAT_RGB332;
 static uint32_t saver_media_received_mask;
 static uint16_t saver_media_received_bytes[LUMI_SAVER_MAX_FRAMES];
 static uint32_t saver_image_received_bytes;
+static uint32_t saver_packed_expected_bytes;
+static uint32_t saver_packed_received_bytes;
+static uint32_t saver_packed_data_size;
+static uint16_t saver_packed_storage_width;
+static uint16_t saver_packed_storage_height;
+static uint16_t saver_packed_frame_count;
+static uint16_t saver_packed_fps;
+static uint32_t saver_packed_duration_ms;
+static uint32_t saver_packed_frames_offset;
+static uint32_t saver_packed_cursor;
+static uint32_t saver_packed_next_frame_at;
+static uint16_t saver_packed_frame_index;
+static uint8_t saver_packed_color_mode;
+static bool saver_packed_header_ready;
+static bool saver_packed_playback_started;
+static lv_color_t saver_packed_line_buf[320U];
+static uint8_t saver_packed_read_cache[256U];
+static uint16_t saver_packed_cache_pos;
+static uint16_t saver_packed_cache_len;
 static bool saver_static_drawn;
 static uint16_t saver_media_interval_ms = 40;
 static uint16_t saver_media_frame_intervals[LUMI_SAVER_MAX_FRAMES];
@@ -1538,8 +1563,10 @@ static int saver_flash_open_once(void) {
     size_t required =
         SAVER_FLASH_DATA_OFFSET +
         MAX(
-            (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES,
-            (size_t)LUMI_SAVER_IMAGE_BYTES);
+            MAX(
+                (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES,
+                (size_t)LUMI_SAVER_IMAGE_BYTES),
+            (size_t)SAVER_PACKED_MAX_BYTES);
 
     if (saver_flash->fa_size < required) {
         lumi_diag_report('E', "Saver flash too small have=%u need=%u",
@@ -1549,6 +1576,126 @@ static int saver_flash_open_once(void) {
     }
 
     return 0;
+}
+
+static uint16_t saver_packed_read_le16(const uint8_t *data) {
+    return (uint16_t)data[0] |
+           ((uint16_t)data[1] << 8);
+}
+
+static uint32_t saver_packed_read_le32(const uint8_t *data) {
+    return (uint32_t)data[0] |
+           ((uint32_t)data[1] << 8) |
+           ((uint32_t)data[2] << 16) |
+           ((uint32_t)data[3] << 24);
+}
+
+static void saver_packed_reset_state(void) {
+    saver_packed_expected_bytes = 0U;
+    saver_packed_received_bytes = 0U;
+    saver_packed_data_size = 0U;
+    saver_packed_storage_width = 0U;
+    saver_packed_storage_height = 0U;
+    saver_packed_frame_count = 0U;
+    saver_packed_fps = 0U;
+    saver_packed_duration_ms = 0U;
+    saver_packed_frames_offset = 0U;
+    saver_packed_cursor = 0U;
+    saver_packed_next_frame_at = 0U;
+    saver_packed_frame_index = 0U;
+    saver_packed_color_mode = SAVER_PACKED_MODE_RGB332;
+    saver_packed_header_ready = false;
+    saver_packed_playback_started = false;
+    saver_packed_cache_pos = 0U;
+    saver_packed_cache_len = 0U;
+}
+
+static bool saver_packed_load_header(
+    uint32_t data_size,
+    bool apply) {
+
+    if (!saver_flash ||
+        data_size < SAVER_PACKED_HEADER_BYTES ||
+        data_size > SAVER_PACKED_MAX_BYTES) {
+        return false;
+    }
+
+    uint8_t header[SAVER_PACKED_HEADER_BYTES] = {0};
+    int rc = flash_area_read(
+        saver_flash,
+        SAVER_FLASH_DATA_OFFSET,
+        header,
+        sizeof(header));
+
+    if (rc != 0 ||
+        header[0] != 'R' ||
+        header[1] != 'Y' ||
+        header[2] != 'Q' ||
+        header[3] != '1') {
+        return false;
+    }
+
+    uint8_t color_mode = header[4];
+    uint8_t flags = header[5];
+    uint16_t storage_width =
+        saver_packed_read_le16(&header[6]);
+    uint16_t storage_height =
+        saver_packed_read_le16(&header[8]);
+    uint16_t display_width =
+        saver_packed_read_le16(&header[10]);
+    uint16_t display_height =
+        saver_packed_read_le16(&header[12]);
+    uint16_t frame_count =
+        saver_packed_read_le16(&header[14]);
+    uint16_t fps =
+        saver_packed_read_le16(&header[16]);
+    uint32_t duration_ms =
+        saver_packed_read_le32(&header[18]);
+    uint16_t palette_count =
+        saver_packed_read_le16(&header[22]);
+
+    bool storage_ok =
+        (storage_width == 320U && storage_height == 172U) ||
+        (storage_width == 240U && storage_height == 129U) ||
+        (storage_width == 160U && storage_height == 86U);
+
+    if ((color_mode != SAVER_PACKED_MODE_RGB565 &&
+         color_mode != SAVER_PACKED_MODE_RGB332) ||
+        flags != SAVER_PACKED_FLAGS ||
+        !storage_ok ||
+        display_width != 320U ||
+        display_height != 172U ||
+        frame_count < 1U ||
+        frame_count > 250U ||
+        fps < 15U ||
+        fps > 25U ||
+        duration_ms == 0U ||
+        palette_count != 0U) {
+        return false;
+    }
+
+    if (apply) {
+        saver_packed_data_size = data_size;
+        saver_packed_storage_width = storage_width;
+        saver_packed_storage_height = storage_height;
+        saver_packed_frame_count = frame_count;
+        saver_packed_fps = fps;
+        saver_packed_duration_ms = duration_ms;
+        saver_packed_frames_offset = SAVER_PACKED_HEADER_BYTES;
+        saver_packed_cursor = SAVER_PACKED_HEADER_BYTES;
+        saver_packed_next_frame_at = 0U;
+        saver_packed_frame_index = 0U;
+        saver_packed_color_mode = color_mode;
+        saver_packed_header_ready = true;
+        saver_packed_playback_started = false;
+        saver_media_frame_count = (uint8_t)frame_count;
+        saver_media_interval_ms =
+            (uint16_t)MAX(
+                (uint32_t)SAVER_MIN_FRAME_MS,
+                (1000U + fps - 1U) / fps);
+    }
+
+    return true;
 }
 
 static bool saver_flash_load_metadata(void) {
@@ -1589,9 +1736,16 @@ static bool saver_flash_load_metadata(void) {
         header.frame_count == 1U &&
         header.data_size == LUMI_SAVER_IMAGE_BYTES;
 
+    bool packed_ok =
+        header.format == SAVER_FORMAT_RYQ1 &&
+        header.frame_bytes == 0U &&
+        header.frame_count >= 1U &&
+        header.data_size >= SAVER_PACKED_HEADER_BYTES &&
+        header.data_size <= SAVER_PACKED_MAX_BYTES;
+
     if (header.magic != SAVER_FLASH_MAGIC ||
         header.version != SAVER_FLASH_VERSION ||
-        (!gif_ok && !static_ok)) {
+        (!gif_ok && !static_ok && !packed_ok)) {
         lumi_diag_report(
             'W',
             "Saver metadata invalid magic=%08x fmt=%u frames=%u",
@@ -1602,31 +1756,43 @@ static bool saver_flash_load_metadata(void) {
     }
 
     saver_media_format = header.format;
-    saver_media_frame_count = header.frame_count;
-    saver_timing_set_uniform(
-        saver_media_frame_count,
-        static_ok ? 1000U : header.interval_ms);
+    saver_packed_reset_state();
 
-    struct saver_flash_timing timing = {0};
-    int timing_rc = flash_area_read(
-        saver_flash,
-        SAVER_FLASH_TIMING_OFFSET,
-        &timing,
-        sizeof(timing));
-
-    if (saver_media_format == SAVER_FORMAT_RGB332 &&
-        timing_rc == 0 &&
-        timing.magic == SAVER_FLASH_TIMING_MAGIC &&
-        timing.frame_count == saver_media_frame_count) {
-
-        for (uint8_t i = 0U;
-             i < saver_media_frame_count;
-             i++) {
-            saver_media_frame_intervals[i] =
-                timing.interval_ms[i];
+    if (packed_ok) {
+        if (!saver_packed_load_header(header.data_size, true) ||
+            saver_packed_frame_count != header.frame_count ||
+            saver_packed_storage_width != header.width ||
+            saver_packed_storage_height != header.height) {
+            lumi_diag_report('W', "RYQ1 header mismatch");
+            return false;
         }
+    } else {
+        saver_media_frame_count = header.frame_count;
+        saver_timing_set_uniform(
+            saver_media_frame_count,
+            static_ok ? 1000U : header.interval_ms);
 
-        saver_timing_recalculate();
+        struct saver_flash_timing timing = {0};
+        int timing_rc = flash_area_read(
+            saver_flash,
+            SAVER_FLASH_TIMING_OFFSET,
+            &timing,
+            sizeof(timing));
+
+        if (saver_media_format == SAVER_FORMAT_RGB332 &&
+            timing_rc == 0 &&
+            timing.magic == SAVER_FLASH_TIMING_MAGIC &&
+            timing.frame_count == saver_media_frame_count) {
+
+            for (uint8_t i = 0U;
+                 i < saver_media_frame_count;
+                 i++) {
+                saver_media_frame_intervals[i] =
+                    timing.interval_ms[i];
+            }
+
+            saver_timing_recalculate();
+        }
     }
 
     saver_media_index = 0U;
@@ -1821,27 +1987,38 @@ static int saver_flash_commit_header(void) {
 
     bool static_image =
         saver_media_format == SAVER_FORMAT_RGB565_STATIC;
+    bool packed_animation =
+        saver_media_format == SAVER_FORMAT_RYQ1;
 
     struct saver_flash_header header = {
         .magic = SAVER_FLASH_MAGIC,
         .version = SAVER_FLASH_VERSION,
-        .width = static_image
-            ? LUMI_SAVER_IMAGE_W
-            : LUMI_SAVER_FRAME_W,
-        .height = static_image
-            ? LUMI_SAVER_IMAGE_H
-            : LUMI_SAVER_FRAME_H,
-        .frame_bytes = static_image
-            ? LUMI_SAVER_IMAGE_BYTES
-            : LUMI_SAVER_FRAME_BYTES,
+        .width = packed_animation
+            ? saver_packed_storage_width
+            : (static_image
+                ? LUMI_SAVER_IMAGE_W
+                : LUMI_SAVER_FRAME_W),
+        .height = packed_animation
+            ? saver_packed_storage_height
+            : (static_image
+                ? LUMI_SAVER_IMAGE_H
+                : LUMI_SAVER_FRAME_H),
+        .frame_bytes = packed_animation
+            ? 0U
+            : (static_image
+                ? LUMI_SAVER_IMAGE_BYTES
+                : LUMI_SAVER_FRAME_BYTES),
         .frame_count = saver_media_frame_count,
         .format = saver_media_format,
         .interval_ms = static_image
             ? 1000U
             : saver_media_interval_ms,
-        .data_size = static_image
-            ? LUMI_SAVER_IMAGE_BYTES
-            : (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
+        .data_size = packed_animation
+            ? saver_packed_data_size
+            : (static_image
+                ? LUMI_SAVER_IMAGE_BYTES
+                : (uint32_t)saver_media_frame_count *
+                  LUMI_SAVER_FRAME_BYTES),
     };
 
     int rc = flash_area_write(
@@ -1854,7 +2031,7 @@ static int saver_flash_commit_header(void) {
         return rc;
     }
 
-    if (static_image) {
+    if (static_image || packed_animation) {
         return 0;
     }
 
@@ -1971,6 +2148,273 @@ static void draw_static_saver_image(void) {
     }
 
     saver_static_drawn = true;
+}
+
+static void saver_packed_stream_reset(uint32_t offset) {
+    saver_packed_cursor = offset;
+    saver_packed_cache_pos = 0U;
+    saver_packed_cache_len = 0U;
+}
+
+static bool saver_packed_read_u8(uint8_t *value) {
+    if (!value ||
+        !saver_packed_header_ready ||
+        saver_packed_cursor >= saver_packed_data_size) {
+        return false;
+    }
+
+    if (saver_packed_cache_pos >= saver_packed_cache_len) {
+        uint32_t remaining =
+            saver_packed_data_size - saver_packed_cursor;
+        uint16_t read_len =
+            (uint16_t)MIN(
+                (uint32_t)sizeof(saver_packed_read_cache),
+                remaining);
+
+        if (read_len == 0U ||
+            flash_area_read(
+                saver_flash,
+                SAVER_FLASH_DATA_OFFSET + saver_packed_cursor,
+                saver_packed_read_cache,
+                read_len) != 0) {
+            return false;
+        }
+
+        saver_packed_cache_pos = 0U;
+        saver_packed_cache_len = read_len;
+    }
+
+    *value = saver_packed_read_cache[saver_packed_cache_pos++];
+    saver_packed_cursor++;
+    return true;
+}
+
+static bool saver_packed_read_u16(uint16_t *value) {
+    uint8_t lo = 0U;
+    uint8_t hi = 0U;
+
+    if (!value ||
+        !saver_packed_read_u8(&lo) ||
+        !saver_packed_read_u8(&hi)) {
+        return false;
+    }
+
+    *value = (uint16_t)lo | ((uint16_t)hi << 8);
+    return true;
+}
+
+static bool saver_packed_read_color(lv_color_t *color) {
+    if (!color) {
+        return false;
+    }
+
+    if (saver_packed_color_mode == SAVER_PACKED_MODE_RGB565) {
+        uint16_t value = 0U;
+        if (!saver_packed_read_u16(&value)) {
+            return false;
+        }
+
+        uint8_t r =
+            (uint8_t)((((value >> 11) & 0x1FU) * 255U) / 31U);
+        uint8_t g =
+            (uint8_t)((((value >> 5) & 0x3FU) * 255U) / 63U);
+        uint8_t b =
+            (uint8_t)(((value & 0x1FU) * 255U) / 31U);
+        *color = lv_color_make(r, g, b);
+        return true;
+    }
+
+    uint8_t value = 0U;
+    if (!saver_packed_read_u8(&value)) {
+        return false;
+    }
+
+    uint8_t r =
+        (uint8_t)((((value >> 5) & 0x07U) * 255U) / 7U);
+    uint8_t g =
+        (uint8_t)((((value >> 2) & 0x07U) * 255U) / 7U);
+    uint8_t b =
+        (uint8_t)(((value & 0x03U) * 255U) / 3U);
+    *color = lv_color_make(r, g, b);
+    return true;
+}
+
+static void saver_packed_set_scaled_pixel(
+    uint16_t source_x,
+    lv_color_t color) {
+
+    uint16_t dx0 =
+        (uint16_t)(((uint32_t)source_x * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dx1 =
+        (uint16_t)(((uint32_t)(source_x + 1U) * 320U) /
+                   saver_packed_storage_width);
+
+    if (dx1 <= dx0) {
+        dx1 = MIN((uint16_t)(dx0 + 1U), (uint16_t)320U);
+    }
+
+    for (uint16_t x = dx0; x < dx1 && x < 320U; x++) {
+        saver_packed_line_buf[x] = color;
+    }
+}
+
+static bool saver_packed_decode_span(
+    uint16_t source_y,
+    uint16_t source_x,
+    uint16_t source_count) {
+
+    if (source_y >= saver_packed_storage_height ||
+        source_x >= saver_packed_storage_width ||
+        source_count == 0U ||
+        (uint32_t)source_x + source_count > saver_packed_storage_width) {
+        return false;
+    }
+
+    uint16_t produced = 0U;
+
+    while (produced < source_count) {
+        uint8_t control = 0U;
+        if (!saver_packed_read_u8(&control)) {
+            return false;
+        }
+
+        uint16_t packet_count =
+            (uint16_t)((control & 0x7FU) + 1U);
+
+        if ((uint32_t)produced + packet_count > source_count) {
+            return false;
+        }
+
+        bool repeat = (control & 0x80U) != 0U;
+
+        if (repeat) {
+            lv_color_t color;
+            if (!saver_packed_read_color(&color)) {
+                return false;
+            }
+
+            for (uint16_t i = 0U; i < packet_count; i++) {
+                saver_packed_set_scaled_pixel(
+                    (uint16_t)(source_x + produced + i),
+                    color);
+            }
+        } else {
+            for (uint16_t i = 0U; i < packet_count; i++) {
+                lv_color_t color;
+                if (!saver_packed_read_color(&color)) {
+                    return false;
+                }
+
+                saver_packed_set_scaled_pixel(
+                    (uint16_t)(source_x + produced + i),
+                    color);
+            }
+        }
+
+        produced = (uint16_t)(produced + packet_count);
+    }
+
+    uint16_t dx0 =
+        (uint16_t)(((uint32_t)source_x * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dx1 =
+        (uint16_t)(((uint32_t)(source_x + source_count) * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dy0 =
+        (uint16_t)(((uint32_t)source_y * 172U) /
+                   saver_packed_storage_height);
+    uint16_t dy1 =
+        (uint16_t)(((uint32_t)(source_y + 1U) * 172U) /
+                   saver_packed_storage_height);
+
+    if (dx1 <= dx0 || dy1 <= dy0 || dx1 > 320U || dy1 > 172U) {
+        return false;
+    }
+
+    struct display_buffer_descriptor desc = {
+        .buf_size = (size_t)(dx1 - dx0) * sizeof(lv_color_t),
+        .width = (uint16_t)(dx1 - dx0),
+        .height = 1U,
+        .pitch = (uint16_t)(dx1 - dx0),
+    };
+
+    for (uint16_t y = dy0; y < dy1; y++) {
+        int rc = display_write(
+            saver_display,
+            dx0,
+            y,
+            &desc,
+            &saver_packed_line_buf[dx0]);
+
+        if (rc != 0) {
+            lumi_diag_report(
+                'E',
+                "RYQ1 display_write rc=%d y=%u",
+                rc,
+                (unsigned int)y);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void saver_packed_restart_playback(void) {
+    saver_packed_stream_reset(saver_packed_frames_offset);
+    saver_packed_frame_index = 0U;
+    saver_packed_next_frame_at = lv_tick_get();
+    saver_packed_playback_started = true;
+}
+
+static bool saver_packed_decode_next_frame(uint32_t now_ms) {
+    if (saver_media_format != SAVER_FORMAT_RYQ1 ||
+        !saver_packed_header_ready ||
+        !saver_media_valid ||
+        !device_is_ready(saver_display)) {
+        return false;
+    }
+
+    if (!saver_packed_playback_started) {
+        saver_packed_restart_playback();
+    }
+
+    if (saver_packed_frame_index >= saver_packed_frame_count) {
+        saver_packed_stream_reset(saver_packed_frames_offset);
+        saver_packed_frame_index = 0U;
+    }
+
+    uint16_t duration_ms = 0U;
+    uint16_t span_count = 0U;
+
+    if (!saver_packed_read_u16(&duration_ms) ||
+        !saver_packed_read_u16(&span_count)) {
+        return false;
+    }
+
+    for (uint16_t span = 0U; span < span_count; span++) {
+        uint16_t y = 0U;
+        uint16_t x = 0U;
+        uint16_t count = 0U;
+
+        if (!saver_packed_read_u16(&y) ||
+            !saver_packed_read_u16(&x) ||
+            !saver_packed_read_u16(&count) ||
+            !saver_packed_decode_span(y, x, count)) {
+            lumi_diag_report(
+                'E',
+                "RYQ1 decode failed frame=%u span=%u",
+                (unsigned int)saver_packed_frame_index,
+                (unsigned int)span);
+            saver_packed_playback_started = false;
+            return false;
+        }
+    }
+
+    saver_packed_frame_index++;
+    saver_packed_next_frame_at =
+        now_ms + MAX((uint32_t)duration_ms, 1U);
+    return true;
 }
 
 static bool saver_prepare_blend_frames(uint8_t frame_index) {
@@ -2217,9 +2661,17 @@ static void refresh_screensaver(lv_timer_t *timer) {
         saver_prefetch_next_valid = false;
         saver_static_drawn = false;
         saver_media_epoch_ms = lv_tick_get();
-        draw_custom_saver_frame(0U, 0U);
+
+        if (saver_media_format == SAVER_FORMAT_RYQ1) {
+            saver_packed_restart_playback();
+            (void)saver_packed_decode_next_frame(
+                saver_media_epoch_ms);
+        } else {
+            draw_custom_saver_frame(0U, 0U);
+        }
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
+        saver_packed_playback_started = false;
 
         /* Hand display ownership back to LVGL and force one clean redraw of
          * the normal UI after direct GIF rendering stops.
@@ -2254,6 +2706,19 @@ static void refresh_screensaver(lv_timer_t *timer) {
     }
 
     uint32_t lv_now = lv_tick_get();
+
+    if (saver_media_format == SAVER_FORMAT_RYQ1) {
+        if (!saver_packed_playback_started) {
+            saver_packed_restart_playback();
+            (void)saver_packed_decode_next_frame(lv_now);
+            return;
+        }
+
+        if ((int32_t)(lv_now - saver_packed_next_frame_at) >= 0) {
+            (void)saver_packed_decode_next_frame(lv_now);
+        }
+        return;
+    }
     uint32_t elapsed = (uint32_t)(lv_now - saver_media_epoch_ms);
     uint32_t loop_ms = MAX(saver_media_loop_ms, 1U);
     uint32_t loop_pos = elapsed % loop_ms;
@@ -2300,6 +2765,7 @@ bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_valid = false;
     saver_media_format = SAVER_FORMAT_RGB332;
+    saver_packed_reset_state();
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
@@ -2410,6 +2876,88 @@ bool lumi_ui_saver_anim_end(void) {
     return ok;
 }
 
+bool lumi_ui_saver_packed_begin(size_t total_bytes) {
+    if (total_bytes < SAVER_PACKED_HEADER_BYTES ||
+        total_bytes > SAVER_PACKED_MAX_BYTES) {
+        return false;
+    }
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    saver_media_valid = false;
+    saver_media_format = SAVER_FORMAT_RYQ1;
+    saver_media_frame_count = 0U;
+    saver_media_received_mask = 0U;
+    saver_image_received_bytes = 0U;
+    saver_packed_reset_state();
+    saver_packed_expected_bytes = (uint32_t)total_bytes;
+    saver_packed_received_bytes = 0U;
+    saver_static_drawn = false;
+    saver_prefetch_valid = false;
+    saver_prefetch_next_valid = false;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    if (saver_flash_prepare_upload() != 0) {
+        saver_packed_reset_state();
+        return false;
+    }
+
+    return true;
+}
+
+bool lumi_ui_saver_packed_chunk(
+    uint32_t offset,
+    const uint8_t *data,
+    size_t len) {
+
+    if (!data ||
+        saver_media_format != SAVER_FORMAT_RYQ1 ||
+        saver_packed_expected_bytes < SAVER_PACKED_HEADER_BYTES ||
+        len == 0U ||
+        offset != saver_packed_received_bytes ||
+        (uint64_t)offset + len > saver_packed_expected_bytes) {
+        return false;
+    }
+
+    if (saver_flash_write_bytes(offset, data, len) != 0) {
+        return false;
+    }
+
+    saver_packed_received_bytes += (uint32_t)len;
+    return true;
+}
+
+bool lumi_ui_saver_packed_end(void) {
+    bool ok =
+        saver_media_format == SAVER_FORMAT_RYQ1 &&
+        saver_packed_expected_bytes >= SAVER_PACKED_HEADER_BYTES &&
+        saver_packed_received_bytes == saver_packed_expected_bytes;
+
+    if (ok) {
+        saver_packed_data_size = saver_packed_expected_bytes;
+        ok = saver_packed_load_header(
+                 saver_packed_data_size,
+                 true) &&
+             saver_flash_commit_header() == 0;
+    }
+
+    if (ok) {
+        saver_media_valid = true;
+        saver_media_index = 0U;
+        saver_media_epoch_ms = 0U;
+        saver_prefetch_valid = false;
+        saver_prefetch_next_valid = false;
+        saver_static_drawn = false;
+        saver_packed_cursor = saver_packed_frames_offset;
+        saver_packed_frame_index = 0U;
+        saver_packed_next_frame_at = 0U;
+        saver_packed_playback_started = false;
+    } else {
+        saver_media_valid = false;
+    }
+
+    return ok;
+}
+
 bool lumi_ui_saver_image_begin(size_t total_bytes) {
     if (total_bytes != LUMI_SAVER_IMAGE_BYTES) {
         return false;
@@ -2418,6 +2966,7 @@ bool lumi_ui_saver_image_begin(size_t total_bytes) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_valid = false;
     saver_media_format = SAVER_FORMAT_RGB565_STATIC;
+    saver_packed_reset_state();
     saver_media_frame_count = 1U;
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
@@ -2489,6 +3038,7 @@ void lumi_ui_saver_anim_clear(void) {
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
     saver_media_format = SAVER_FORMAT_RGB332;
+    saver_packed_reset_state();
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
     saver_prefetch_valid = false;

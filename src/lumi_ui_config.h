@@ -62,6 +62,11 @@ bool lumi_ui_saver_anim_chunk(uint8_t index, uint16_t offset,
                               const uint8_t *data, size_t len);
 bool lumi_ui_saver_anim_end(void);
 
+bool lumi_ui_saver_packed_begin(size_t total_bytes);
+bool lumi_ui_saver_packed_chunk(uint32_t offset,
+                                 const uint8_t *data, size_t len);
+bool lumi_ui_saver_packed_end(void);
+
 bool lumi_ui_saver_image_begin(size_t total_bytes);
 bool lumi_ui_saver_image_chunk(uint32_t offset,
                                const uint8_t *data, size_t len);
