@@ -741,6 +741,22 @@ static void describe_profile_key(
         break
 
     switch (layer) {
+    case 0: /* P1 MAIN / OFFICE - live ZMK bindings */
+        switch (position) {
+        PROFILE_ICON(1, LG(LS(S)), "SCREENSHOT", LV_SYMBOL_IMAGE, 0x5AC8FA);
+        PROFILE_ICON(2, HOME, "HOME", LV_SYMBOL_HOME, 0xFF9F0A);
+        PROFILE_ICON(3, PG_UP, "PAGE UP", LV_SYMBOL_UP, 0xBF5AF2);
+        PROFILE_ICON(4, LC(LG(LEFT)), "DESKTOP LEFT", LV_SYMBOL_LEFT, 0x64D2FF);
+        PROFILE_ICON(5, LC(LG(RIGHT)), "DESKTOP RIGHT", LV_SYMBOL_RIGHT, 0x64D2FF);
+        PROFILE_ICON(6, END, "END", LV_SYMBOL_DOWN, 0xFF9F0A);
+        PROFILE_ICON(7, PG_DN, "PAGE DOWN", LV_SYMBOL_DOWN, 0xBF5AF2);
+        PROFILE_ICON(8, LC(LS(Z)), "REDO", LV_SYMBOL_RIGHT, 0xBF5AF2);
+        PROFILE_ICON(9, LC(Z), "UNDO", LV_SYMBOL_LEFT, 0x0A84FF);
+        PROFILE_ICON(10, LC(C), "COPY", LV_SYMBOL_COPY, 0x64D2FF);
+        PROFILE_ICON(11, LC(V), "PASTE", LV_SYMBOL_PASTE, 0x30D158);
+        }
+        break;
+
     case 1: /* P2 MEDIA */
         switch (position) {
         PROFILE_ICON(0, C_PLAY_PAUSE, "PLAY/PAUSE", LV_SYMBOL_PLAY, 0x30D158);
@@ -850,6 +866,33 @@ static void describe_profile_key(
 #undef PROFILE_ICON
 }
 
+static bool describe_profile_behavior(
+    zmk_keymap_layer_index_t layer,
+    uint8_t position,
+    const struct zmk_behavior_binding *binding,
+    struct key_caption *out
+) {
+    if (layer != 0U || position != 0U ||
+        !binding || !binding->behavior_dev) {
+        return false;
+    }
+
+    /* ZMK's built-in &sl node is named sticky_layer. Match the live behavior
+     * instead of hard-coding K1 visually so a future Studio remap cannot leave
+     * a misleading layer icon behind.
+     */
+    if (strstr(binding->behavior_dev, "sticky_layer") != NULL) {
+        set_profile_key_visual(
+            out,
+            "STICKY LAYER",
+            LV_SYMBOL_LOOP,
+            0xBF5AF2);
+        return true;
+    }
+
+    return false;
+}
+
 static struct page_state read_page(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
     struct page_state state = {0};
@@ -872,8 +915,8 @@ static struct page_state read_page(const zmk_event_t *eh) {
         } else if (strcmp(binding->behavior_dev, DEVICE_DT_NAME(DT_NODELABEL(kp))) == 0) {
             describe_key(binding->param1, key);
             describe_profile_key(index, i, binding->param1, key);
-        } else {
-            /* Never keep a stale COPY/etc label for a remapped behavior. */
+        } else if (!describe_profile_behavior(index, i, binding, key)) {
+            /* Never keep a stale semantic label for a remapped behavior. */
             snprintf(key->text, sizeof(key->text), "%.8s %u",
                      binding->behavior_dev, (unsigned int)binding->param1);
         }
