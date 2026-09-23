@@ -1560,8 +1560,10 @@ static int saver_flash_open_once(void) {
     size_t required =
         SAVER_FLASH_DATA_OFFSET +
         MAX(
-            (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES,
-            (size_t)LUMI_SAVER_IMAGE_BYTES);
+            MAX(
+                (size_t)LUMI_SAVER_MAX_FRAMES * LUMI_SAVER_FRAME_BYTES,
+                (size_t)LUMI_SAVER_IMAGE_BYTES),
+            (size_t)SAVER_PACKED_MAX_BYTES);
 
     if (saver_flash->fa_size < required) {
         lumi_diag_report('E', "Saver flash too small have=%u need=%u",
@@ -1571,6 +1573,124 @@ static int saver_flash_open_once(void) {
     }
 
     return 0;
+}
+
+static uint16_t saver_packed_read_le16(const uint8_t *data) {
+    return (uint16_t)data[0] |
+           ((uint16_t)data[1] << 8);
+}
+
+static uint32_t saver_packed_read_le32(const uint8_t *data) {
+    return (uint32_t)data[0] |
+           ((uint32_t)data[1] << 8) |
+           ((uint32_t)data[2] << 16) |
+           ((uint32_t)data[3] << 24);
+}
+
+static void saver_packed_reset_state(void) {
+    saver_packed_expected_bytes = 0U;
+    saver_packed_received_bytes = 0U;
+    saver_packed_data_size = 0U;
+    saver_packed_storage_width = 0U;
+    saver_packed_storage_height = 0U;
+    saver_packed_frame_count = 0U;
+    saver_packed_fps = 0U;
+    saver_packed_duration_ms = 0U;
+    saver_packed_frames_offset = 0U;
+    saver_packed_cursor = 0U;
+    saver_packed_next_frame_at = 0U;
+    saver_packed_frame_index = 0U;
+    saver_packed_color_mode = SAVER_PACKED_MODE_RGB332;
+    saver_packed_header_ready = false;
+    saver_packed_playback_started = false;
+}
+
+static bool saver_packed_load_header(
+    uint32_t data_size,
+    bool apply) {
+
+    if (!saver_flash ||
+        data_size < SAVER_PACKED_HEADER_BYTES ||
+        data_size > SAVER_PACKED_MAX_BYTES) {
+        return false;
+    }
+
+    uint8_t header[SAVER_PACKED_HEADER_BYTES] = {0};
+    int rc = flash_area_read(
+        saver_flash,
+        SAVER_FLASH_DATA_OFFSET,
+        header,
+        sizeof(header));
+
+    if (rc != 0 ||
+        header[0] != 'R' ||
+        header[1] != 'Y' ||
+        header[2] != 'Q' ||
+        header[3] != '1') {
+        return false;
+    }
+
+    uint8_t color_mode = header[4];
+    uint8_t flags = header[5];
+    uint16_t storage_width =
+        saver_packed_read_le16(&header[6]);
+    uint16_t storage_height =
+        saver_packed_read_le16(&header[8]);
+    uint16_t display_width =
+        saver_packed_read_le16(&header[10]);
+    uint16_t display_height =
+        saver_packed_read_le16(&header[12]);
+    uint16_t frame_count =
+        saver_packed_read_le16(&header[14]);
+    uint16_t fps =
+        saver_packed_read_le16(&header[16]);
+    uint32_t duration_ms =
+        saver_packed_read_le32(&header[18]);
+    uint16_t palette_count =
+        saver_packed_read_le16(&header[22]);
+
+    bool storage_ok =
+        (storage_width == 320U && storage_height == 172U) ||
+        (storage_width == 240U && storage_height == 129U) ||
+        (storage_width == 160U && storage_height == 86U);
+
+    if ((color_mode != SAVER_PACKED_MODE_RGB565 &&
+         color_mode != SAVER_PACKED_MODE_RGB332) ||
+        flags != SAVER_PACKED_FLAGS ||
+        !storage_ok ||
+        display_width != 320U ||
+        display_height != 172U ||
+        frame_count < 1U ||
+        frame_count > 250U ||
+        fps < 15U ||
+        fps > 25U ||
+        duration_ms == 0U ||
+        palette_count != 0U) {
+        return false;
+    }
+
+    if (apply) {
+        saver_packed_data_size = data_size;
+        saver_packed_storage_width = storage_width;
+        saver_packed_storage_height = storage_height;
+        saver_packed_frame_count = frame_count;
+        saver_packed_fps = fps;
+        saver_packed_duration_ms = duration_ms;
+        saver_packed_frames_offset = SAVER_PACKED_HEADER_BYTES;
+        saver_packed_cursor = SAVER_PACKED_HEADER_BYTES;
+        saver_packed_next_frame_at = 0U;
+        saver_packed_frame_index = 0U;
+        saver_packed_color_mode = color_mode;
+        saver_packed_header_ready = true;
+        saver_packed_playback_started = false;
+        saver_media_frame_count = (uint8_t)frame_count;
+        saver_media_interval_ms =
+            (uint16_t)MAX(
+                (uint32_t)SAVER_MIN_FRAME_MS,
+                (1000U + fps - 1U) / fps);
+    }
+
+    return true;
 }
 
 static bool saver_flash_load_metadata(void) {
