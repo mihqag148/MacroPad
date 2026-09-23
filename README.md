@@ -246,3 +246,14 @@ Protocol v4 adds the `MEDIAFAST` capability.
 - Artwork remains 48x48 RGB332 over BLE; visual quality is unchanged.
 - Diagnostics log the actual text/artwork transfer duration and negotiated BLE
   payload size for hardware verification.
+
+### Battery charging percentage filter v1.14.10
+
+nice!nano v2 measures VDDH, so plugging USB can make the stock ZMK battery
+reading jump directly to 100%. RYNOR ONE now keeps the last trustworthy
+unplugged percentage and estimates charging progress gradually while USB is
+present. The display and BLE Battery Service use the filtered value.
+
+Without a dedicated fuel-gauge IC this charging percentage is an estimate
+(roughly a 3-hour 0→100% model), not true coulomb-counted capacity. After USB
+is removed, the firmware returns to the real battery-voltage reading.
