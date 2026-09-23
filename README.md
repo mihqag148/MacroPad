@@ -276,3 +276,11 @@ The first twelve bindings on each profile map directly to the physical 4×3 key 
 from K1 to K12, left-to-right and top-to-bottom. MEDIA uses the encoder for
 volume so volume-up/down are not duplicated on the grid. CAPCUT uses the encoder
 for previous/next frame scrubbing.
+
+
+### Auto Profile 8-profile + Media exit v1.14.13
+
+- RYNOR Auto Profile commands now accept all eight built-in profiles (P1-P8).
+- Any physical key press or encoder push hides Now Playing and returns to the
+  main key grid for 10 seconds. Encoder rotation remains available for volume
+  without forcing the Media page closed.
