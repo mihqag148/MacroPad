@@ -1140,6 +1140,32 @@ static void handle_battery(bool from_usb) {
     }
 }
 
+static void handle_profile_state(bool from_usb) {
+    zmk_keymap_layer_index_t index =
+        zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t layer_id =
+        zmk_keymap_layer_index_to_id(index);
+    const char *name =
+        layer_id == ZMK_KEYMAP_LAYER_ID_INVAL
+            ? NULL
+            : zmk_keymap_layer_name(layer_id);
+
+    char response[64];
+    snprintf(
+        response,
+        sizeof(response),
+        "PROFILE|%u|%s",
+        (unsigned int)index,
+        (name && name[0]) ? name : "PROFILE");
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_saver_state(bool from_usb) {
     const char *response =
         lumi_ui_saver_anim_is_valid()
@@ -1174,6 +1200,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_panel_info(from_usb);
     } else if (strcmp(root, "BAT") == 0) {
         handle_battery(from_usb);
+    } else if (strcmp(root, "PROFILE") == 0) {
+        handle_profile_state(from_usb);
     } else if (strcmp(root, "PCCFG") == 0) {
         handle_pc_config(save);
     } else if (strcmp(root, "PCMON") == 0) {
@@ -1326,6 +1354,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     if (strncmp(lumi_status, "MEM|", 4) != 0 &&
         strncmp(lumi_status, "PANEL|", 6) != 0 &&
         strncmp(lumi_status, "BAT|", 4) != 0 &&
+        strncmp(lumi_status, "PROFILE|", 8) != 0 &&
         strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
         strncmp(lumi_status, "CAPS|", 5) != 0 &&
         strncmp(lumi_status, "ACTION|", 7) != 0 &&
@@ -1343,6 +1372,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
     if (strncmp(lumi_status, "MEM|", 4) == 0 ||
         strncmp(lumi_status, "PANEL|", 6) == 0 ||
         strncmp(lumi_status, "BAT|", 4) == 0 ||
+        strncmp(lumi_status, "PROFILE|", 8) == 0 ||
         strncmp(lumi_status, "SAVERSTATE|", 11) == 0 ||
         strncmp(lumi_status, "CAPS|", 5) == 0 ||
         strncmp(lumi_status, "ACTION|", 7) == 0) {
