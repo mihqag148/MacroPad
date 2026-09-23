@@ -990,7 +990,7 @@ static void update_page(struct page_state state) {
         return;
     }
 
-    set_pc_monitor_selected(state.id == 5);
+    set_pc_monitor_selected(state.id == 7);
 
     bool animate_change = have_previous && previous.id != state.id;
     previous = state;
