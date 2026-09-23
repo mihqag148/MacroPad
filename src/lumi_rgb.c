@@ -45,7 +45,7 @@ enum lumi_rgb_command {
     LUMI_RGB_AUTO_LAYER = 7,
 };
 
-BUILD_ASSERT(LED_COUNT == 4, "Lumi RGB effects expect exactly 4 WS2812B LEDs");
+BUILD_ASSERT(LED_COUNT == 6, "RYNOR ONE RGB expects exactly 6 addressable LEDs");
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[LED_COUNT];
@@ -123,8 +123,6 @@ static void render_office(void) {
 }
 
 static void render_media(void) {
-    static const uint8_t path[] = {0, 1, 2, 3, 2, 1};
-
     const struct led_rgb dim_purple = {
         .r = user_brightness / 8,
         .g = 0,
@@ -136,8 +134,16 @@ static void render_media(void) {
         .b = (uint8_t)(((uint16_t)user_brightness * 3) / 4),
     };
 
+    /* Ping-pong across the complete strip. For 6 LEDs the path is:
+     * 0,1,2,3,4,5,4,3,2,1, then repeat.
+     */
+    const uint8_t span = (uint8_t)((LED_COUNT * 2U) - 2U);
+    const uint8_t phase = (uint8_t)((media_tick / 2U) % span);
+    const uint8_t index =
+        phase < LED_COUNT ? phase : (uint8_t)(span - phase);
+
     fill(dim_purple);
-    pixels[path[(media_tick / 2) % ARRAY_SIZE(path)]] = warm_purple;
+    pixels[index] = warm_purple;
     media_tick++;
 }
 
