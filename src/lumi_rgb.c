@@ -318,18 +318,31 @@ void lumi_rgb_set_effect(uint8_t effect) {
         return;
     }
 
-    manual_effect = effect;
-    auto_by_layer = false;
+    uint8_t index = current_profile_index();
+    profile_effect[index] = effect;
+    auto_by_layer = true;
     led_enabled = true;
-    lumi_diag_report('I', "RGB effect=%u", (unsigned int)effect);
+    lumi_diag_report(
+        'I',
+        "RGB profile=%u effect=%u",
+        (unsigned int)index,
+        (unsigned int)effect);
     lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
-    manual_color = (struct led_rgb){.r = r, .g = g, .b = b};
-    manual_effect = LUMI_RGB_EFFECT_SOLID;
-    auto_by_layer = false;
+    uint8_t index = current_profile_index();
+    profile_color[index] = (struct led_rgb){.r = r, .g = g, .b = b};
+    profile_effect[index] = LUMI_RGB_EFFECT_SOLID;
+    auto_by_layer = true;
     led_enabled = true;
+    lumi_diag_report(
+        'I',
+        "RGB profile=%u solid=%u,%u,%u",
+        (unsigned int)index,
+        (unsigned int)r,
+        (unsigned int)g,
+        (unsigned int)b);
     lumi_rgb_refresh_now();
 }
 
@@ -491,22 +504,23 @@ static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
             user_brightness = next < MIN_BRIGHTNESS ? MIN_BRIGHTNESS : (uint8_t)next;
         }
         break;
-    case LUMI_RGB_NEXT_EFFECT:
-        if (auto_by_layer) {
-            manual_effect = layer_effect();
-        }
-        manual_effect = (manual_effect + 1) % LUMI_RGB_EFFECT_COUNT;
-        auto_by_layer = false;
+    case LUMI_RGB_NEXT_EFFECT: {
+        uint8_t index = current_profile_index();
+        profile_effect[index] =
+            (profile_effect[index] + 1U) % LUMI_RGB_EFFECT_COUNT;
+        auto_by_layer = true;
         led_enabled = true;
         break;
-    case LUMI_RGB_PREV_EFFECT:
-        if (auto_by_layer) {
-            manual_effect = layer_effect();
-        }
-        manual_effect = (manual_effect + LUMI_RGB_EFFECT_COUNT - 1) % LUMI_RGB_EFFECT_COUNT;
-        auto_by_layer = false;
+    }
+    case LUMI_RGB_PREV_EFFECT: {
+        uint8_t index = current_profile_index();
+        profile_effect[index] =
+            (profile_effect[index] + LUMI_RGB_EFFECT_COUNT - 1U) %
+            LUMI_RGB_EFFECT_COUNT;
+        auto_by_layer = true;
         led_enabled = true;
         break;
+    }
     case LUMI_RGB_AUTO_LAYER:
         lumi_rgb_set_auto(true);
         break;
