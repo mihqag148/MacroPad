@@ -53,6 +53,7 @@ Firmware và cấu hình phần cứng RYNOR ONE cho nice!nano v2 / nRF52840.
 - LVGL có heap 32 KB, partial double buffer tĩnh 20% màn hình, stack display
   4 KB và `CONFIG_SPI_ASYNC=y`; buffer chỉ được trả cho LVGL sau callback DMA.
 - WS2812 dùng SPIM1 riêng, không tranh SPIM3 của TFT.
+- RGB addressable: **6 LED WS2812B/SK6812-compatible** nối chuỗi, DATA P0.06 (D1).
 
 ## Giao diện
 
