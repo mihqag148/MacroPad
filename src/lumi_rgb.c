@@ -12,6 +12,7 @@
 #include <drivers/behavior.h>
 #include <zmk/behavior.h>
 #include <zmk/event_manager.h>
+#include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
 
@@ -318,18 +319,31 @@ void lumi_rgb_set_effect(uint8_t effect) {
         return;
     }
 
-    manual_effect = effect;
-    auto_by_layer = false;
+    uint8_t index = current_profile_index();
+    profile_effect[index] = effect;
+    auto_by_layer = true;
     led_enabled = true;
-    lumi_diag_report('I', "RGB effect=%u", (unsigned int)effect);
+    lumi_diag_report(
+        'I',
+        "RGB profile=%u effect=%u",
+        (unsigned int)index,
+        (unsigned int)effect);
     lumi_rgb_refresh_now();
 }
 
 void lumi_rgb_set_solid(uint8_t r, uint8_t g, uint8_t b) {
-    manual_color = (struct led_rgb){.r = r, .g = g, .b = b};
-    manual_effect = LUMI_RGB_EFFECT_SOLID;
-    auto_by_layer = false;
+    uint8_t index = current_profile_index();
+    profile_color[index] = (struct led_rgb){.r = r, .g = g, .b = b};
+    profile_effect[index] = LUMI_RGB_EFFECT_SOLID;
+    auto_by_layer = true;
     led_enabled = true;
+    lumi_diag_report(
+        'I',
+        "RGB profile=%u solid=%u,%u,%u",
+        (unsigned int)index,
+        (unsigned int)r,
+        (unsigned int)g,
+        (unsigned int)b);
     lumi_rgb_refresh_now();
 }
 
@@ -416,6 +430,22 @@ static int lumi_rgb_position_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(lumi_rgb_position, lumi_rgb_position_listener);
 ZMK_SUBSCRIPTION(lumi_rgb_position, zmk_position_state_changed);
 
+/* ZMK layer/profile changes are the RGB source of truth. Refresh immediately
+ * instead of waiting for the next animation frame.
+ */
+static int lumi_rgb_layer_listener(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+
+    if (auto_by_layer) {
+        lumi_rgb_refresh_now();
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(lumi_rgb_layer, lumi_rgb_layer_listener);
+ZMK_SUBSCRIPTION(lumi_rgb_layer, zmk_layer_state_changed);
+
 static int lumi_rgb_init(void) {
     if (!device_is_ready(strip)) {
         LOG_ERR("WS2812B strip is not ready");
@@ -491,22 +521,23 @@ static int lumi_rgb_binding_pressed(struct zmk_behavior_binding *binding,
             user_brightness = next < MIN_BRIGHTNESS ? MIN_BRIGHTNESS : (uint8_t)next;
         }
         break;
-    case LUMI_RGB_NEXT_EFFECT:
-        if (auto_by_layer) {
-            manual_effect = layer_effect();
-        }
-        manual_effect = (manual_effect + 1) % LUMI_RGB_EFFECT_COUNT;
-        auto_by_layer = false;
+    case LUMI_RGB_NEXT_EFFECT: {
+        uint8_t index = current_profile_index();
+        profile_effect[index] =
+            (profile_effect[index] + 1U) % LUMI_RGB_EFFECT_COUNT;
+        auto_by_layer = true;
         led_enabled = true;
         break;
-    case LUMI_RGB_PREV_EFFECT:
-        if (auto_by_layer) {
-            manual_effect = layer_effect();
-        }
-        manual_effect = (manual_effect + LUMI_RGB_EFFECT_COUNT - 1) % LUMI_RGB_EFFECT_COUNT;
-        auto_by_layer = false;
+    }
+    case LUMI_RGB_PREV_EFFECT: {
+        uint8_t index = current_profile_index();
+        profile_effect[index] =
+            (profile_effect[index] + LUMI_RGB_EFFECT_COUNT - 1U) %
+            LUMI_RGB_EFFECT_COUNT;
+        auto_by_layer = true;
         led_enabled = true;
         break;
+    }
     case LUMI_RGB_AUTO_LAYER:
         lumi_rgb_set_auto(true);
         break;
