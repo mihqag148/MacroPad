@@ -257,3 +257,22 @@ present. The display and BLE Battery Service use the filtered value.
 Without a dedicated fuel-gauge IC this charging percentage is an estimate
 (roughly a 5-hour 0→100% model for a 1200 mAh battery charged at about 300 mA), not true coulomb-counted capacity. After USB
 is removed, the firmware returns to the real battery-voltage reading.
+
+
+### Default profiles v1.14.12
+
+Encoder push cycles through the eight built-in profiles:
+
+1. OFFICE
+2. MEDIA
+3. BAMBU STUDIO
+4. FUSION 360
+5. CAPCUT
+6. DELTA FORCE
+7. WUWA
+8. PC MONITOR
+
+The first twelve bindings on each profile map directly to the physical 4×3 key grid
+from K1 to K12, left-to-right and top-to-bottom. MEDIA uses the encoder for
+volume so volume-up/down are not duplicated on the grid. CAPCUT uses the encoder
+for previous/next frame scrubbing.

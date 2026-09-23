@@ -32,7 +32,7 @@ LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 #define MIN_BRIGHTNESS 13     /* ~5% */
 #define MAX_BRIGHTNESS 128    /* ~50% */
 #define BRIGHTNESS_STEP 13    /* ~5% */
-#define RGB_PROFILE_COUNT 5
+#define RGB_PROFILE_COUNT 8
 
 enum lumi_rgb_command {
     LUMI_RGB_TOGGLE = 0,
@@ -65,18 +65,24 @@ static uint8_t reactive_level;
 static bool rgb_update_error_reported;
 static struct led_rgb manual_color = {.r = 255, .g = 120, .b = 0};
 static uint8_t profile_effect[RGB_PROFILE_COUNT] = {
-    LUMI_RGB_EFFECT_RAINBOW,
-    LUMI_RGB_EFFECT_PURPLE_PINGPONG,
-    LUMI_RGB_EFFECT_ORANGE_BLINK,
-    LUMI_RGB_EFFECT_SOLID,
-    LUMI_RGB_EFFECT_SOLID,
+    LUMI_RGB_EFFECT_RAINBOW,          /* P1 OFFICE */
+    LUMI_RGB_EFFECT_PURPLE_PINGPONG, /* P2 MEDIA */
+    LUMI_RGB_EFFECT_SOLID,            /* P3 BAMBU STUDIO */
+    LUMI_RGB_EFFECT_SOLID,            /* P4 FUSION 360 */
+    LUMI_RGB_EFFECT_SOLID,            /* P5 CAPCUT */
+    LUMI_RGB_EFFECT_REACTIVE,         /* P6 DELTA FORCE */
+    LUMI_RGB_EFFECT_SOLID,            /* P7 WUWA */
+    LUMI_RGB_EFFECT_SOLID,            /* P8 PC MONITOR */
 };
 static struct led_rgb profile_color[RGB_PROFILE_COUNT] = {
     {.r = 255, .g = 120, .b = 0},
     {.r = 180, .g = 40, .b = 255},
-    {.r = 255, .g = 90, .b = 0},
+    {.r = 255, .g = 95, .b = 20},
     {.r = 0, .g = 170, .b = 255},
+    {.r = 0, .g = 220, .b = 180},
     {.r = 80, .g = 255, .b = 100},
+    {.r = 155, .g = 95, .b = 255},
+    {.r = 230, .g = 230, .b = 230},
 };
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
