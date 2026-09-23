@@ -7,7 +7,8 @@ Firmware và cấu hình phần cứng RYNOR ONE cho nice!nano v2 / nRF52840.
 - 12 phím macro.
 - Encoder EC11: A=P1.04, B=P1.06.
 - Encoder push: ROW0/COL3 = P0.09 / P0.31.
-- Matrix 4x4 theo đúng dây cũ.
+- 12 phím dùng matrix điện **4 ROW × 3 COL** theo dây gốc; COL3 chỉ dành cho encoder push.
+- K1-K3 = ROW0/COL0-2, K4-K6 = ROW1/COL0-2, K7-K9 = ROW2/COL0-2, K10-K12 = ROW3/COL0-2.
 - Diode: COL -> switch -> diode -> ROW, cathode/black stripe về ROW (`col2row`).
 - 3 layer: OFFICE, MEDIA, FUSION 360.
 - Encoder push: OFFICE -> MEDIA -> FUSION 360 -> OFFICE.
@@ -64,8 +65,9 @@ và ký hiệu nguồn USB. Ký hiệu nguồn USB không phải phép đo dòng
   chữ phím, keycode lạ hiện mã hex, behavior khác hiện tên rút gọn và tham số.
 - Khi nhấn, ô đổi iàu và icon hạ 5 px; tap nhanh vẫn sáng ít nhất 100 ms.
 - Ô trên màn lần lượt là keymap position 0–11 (trái sang phải, trên xuống dưới).
-  Matrix vật lý vẫn 4 hàng × 3 phím + encoder, không đổi transform hay dây.
-  Position 12 là encoder, không tạo ô thứ 13.
+  Matrix **điện** vẫn 4 ROW × 3 COL + encoder theo dây gốc; transform ánh xạ
+  thứ tự điện này sang giao diện 4 cột × 3 hàng. Position 12 là encoder push,
+  không tạo ô thứ 13.
 - Mọi cập nhật LVGL chạy trên display queue; sự kiện phím chỉ lưu bit nguyên tử.
 
 Sau khi nạp, kiểm tra đủ 12 ô tới mép dưới, chiều/chữ đúng, nền tối, cả ba layer,
