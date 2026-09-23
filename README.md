@@ -282,3 +282,15 @@ for previous/next frame scrubbing.
   CAPCUT, DELTA FORCE and WUWA key layouts.
 - Icon overrides verify the expected default keycode first, so a Studio remap
   falls back to the live keycode display instead of showing a stale action icon.
+
+
+### ZMK profile source of truth v1.14.15
+
+- The active ZMK keymap layer is now the single RYNOR ONE profile source of truth.
+- RGB always follows the active ZMK profile P1-P8 and switches immediately on
+  layer changes.
+- RGB edits target the currently active ZMK profile instead of putting RGB into
+  a separate global/manual profile state.
+- The companion protocol can query `PROFILE` and receives the actual active
+  ZMK profile index and layer name so LumiPad can keep RGB, Action context and
+  other profile-aware RYNOR UI synchronized with the keyboard.
