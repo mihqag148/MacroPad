@@ -136,6 +136,9 @@ static uint8_t saver_packed_color_mode;
 static bool saver_packed_header_ready;
 static bool saver_packed_playback_started;
 static lv_color_t saver_packed_line_buf[320U];
+static uint8_t saver_packed_read_cache[256U];
+static uint16_t saver_packed_cache_pos;
+static uint16_t saver_packed_cache_len;
 static bool saver_static_drawn;
 static uint16_t saver_media_interval_ms = 40;
 static uint16_t saver_media_frame_intervals[LUMI_SAVER_MAX_FRAMES];
@@ -2143,6 +2146,273 @@ static void draw_static_saver_image(void) {
     }
 
     saver_static_drawn = true;
+}
+
+static void saver_packed_stream_reset(uint32_t offset) {
+    saver_packed_cursor = offset;
+    saver_packed_cache_pos = 0U;
+    saver_packed_cache_len = 0U;
+}
+
+static bool saver_packed_read_u8(uint8_t *value) {
+    if (!value ||
+        !saver_packed_header_ready ||
+        saver_packed_cursor >= saver_packed_data_size) {
+        return false;
+    }
+
+    if (saver_packed_cache_pos >= saver_packed_cache_len) {
+        uint32_t remaining =
+            saver_packed_data_size - saver_packed_cursor;
+        uint16_t read_len =
+            (uint16_t)MIN(
+                (uint32_t)sizeof(saver_packed_read_cache),
+                remaining);
+
+        if (read_len == 0U ||
+            flash_area_read(
+                saver_flash,
+                SAVER_FLASH_DATA_OFFSET + saver_packed_cursor,
+                saver_packed_read_cache,
+                read_len) != 0) {
+            return false;
+        }
+
+        saver_packed_cache_pos = 0U;
+        saver_packed_cache_len = read_len;
+    }
+
+    *value = saver_packed_read_cache[saver_packed_cache_pos++];
+    saver_packed_cursor++;
+    return true;
+}
+
+static bool saver_packed_read_u16(uint16_t *value) {
+    uint8_t lo = 0U;
+    uint8_t hi = 0U;
+
+    if (!value ||
+        !saver_packed_read_u8(&lo) ||
+        !saver_packed_read_u8(&hi)) {
+        return false;
+    }
+
+    *value = (uint16_t)lo | ((uint16_t)hi << 8);
+    return true;
+}
+
+static bool saver_packed_read_color(lv_color_t *color) {
+    if (!color) {
+        return false;
+    }
+
+    if (saver_packed_color_mode == SAVER_PACKED_MODE_RGB565) {
+        uint16_t value = 0U;
+        if (!saver_packed_read_u16(&value)) {
+            return false;
+        }
+
+        uint8_t r =
+            (uint8_t)((((value >> 11) & 0x1FU) * 255U) / 31U);
+        uint8_t g =
+            (uint8_t)((((value >> 5) & 0x3FU) * 255U) / 63U);
+        uint8_t b =
+            (uint8_t)(((value & 0x1FU) * 255U) / 31U);
+        *color = lv_color_make(r, g, b);
+        return true;
+    }
+
+    uint8_t value = 0U;
+    if (!saver_packed_read_u8(&value)) {
+        return false;
+    }
+
+    uint8_t r =
+        (uint8_t)((((value >> 5) & 0x07U) * 255U) / 7U);
+    uint8_t g =
+        (uint8_t)((((value >> 2) & 0x07U) * 255U) / 7U);
+    uint8_t b =
+        (uint8_t)(((value & 0x03U) * 255U) / 3U);
+    *color = lv_color_make(r, g, b);
+    return true;
+}
+
+static void saver_packed_set_scaled_pixel(
+    uint16_t source_x,
+    lv_color_t color) {
+
+    uint16_t dx0 =
+        (uint16_t)(((uint32_t)source_x * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dx1 =
+        (uint16_t)(((uint32_t)(source_x + 1U) * 320U) /
+                   saver_packed_storage_width);
+
+    if (dx1 <= dx0) {
+        dx1 = MIN((uint16_t)(dx0 + 1U), (uint16_t)320U);
+    }
+
+    for (uint16_t x = dx0; x < dx1 && x < 320U; x++) {
+        saver_packed_line_buf[x] = color;
+    }
+}
+
+static bool saver_packed_decode_span(
+    uint16_t source_y,
+    uint16_t source_x,
+    uint16_t source_count) {
+
+    if (source_y >= saver_packed_storage_height ||
+        source_x >= saver_packed_storage_width ||
+        source_count == 0U ||
+        (uint32_t)source_x + source_count > saver_packed_storage_width) {
+        return false;
+    }
+
+    uint16_t produced = 0U;
+
+    while (produced < source_count) {
+        uint8_t control = 0U;
+        if (!saver_packed_read_u8(&control)) {
+            return false;
+        }
+
+        uint16_t packet_count =
+            (uint16_t)((control & 0x7FU) + 1U);
+
+        if ((uint32_t)produced + packet_count > source_count) {
+            return false;
+        }
+
+        bool repeat = (control & 0x80U) != 0U;
+
+        if (repeat) {
+            lv_color_t color;
+            if (!saver_packed_read_color(&color)) {
+                return false;
+            }
+
+            for (uint16_t i = 0U; i < packet_count; i++) {
+                saver_packed_set_scaled_pixel(
+                    (uint16_t)(source_x + produced + i),
+                    color);
+            }
+        } else {
+            for (uint16_t i = 0U; i < packet_count; i++) {
+                lv_color_t color;
+                if (!saver_packed_read_color(&color)) {
+                    return false;
+                }
+
+                saver_packed_set_scaled_pixel(
+                    (uint16_t)(source_x + produced + i),
+                    color);
+            }
+        }
+
+        produced = (uint16_t)(produced + packet_count);
+    }
+
+    uint16_t dx0 =
+        (uint16_t)(((uint32_t)source_x * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dx1 =
+        (uint16_t)(((uint32_t)(source_x + source_count) * 320U) /
+                   saver_packed_storage_width);
+    uint16_t dy0 =
+        (uint16_t)(((uint32_t)source_y * 172U) /
+                   saver_packed_storage_height);
+    uint16_t dy1 =
+        (uint16_t)(((uint32_t)(source_y + 1U) * 172U) /
+                   saver_packed_storage_height);
+
+    if (dx1 <= dx0 || dy1 <= dy0 || dx1 > 320U || dy1 > 172U) {
+        return false;
+    }
+
+    struct display_buffer_descriptor desc = {
+        .buf_size = (size_t)(dx1 - dx0) * sizeof(lv_color_t),
+        .width = (uint16_t)(dx1 - dx0),
+        .height = 1U,
+        .pitch = (uint16_t)(dx1 - dx0),
+    };
+
+    for (uint16_t y = dy0; y < dy1; y++) {
+        int rc = display_write(
+            saver_display,
+            dx0,
+            y,
+            &desc,
+            &saver_packed_line_buf[dx0]);
+
+        if (rc != 0) {
+            lumi_diag_report(
+                'E',
+                "RYQ1 display_write rc=%d y=%u",
+                rc,
+                (unsigned int)y);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void saver_packed_restart_playback(void) {
+    saver_packed_stream_reset(saver_packed_frames_offset);
+    saver_packed_frame_index = 0U;
+    saver_packed_next_frame_at = lv_tick_get();
+    saver_packed_playback_started = true;
+}
+
+static bool saver_packed_decode_next_frame(uint32_t now_ms) {
+    if (saver_media_format != SAVER_FORMAT_RYQ1 ||
+        !saver_packed_header_ready ||
+        !saver_media_valid ||
+        !device_is_ready(saver_display)) {
+        return false;
+    }
+
+    if (!saver_packed_playback_started) {
+        saver_packed_restart_playback();
+    }
+
+    if (saver_packed_frame_index >= saver_packed_frame_count) {
+        saver_packed_stream_reset(saver_packed_frames_offset);
+        saver_packed_frame_index = 0U;
+    }
+
+    uint16_t duration_ms = 0U;
+    uint16_t span_count = 0U;
+
+    if (!saver_packed_read_u16(&duration_ms) ||
+        !saver_packed_read_u16(&span_count)) {
+        return false;
+    }
+
+    for (uint16_t span = 0U; span < span_count; span++) {
+        uint16_t y = 0U;
+        uint16_t x = 0U;
+        uint16_t count = 0U;
+
+        if (!saver_packed_read_u16(&y) ||
+            !saver_packed_read_u16(&x) ||
+            !saver_packed_read_u16(&count) ||
+            !saver_packed_decode_span(y, x, count)) {
+            lumi_diag_report(
+                'E',
+                "RYQ1 decode failed frame=%u span=%u",
+                (unsigned int)saver_packed_frame_index,
+                (unsigned int)span);
+            saver_packed_playback_started = false;
+            return false;
+        }
+    }
+
+    saver_packed_frame_index++;
+    saver_packed_next_frame_at =
+        now_ms + MAX((uint32_t)duration_ms, 1U);
+    return true;
 }
 
 static bool saver_prepare_blend_frames(uint8_t frame_index) {
