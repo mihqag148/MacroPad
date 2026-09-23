@@ -1606,6 +1606,8 @@ static void saver_packed_reset_state(void) {
     saver_packed_color_mode = SAVER_PACKED_MODE_RGB332;
     saver_packed_header_ready = false;
     saver_packed_playback_started = false;
+    saver_packed_cache_pos = 0U;
+    saver_packed_cache_len = 0U;
 }
 
 static bool saver_packed_load_header(
@@ -2763,6 +2765,7 @@ bool lumi_ui_saver_anim_begin(uint8_t frame_count, uint16_t frame_interval_ms) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_valid = false;
     saver_media_format = SAVER_FORMAT_RGB332;
+    saver_packed_reset_state();
     saver_media_frame_count = frame_count;
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
@@ -2963,6 +2966,7 @@ bool lumi_ui_saver_image_begin(size_t total_bytes) {
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     saver_media_valid = false;
     saver_media_format = SAVER_FORMAT_RGB565_STATIC;
+    saver_packed_reset_state();
     saver_media_frame_count = 1U;
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
@@ -3034,6 +3038,7 @@ void lumi_ui_saver_anim_clear(void) {
     saver_media_received_mask = 0U;
     saver_image_received_bytes = 0U;
     saver_media_format = SAVER_FORMAT_RGB332;
+    saver_packed_reset_state();
     memset(saver_media_received_bytes, 0, sizeof(saver_media_received_bytes));
     saver_media_index = 0U;
     saver_prefetch_valid = false;
