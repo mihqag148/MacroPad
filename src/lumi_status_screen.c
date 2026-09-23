@@ -2659,9 +2659,17 @@ static void refresh_screensaver(lv_timer_t *timer) {
         saver_prefetch_next_valid = false;
         saver_static_drawn = false;
         saver_media_epoch_ms = lv_tick_get();
-        draw_custom_saver_frame(0U, 0U);
+
+        if (saver_media_format == SAVER_FORMAT_RYQ1) {
+            saver_packed_restart_playback();
+            (void)saver_packed_decode_next_frame(
+                saver_media_epoch_ms);
+        } else {
+            draw_custom_saver_frame(0U, 0U);
+        }
     } else if (!should_show && screensaver_visible) {
         screensaver_visible = false;
+        saver_packed_playback_started = false;
 
         /* Hand display ownership back to LVGL and force one clean redraw of
          * the normal UI after direct GIF rendering stops.
@@ -2696,6 +2704,19 @@ static void refresh_screensaver(lv_timer_t *timer) {
     }
 
     uint32_t lv_now = lv_tick_get();
+
+    if (saver_media_format == SAVER_FORMAT_RYQ1) {
+        if (!saver_packed_playback_started) {
+            saver_packed_restart_playback();
+            (void)saver_packed_decode_next_frame(lv_now);
+            return;
+        }
+
+        if ((int32_t)(lv_now - saver_packed_next_frame_at) >= 0) {
+            (void)saver_packed_decode_next_frame(lv_now);
+        }
+        return;
+    }
     uint32_t elapsed = (uint32_t)(lv_now - saver_media_epoch_ms);
     uint32_t loop_ms = MAX(saver_media_loop_ms, 1U);
     uint32_t loop_pos = elapsed % loop_ms;
