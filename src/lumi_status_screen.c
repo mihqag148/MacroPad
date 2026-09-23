@@ -1982,27 +1982,38 @@ static int saver_flash_commit_header(void) {
 
     bool static_image =
         saver_media_format == SAVER_FORMAT_RGB565_STATIC;
+    bool packed_animation =
+        saver_media_format == SAVER_FORMAT_RYQ1;
 
     struct saver_flash_header header = {
         .magic = SAVER_FLASH_MAGIC,
         .version = SAVER_FLASH_VERSION,
-        .width = static_image
-            ? LUMI_SAVER_IMAGE_W
-            : LUMI_SAVER_FRAME_W,
-        .height = static_image
-            ? LUMI_SAVER_IMAGE_H
-            : LUMI_SAVER_FRAME_H,
-        .frame_bytes = static_image
-            ? LUMI_SAVER_IMAGE_BYTES
-            : LUMI_SAVER_FRAME_BYTES,
+        .width = packed_animation
+            ? saver_packed_storage_width
+            : (static_image
+                ? LUMI_SAVER_IMAGE_W
+                : LUMI_SAVER_FRAME_W),
+        .height = packed_animation
+            ? saver_packed_storage_height
+            : (static_image
+                ? LUMI_SAVER_IMAGE_H
+                : LUMI_SAVER_FRAME_H),
+        .frame_bytes = packed_animation
+            ? 0U
+            : (static_image
+                ? LUMI_SAVER_IMAGE_BYTES
+                : LUMI_SAVER_FRAME_BYTES),
         .frame_count = saver_media_frame_count,
         .format = saver_media_format,
         .interval_ms = static_image
             ? 1000U
             : saver_media_interval_ms,
-        .data_size = static_image
-            ? LUMI_SAVER_IMAGE_BYTES
-            : (uint32_t)saver_media_frame_count * LUMI_SAVER_FRAME_BYTES,
+        .data_size = packed_animation
+            ? saver_packed_data_size
+            : (static_image
+                ? LUMI_SAVER_IMAGE_BYTES
+                : (uint32_t)saver_media_frame_count *
+                  LUMI_SAVER_FRAME_BYTES),
     };
 
     int rc = flash_area_write(
@@ -2015,7 +2026,7 @@ static int saver_flash_commit_header(void) {
         return rc;
     }
 
-    if (static_image) {
+    if (static_image || packed_animation) {
         return 0;
     }
 
