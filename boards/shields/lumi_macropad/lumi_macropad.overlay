@@ -176,7 +176,7 @@ row-gpios
     };
 };
 
-// Four WS2812B LEDs on P0.06. The SPI peripheral only generates the
+// Six WS2812B LEDs on P0.06. The SPI peripheral only generates the
 // WS2812 data waveform; there is no separate SCK wire to the LEDs.
 &spi3 {
     compatible = "nordic,nrf-spim";
@@ -189,7 +189,7 @@ row-gpios
         compatible = "worldsemi,ws2812-spi";
         reg = <0>;
         spi-max-frequency = <4000000>;
-        chain-length = <4>;
+        chain-length = <6>;
         spi-one-frame = <0x70>;
         spi-zero-frame = <0x40>;
         color-mapping = <LED_COLOR_ID_GREEN
