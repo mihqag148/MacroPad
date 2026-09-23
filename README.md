@@ -43,8 +43,8 @@ Firmware và cấu hình phần cứng RYNOR ONE cho nice!nano v2 / nRF52840.
 
 - MOSI P0.17, SCLK P0.20, CS P0.22, DC P0.24, RST P1.00; SPIM3 32 MHz.
 - Panel vật lý/native 172×320; x-offset 34, y-offset 0. UI logic vẫn 320×172.
-- MADCTL (`mdac`) = `0x00`: không dùng MV. Custom async flush xoay 90° bằng
-  phần mềm và map CASET/RASET về thứ tự quét native để tránh cross-scanning.
+- MADCTL (`mdac`) = `0xA0` để dùng landscape đúng chiều thực tế trên RYNOR ONE
+  sau khi xoay màn 180° so với bản trước.
 - RGB565, `colmod=0x05`, RAMCTRL `[00 F0]`, `CONFIG_LV_COLOR_16_SWAP=y`.
   Đảo byte 16-bit cho SPI là việc khác với thứ tự kênh BGR; không đảo R/B lần nữa.
 - Giữ timing PORCTRL/FRCTRL2 baseline của panel/driver (khoảng 60 Hz), không ép
