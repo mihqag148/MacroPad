@@ -12,6 +12,7 @@
 #include <drivers/behavior.h>
 #include <zmk/behavior.h>
 #include <zmk/event_manager.h>
+#include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
 
@@ -428,6 +429,22 @@ static int lumi_rgb_position_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(lumi_rgb_position, lumi_rgb_position_listener);
 ZMK_SUBSCRIPTION(lumi_rgb_position, zmk_position_state_changed);
+
+/* ZMK layer/profile changes are the RGB source of truth. Refresh immediately
+ * instead of waiting for the next animation frame.
+ */
+static int lumi_rgb_layer_listener(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+
+    if (auto_by_layer) {
+        lumi_rgb_refresh_now();
+    }
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(lumi_rgb_layer, lumi_rgb_layer_listener);
+ZMK_SUBSCRIPTION(lumi_rgb_layer, zmk_layer_state_changed);
 
 static int lumi_rgb_init(void) {
     if (!device_is_ready(strip)) {
