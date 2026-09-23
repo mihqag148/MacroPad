@@ -305,3 +305,14 @@ switching, End, Page Down, Ctrl+Shift+Z redo, Ctrl+Z undo, Ctrl+C copy and Ctrl+
 Each keycode icon is only applied when the live ZMK binding matches. K1 checks the
 actual Sticky Layer behavior name, so future ZMK Studio remaps fall back instead of
 leaving a stale icon.
+
+
+### ZMK Studio keymap persistence v1.14.18
+
+- Runtime keymap edits made in ZMK Studio are checked once per second.
+- If Studio reports unsaved bindings, RYNOR ONE writes them to the ZMK/NVS
+  settings partition automatically, so a power cut or Bluetooth reconnect does
+  not revert the edited keymap.
+- The normal ZMK Studio Save button remains supported; the autosave path is a
+  firmware-side safety net.
+- ZMK settings/keymap storage is explicitly enabled in the RYNOR ONE config.
