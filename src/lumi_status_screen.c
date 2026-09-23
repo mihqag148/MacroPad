@@ -1075,13 +1075,11 @@ static int position_listener(const zmk_event_t *eh) {
     if (event && event->state) {
         lumi_ui_note_key_activity();
 
-        /* Encoder push / non-keycode layer behavior has no keycode event.
-         * Regular keys are classified below so media controls can stay on
-         * the Now Playing screen.
+        /* Any physical button press returns from Now Playing to the main
+         * key grid immediately. Encoder rotation is a sensor event rather
+         * than a position event, so volume rotation can keep Media visible.
          */
-        if (event->position >= KEY_COUNT) {
-            lumi_now_playing_user_activity();
-        }
+        lumi_now_playing_user_activity();
     }
 
     if (event && event->position < KEY_COUNT) {

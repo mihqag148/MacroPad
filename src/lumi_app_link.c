@@ -482,7 +482,7 @@ static void handle_cfg(char *save) {
         char *profile_s = strtok_r(NULL, "|", &save);
         if (profile_s) {
             int profile = atoi(profile_s);
-            if (profile >= 0 && profile < 5) {
+            if (profile >= 0 && profile < 8) {
                 zmk_keymap_layer_id_t layer_id =
                     zmk_keymap_layer_index_to_id(
                         (zmk_keymap_layer_index_t)profile);

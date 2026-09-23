@@ -369,7 +369,9 @@ void lumi_now_playing_update(const char *source,
     snprintf(state.artist, sizeof(state.artist), "%s", artist ? artist : "");
 
     if (track_changed) {
-        state.suppress_until_ms = 0U;
+        /* Keep an active user-requested Main-menu suppression in place even
+         * while Next/Previous changes the track.
+         */
         state.title_bitmap_valid = false;
         state.artist_bitmap_valid = false;
         state.artwork_valid = false;
@@ -515,17 +517,12 @@ void lumi_now_playing_set_artwork(const uint8_t *data, size_t len) {
 void lumi_now_playing_user_activity(void) {
     k_mutex_lock(&state_lock, K_FOREVER);
 
-    /* Keep the Now Playing page stable for the whole active media session.
-     * Next/Previous can briefly report PAUSED while Windows swaps tracks, and
-     * the encoder/key event arrives at exactly that moment. Hiding on that
-     * transient state caused a visible Main -> Music flash on every track
-     * change. Only suppress the page when there is no active media session.
+    /* A physical button means the user wants the key grid. Hide Now Playing
+     * immediately and keep it suppressed for a short window even if the app
+     * continues to refresh metadata or a media key changes tracks.
      */
-    if (state.active) {
-        state.suppress_until_ms = 0U;
-    } else {
-        state.suppress_until_ms = k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
-    }
+    state.suppress_until_ms =
+        k_uptime_get_32() + USER_ACTIVITY_HIDE_MS;
 
     k_mutex_unlock(&state_lock);
 
