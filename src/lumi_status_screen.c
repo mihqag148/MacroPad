@@ -668,10 +668,68 @@ struct page_state {
 #define LUMI_ICON_PAGE_UP    LV_SYMBOL_LIST LV_SYMBOL_UP
 #define LUMI_ICON_PAGE_DOWN  LV_SYMBOL_LIST LV_SYMBOL_DOWN
 
+/*
+ * ZMK Studio can restore a &kp parameter from settings in either the full
+ * ZMK HID encoding (usage page + usage ID) or an equivalent raw keyboard
+ * usage value. Compare navigation keys by normalized HID usage instead of by
+ * the complete 32-bit macro value so HOME/END/PAGE UP/PAGE DOWN never fall
+ * through to the generic keyboard icon after a Studio remap/reboot.
+ */
+static bool describe_navigation_key(uint32_t code, struct key_caption *out) {
+    uint32_t stripped = STRIP_MODS(code);
+    uint16_t page = ZMK_HID_USAGE_PAGE(stripped);
+
+    if (page == 0U) {
+        page = HID_USAGE_KEY;
+    }
+    if (page != HID_USAGE_KEY) {
+        return false;
+    }
+
+    switch (ZMK_HID_USAGE_ID(stripped)) {
+    case HID_USAGE_KEY_KEYBOARD_HOME:
+        snprintf(out->text, sizeof(out->text), "HOME");
+        out->icon = LUMI_ICON_HOME;
+        out->color = 0xFF9F0A;
+        return true;
+    case HID_USAGE_KEY_KEYBOARD_END:
+        snprintf(out->text, sizeof(out->text), "END");
+        out->icon = LUMI_ICON_END;
+        out->color = 0xFF9F0A;
+        return true;
+    case HID_USAGE_KEY_KEYBOARD_PAGEUP:
+        snprintf(out->text, sizeof(out->text), "PAGE UP");
+        out->icon = LUMI_ICON_PAGE_UP;
+        out->color = 0xBF5AF2;
+        return true;
+    case HID_USAGE_KEY_KEYBOARD_PAGEDOWN:
+        snprintf(out->text, sizeof(out->text), "PAGE DOWN");
+        out->icon = LUMI_ICON_PAGE_DOWN;
+        out->color = 0xBF5AF2;
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_key_press_behavior(const struct zmk_behavior_binding *binding) {
+    if (!binding || !binding->behavior_dev) {
+        return false;
+    }
+
+    const char *kp_name = DEVICE_DT_NAME(DT_NODELABEL(kp));
+    return strcmp(binding->behavior_dev, kp_name) == 0 ||
+           strstr(binding->behavior_dev, "key_press") != NULL;
+}
+
 static void describe_key(uint32_t code, struct key_caption *out) {
     const char *text = NULL;
     out->icon = LV_SYMBOL_KEYBOARD;
     out->color = 0xFFFFFF;
+
+    if (describe_navigation_key(code, out)) {
+        return;
+    }
 
     switch (code) {
     case LC(C): text = "COPY"; out->icon = LV_SYMBOL_COPY; out->color = 0x64D2FF; break;
@@ -920,9 +978,16 @@ static struct page_state read_page(const zmk_event_t *eh) {
         key->color = 0xFFFFFF;
         if (!binding || !binding->behavior_dev) {
             snprintf(key->text, sizeof(key->text), "--");
-        } else if (strcmp(binding->behavior_dev, DEVICE_DT_NAME(DT_NODELABEL(kp))) == 0) {
+        } else if (is_key_press_behavior(binding)) {
             describe_key(binding->param1, key);
             describe_profile_key(index, i, binding->param1, key);
+        } else if (describe_navigation_key(binding->param1, key)) {
+            /*
+             * Last-resort compatibility for key-press bindings restored from
+             * Studio with a behavior name that differs from the compiled DT
+             * device name. Navigation HID usages are unambiguous here and
+             * should never render as the generic keyboard glyph.
+             */
         } else if (!describe_profile_behavior(index, i, binding, key)) {
             /* Never keep a stale semantic label for a remapped behavior. */
             snprintf(key->text, sizeof(key->text), "%.8s %u",
