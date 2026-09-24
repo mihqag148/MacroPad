@@ -137,3 +137,47 @@ int lumi_panel_set_sleep(bool sleeping) {
     lumi_diag_report('I', "Panel display %s", sleeping ? "OFF" : "ON");
     return 0;
 }
+
+
+int lumi_panel_enter_deep_sleep(void) {
+    if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
+        lumi_diag_report('E', "Panel deep sleep: SPI/DC not ready");
+        return -ENODEV;
+    }
+
+    /* Normal soft sleep intentionally keeps the ST7789 awake for a fast
+     * DISPON wake. True deep sleep does not need that tradeoff because wake
+     * is a cold boot, so fully sleep the controller before VCC is removed.
+     */
+    (void)lumi_panel_set_backlight(false);
+
+    uint8_t command = 0x28; /* DISPOFF */
+    struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
+    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
+
+    int err = gpio_pin_set_dt(&dc, 1);
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+    if (err) {
+        lumi_diag_report('E', "Panel deep DISPOFF rc=%d", err);
+        return err;
+    }
+
+    k_msleep(5);
+
+    command = 0x10; /* SLPIN */
+    err = gpio_pin_set_dt(&dc, 1);
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+    if (err) {
+        lumi_diag_report('E', "Panel SLPIN rc=%d", err);
+        return err;
+    }
+
+    /* ST7789 requires the sleep-in transition to settle before power removal. */
+    k_msleep(120);
+    lumi_diag_report('I', "Panel entered deep sleep");
+    return 0;
+}
