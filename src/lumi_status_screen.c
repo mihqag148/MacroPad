@@ -9,7 +9,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/sys/poweroff.h>
 #include <lvgl.h>
 #include <dt-bindings/zmk/keys.h>
 #include <zmk/activity.h>
@@ -27,8 +26,6 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/keys.h>
 #include <zmk/keymap.h>
-#include <zmk/pm.h>
-#include <zmk/usb.h>
 #include "lumi_panel.h"
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
@@ -199,9 +196,7 @@ static uint32_t rgb_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
 static uint32_t sleep_delay_ms = 120000U;
 static uint32_t rgb_idle_delay_ms = 60000U;
-static uint32_t deep_sleep_delay_ms = 0U;
 static bool rgb_idle_suspended;
-static bool deep_sleep_pending;
 static bool saver_enabled = true;
 static uint8_t saver_style = LUMI_SAVER_OFF;
 static uint32_t wallpaper_color_a = 0x000000;
@@ -3108,17 +3103,6 @@ static void lumi_panel_sleep_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_sleep_work, lumi_panel_sleep_work_handler);
 
-static int lumi_panel_deep_sleep_rc;
-
-static void lumi_panel_deep_sleep_work_handler(struct k_work *work) {
-    ARG_UNUSED(work);
-    lumi_ui_set_eco_timers(true);
-    (void)k_work_cancel_delayable(&lumi_panel_backlight_on_work);
-    lumi_panel_deep_sleep_rc = lumi_panel_enter_deep_sleep();
-}
-
-K_WORK_DEFINE(lumi_panel_deep_sleep_work, lumi_panel_deep_sleep_work_handler);
-
 static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
@@ -3140,12 +3124,10 @@ static void lumi_ui_note_activity_internal(bool physical_key) {
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     ui_last_activity_ms = now;
-    deep_sleep_pending = false;
 
-    /* RGB uses its own idle timeout, but it shares the exact same meaningful
-     * wake sources as the display: physical input, Auto Profile changes,
-     * media playback start, and explicit manual wake. Background telemetry,
-     * PC Monitor and CFG traffic never call this path.
+    /* RGB uses its own idle timeout, but it shares the same explicit wake
+     * sources as the display: physical input, Auto Profile changes, and
+     * manual wake. Media metadata/playback updates never wake the device.
      */
     rgb_last_activity_ms = now;
     rgb_idle_suspended = false;
@@ -3207,19 +3189,14 @@ void lumi_ui_show_screensaver_now(void) {
 }
 
 void lumi_ui_set_media_active(bool active) {
-    bool changed;
-
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-    changed = media_active != active;
     media_active = active;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    /* Starting/opening music wakes the screen once. Repeated telemetry and
-     * pause/stop events never wake it or keep resetting the idle timer.
+    /* Media is display content, not user activity. Track changes, playback
+     * transitions, artwork and metadata must never reset the sleep timer or
+     * wake a device that has already entered soft sleep.
      */
-    if (changed && active) {
-        lumi_ui_note_activity();
-    }
 }
 
 void lumi_ui_set_wallpaper(uint8_t r1, uint8_t g1, uint8_t b1,
@@ -3289,13 +3266,6 @@ void lumi_ui_set_rgb_idle_timeout(uint32_t seconds) {
     }
 }
 
-void lumi_ui_set_deep_sleep_timeout(uint32_t seconds) {
-    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-    deep_sleep_delay_ms = seconds * 1000U;
-    deep_sleep_pending = false;
-    k_mutex_unlock(&lumi_ui_config_lock);
-}
-
 void lumi_ui_sleep_now(void) {
     bool already_sleeping;
 
@@ -3325,35 +3295,23 @@ void lumi_ui_wake_now(void) {
 static void lumi_sleep_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
 
-static bool lumi_usb_power_present(void) {
-#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-    return zmk_usb_is_powered();
-#else
-    return false;
-#endif
-}
-
 static void lumi_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     uint32_t soft_timeout;
     uint32_t rgb_timeout;
-    uint32_t deep_timeout;
     uint32_t last_activity;
     uint32_t last_rgb_activity;
     bool already_sleeping;
     bool rgb_timed_out;
-    bool deep_pending;
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     soft_timeout = sleep_delay_ms;
     rgb_timeout = rgb_idle_delay_ms;
-    deep_timeout = deep_sleep_delay_ms;
     last_activity = ui_last_activity_ms;
     last_rgb_activity = rgb_last_activity_ms;
     already_sleeping = soft_sleep;
     rgb_timed_out = rgb_idle_suspended;
-    deep_pending = deep_sleep_pending;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     uint32_t now = k_uptime_get_32();
@@ -3392,57 +3350,6 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         lumi_rgb_set_suspended(true);
         k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
         already_sleeping = true;
-    }
-
-    if (deep_timeout > 0U &&
-        !deep_pending &&
-        !lumi_usb_power_present() &&
-        (uint32_t)(now - last_activity) >= deep_timeout) {
-
-        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-        deep_sleep_pending = true;
-        soft_sleep = true;
-        k_mutex_unlock(&lumi_ui_config_lock);
-
-        lumi_diag_report(
-            'I',
-            "Entering deep sleep timeout=%us",
-            (unsigned int)(deep_timeout / 1000U));
-
-        lumi_rgb_set_suspended(true);
-
-        /* Serialize the final ST7789 shutdown with LVGL/display work. Normal
-         * soft sleep may already have queued DISPOFF; this dedicated work then
-         * sends SLPIN and waits for the controller to settle before System OFF.
-         */
-        struct k_work_sync deep_panel_sync;
-        lumi_panel_deep_sleep_rc = 0;
-        k_work_submit_to_queue(
-            zmk_display_work_q(),
-            &lumi_panel_deep_sleep_work);
-        (void)k_work_flush(
-            &lumi_panel_deep_sleep_work,
-            &deep_panel_sync);
-
-        if (lumi_panel_deep_sleep_rc < 0) {
-            lumi_diag_report(
-                'E',
-                "Deep sleep panel shutdown failed rc=%d",
-                lumi_panel_deep_sleep_rc);
-        }
-
-        /* ZMK PM now suspends every device. With ZMK_EXT_POWER enabled on
-         * nice!nano v2 this also disables the VCC external-power rail before
-         * nRF52840 System OFF.
-         */
-        int rc = zmk_pm_soft_off();
-        if (rc < 0) {
-            lumi_diag_report('E', "Deep sleep soft-off failed rc=%d", rc);
-
-            k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-            deep_sleep_pending = false;
-            k_mutex_unlock(&lumi_ui_config_lock);
-        }
     }
 
     k_work_reschedule(

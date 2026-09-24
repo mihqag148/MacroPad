@@ -60,44 +60,6 @@
         status = "okay";
     };
 
-    /* Deep-sleep wake support for encoder rotation.
-     * These GPIO-key helpers stay suspended during normal operation, so they
-     * do not compete with the EC11 driver. During ZMK soft-off, either phase
-     * going LOW can wake the nRF52840. Using both A and B makes both rotation
-     * directions reliable.
-     */
-    encoder_wake_keys: encoder_wake_keys {
-        compatible = "gpio-keys";
-
-        encoder_wake_a_key: encoder_wake_a_key {
-            gpios = <&gpio1 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        };
-
-        encoder_wake_b_key: encoder_wake_b_key {
-            gpios = <&gpio1 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        };
-    };
-
-    encoder_wake_a: encoder_wake_a {
-        compatible = "zmk,gpio-key-wakeup-trigger";
-        trigger = <&encoder_wake_a_key>;
-        wakeup-source;
-    };
-
-    encoder_wake_b: encoder_wake_b {
-        compatible = "zmk,gpio-key-wakeup-trigger";
-        trigger = <&encoder_wake_b_key>;
-        wakeup-source;
-    };
-
-    soft_off_wakers: soft_off_wakers {
-        compatible = "zmk,soft-off-wakeup-sources";
-        /* kscan0 keeps all matrix keys / encoder push as wake sources.
-         * encoder_wake_a/b additionally allow turning the knob to wake.
-         */
-        wakeup-sources = <&kscan0 &encoder_wake_a &encoder_wake_b>;
-    };
-
     sensors: sensors {
         compatible = "zmk,keymap-sensors";
         sensors = <&encoder0>;
