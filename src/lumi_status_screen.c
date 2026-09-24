@@ -3108,6 +3108,17 @@ static void lumi_panel_sleep_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_sleep_work, lumi_panel_sleep_work_handler);
 
+static int lumi_panel_deep_sleep_rc;
+
+static void lumi_panel_deep_sleep_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    lumi_ui_set_eco_timers(true);
+    (void)k_work_cancel_delayable(&lumi_panel_backlight_on_work);
+    lumi_panel_deep_sleep_rc = lumi_panel_enter_deep_sleep();
+}
+
+K_WORK_DEFINE(lumi_panel_deep_sleep_work, lumi_panel_deep_sleep_work_handler);
+
 static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
@@ -3399,10 +3410,31 @@ static void lumi_sleep_work_handler(struct k_work *work) {
             (unsigned int)(deep_timeout / 1000U));
 
         lumi_rgb_set_suspended(true);
-        (void)lumi_panel_set_backlight(false);
-        k_work_submit_to_queue(zmk_display_work_q(), &lumi_panel_sleep_work);
-        k_sleep(K_MSEC(120));
 
+        /* Serialize the final ST7789 shutdown with LVGL/display work. Normal
+         * soft sleep may already have queued DISPOFF; this dedicated work then
+         * sends SLPIN and waits for the controller to settle before System OFF.
+         */
+        struct k_work_sync deep_panel_sync;
+        lumi_panel_deep_sleep_rc = 0;
+        k_work_submit_to_queue(
+            zmk_display_work_q(),
+            &lumi_panel_deep_sleep_work);
+        (void)k_work_flush(
+            &lumi_panel_deep_sleep_work,
+            &deep_panel_sync);
+
+        if (lumi_panel_deep_sleep_rc < 0) {
+            lumi_diag_report(
+                'E',
+                "Deep sleep panel shutdown failed rc=%d",
+                lumi_panel_deep_sleep_rc);
+        }
+
+        /* ZMK PM now suspends every device. With ZMK_EXT_POWER enabled on
+         * nice!nano v2 this also disables the VCC external-power rail before
+         * nRF52840 System OFF.
+         */
         int rc = zmk_pm_soft_off();
         if (rc < 0) {
             lumi_diag_report('E', "Deep sleep soft-off failed rc=%d", rc);
