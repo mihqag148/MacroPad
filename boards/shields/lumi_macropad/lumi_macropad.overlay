@@ -45,8 +45,12 @@ row-gpios
 
     encoder0: encoder0 {
         compatible = "alps,ec11";
-        a-gpios = <&gpio1 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
-        b-gpios = <&gpio1 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        /* Physical EC11 A/B are wired opposite to the original mapping.
+         * Swap the firmware phases so clockwise/counter-clockwise actions
+         * match the expected direction without rewiring the encoder.
+         */
+        a-gpios = <&gpio1 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        b-gpios = <&gpio1 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
         steps = <80>;
         status = "okay";
     };
@@ -61,11 +65,11 @@ row-gpios
         compatible = "gpio-keys";
 
         encoder_wake_a_key: encoder_wake_a_key {
-            gpios = <&gpio1 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            gpios = <&gpio1 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         };
 
         encoder_wake_b_key: encoder_wake_b_key {
-            gpios = <&gpio1 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            gpios = <&gpio1 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         };
     };
 
