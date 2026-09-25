@@ -9,8 +9,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/poweroff.h>
 #include <lvgl.h>
 #include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/bt.h>
+#include <dt-bindings/zmk/outputs.h>
 #include <zmk/activity.h>
 #include <zmk/behavior.h>
 #include <zmk/ble.h>
@@ -26,6 +29,8 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/keys.h>
 #include <zmk/keymap.h>
+#include <zmk/pm.h>
+#include <zmk/usb.h>
 #include "lumi_panel.h"
 #include "lumi_now_playing.h"
 #include "lumi_rgb.h"
@@ -195,6 +200,7 @@ static uint32_t ui_last_activity_ms;
 static uint32_t rgb_last_activity_ms;
 static uint32_t saver_delay_ms = 60000U;
 static uint32_t sleep_delay_ms = 120000U;
+static uint32_t deep_sleep_delay_ms = 900000U;
 static uint32_t rgb_idle_delay_ms = 60000U;
 static bool rgb_idle_suspended;
 static bool saver_enabled = true;
@@ -958,8 +964,7 @@ static bool describe_profile_behavior(
     const struct zmk_behavior_binding *binding,
     struct key_caption *out
 ) {
-    if (layer != 0U || position != 0U ||
-        !binding || !binding->behavior_dev) {
+    if (!binding || !binding->behavior_dev) {
         return false;
     }
 
@@ -967,13 +972,81 @@ static bool describe_profile_behavior(
      * instead of hard-coding K1 visually so a future Studio remap cannot leave
      * a misleading layer icon behind.
      */
-    if (strstr(binding->behavior_dev, "sticky_layer") != NULL) {
+    if (layer == 0U && position == 0U &&
+        strstr(binding->behavior_dev, "sticky_layer") != NULL) {
         set_profile_key_visual(
             out,
             "STICKY LAYER",
             LV_SYMBOL_LOOP,
             0xBF5AF2);
         return true;
+    }
+
+    /* Profile 10 is the connection toolbox. Give ZMK's Bluetooth/output
+     * behaviors readable labels instead of exposing internal device names.
+     */
+    if (strstr(binding->behavior_dev, "outputs") != NULL) {
+        if (binding->param1 == OUT_BLE) {
+            set_profile_key_visual(
+                out,
+                "BLE OUTPUT",
+                LV_SYMBOL_WIFI,
+                0x64D2FF);
+            return true;
+        }
+
+        if (binding->param1 == OUT_USB) {
+            set_profile_key_visual(
+                out,
+                "USB OUTPUT",
+                LV_SYMBOL_USB,
+                0x30D158);
+            return true;
+        }
+    }
+
+    if (strstr(binding->behavior_dev, "bluetooth") != NULL) {
+        switch (binding->param1) {
+        case BT_SEL_CMD:
+            snprintf(
+                out->text,
+                sizeof(out->text),
+                "BLE %u",
+                (unsigned int)binding->param2 + 1U);
+            out->icon = LV_SYMBOL_WIFI;
+            out->color = 0x64D2FF;
+            return true;
+        case BT_CLR_CMD:
+            set_profile_key_visual(
+                out,
+                "RESET BLE",
+                LV_SYMBOL_TRASH,
+                0xFF9F0A);
+            return true;
+        case BT_CLR_ALL_CMD:
+            set_profile_key_visual(
+                out,
+                "RESET ALL BLE",
+                LV_SYMBOL_TRASH,
+                0xFF453A);
+            return true;
+        case BT_NXT_CMD:
+            set_profile_key_visual(
+                out,
+                "BLE NEXT",
+                LV_SYMBOL_NEXT,
+                0x5AC8FA);
+            return true;
+        case BT_PRV_CMD:
+            set_profile_key_visual(
+                out,
+                "BLE PREV",
+                LV_SYMBOL_PREV,
+                0x5AC8FA);
+            return true;
+        default:
+            break;
+        }
     }
 
     return false;
@@ -3249,6 +3322,17 @@ void lumi_ui_set_sleep_timeout(uint32_t seconds) {
     k_mutex_unlock(&lumi_ui_config_lock);
 }
 
+void lumi_ui_set_deep_sleep_timeout(uint32_t seconds) {
+    /* Zero means Never. Limit the configurable range to seven days so the
+     * seconds-to-milliseconds conversion cannot overflow uint32_t.
+     */
+    uint32_t clamped = MIN(seconds, 604800U);
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    deep_sleep_delay_ms = clamped * 1000U;
+    k_mutex_unlock(&lumi_ui_config_lock);
+}
+
 void lumi_ui_set_rgb_idle_timeout(uint32_t seconds) {
     bool sleeping;
 
@@ -3299,6 +3383,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     uint32_t soft_timeout;
+    uint32_t deep_timeout;
     uint32_t rgb_timeout;
     uint32_t last_activity;
     uint32_t last_rgb_activity;
@@ -3307,6 +3392,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     soft_timeout = sleep_delay_ms;
+    deep_timeout = deep_sleep_delay_ms;
     rgb_timeout = rgb_idle_delay_ms;
     last_activity = ui_last_activity_ms;
     last_rgb_activity = rgb_last_activity_ms;
@@ -3315,6 +3401,50 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     k_mutex_unlock(&lumi_ui_config_lock);
 
     uint32_t now = k_uptime_get_32();
+    uint32_t idle_ms = (uint32_t)(now - last_activity);
+
+    /* Deep sleep is battery-first and intentionally disconnects BLE. Never
+     * power off while USB is supplying the keyboard. If the panel has not
+     * entered soft sleep yet, blank it first and power off on the next pass so
+     * the ST7789 and WS2812 shutdown can finish cleanly.
+     */
+    if (deep_timeout > 0U &&
+        idle_ms >= deep_timeout &&
+        !zmk_usb_is_powered()) {
+
+        if (!already_sleeping) {
+            k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+            soft_sleep = true;
+            k_mutex_unlock(&lumi_ui_config_lock);
+
+            lumi_rgb_set_suspended(true);
+            k_work_submit_to_queue(
+                zmk_display_work_q(),
+                &lumi_panel_sleep_work);
+            k_work_reschedule(
+                &lumi_sleep_work,
+                K_MSEC(250));
+            return;
+        }
+
+        lumi_diag_report(
+            'I',
+            "Entering deep sleep timeout=%us",
+            (unsigned int)(deep_timeout / 1000U));
+
+        lumi_rgb_set_suspended(true);
+
+        int rc = zmk_pm_suspend_devices();
+        if (rc == 0) {
+            sys_poweroff();
+        }
+
+        lumi_diag_report(
+            'E',
+            "Deep sleep suspend failed rc=%d",
+            rc);
+        zmk_pm_resume_devices();
+    }
 
     if (rgb_timeout > 0U &&
         !rgb_timed_out &&
@@ -3337,7 +3467,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
      */
     if (soft_timeout > 0U &&
         !already_sleeping &&
-        (uint32_t)(now - last_activity) >= soft_timeout) {
+        idle_ms >= soft_timeout) {
 
         k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
         soft_sleep = true;
