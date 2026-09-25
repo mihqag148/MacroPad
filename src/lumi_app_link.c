@@ -472,11 +472,18 @@ static void handle_cfg(char *save) {
             lumi_diag_report('I', "RGB idle timeout=%us", (unsigned int)value);
             lumi_ui_set_rgb_idle_timeout(value);
         }
+    } else if (strcmp(cmd, "DEEPSLEEP") == 0) {
+        char *seconds = strtok_r(NULL, "|", &save);
+        if (seconds) {
+            uint32_t value = (uint32_t)strtoul(seconds, NULL, 10);
+            lumi_diag_report('I', "Deep sleep timeout=%us", (unsigned int)value);
+            lumi_ui_set_deep_sleep_timeout(value);
+        }
     } else if (strcmp(cmd, "PROFILE") == 0) {
         char *profile_s = strtok_r(NULL, "|", &save);
         if (profile_s) {
             int profile = atoi(profile_s);
-            if (profile >= 0 && profile < 8) {
+            if (profile >= 0 && profile < 10) {
                 zmk_keymap_layer_id_t layer_id =
                     zmk_keymap_layer_index_to_id(
                         (zmk_keymap_layer_index_t)profile);
