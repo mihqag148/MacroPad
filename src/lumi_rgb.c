@@ -33,7 +33,7 @@ LOG_MODULE_REGISTER(lumi_rgb, CONFIG_ZMK_LOG_LEVEL);
 #define MIN_BRIGHTNESS 13     /* ~5% */
 #define MAX_BRIGHTNESS 128    /* ~50% */
 #define BRIGHTNESS_STEP 13    /* ~5% */
-#define RGB_PROFILE_COUNT 8
+#define RGB_PROFILE_COUNT 10
 
 enum lumi_rgb_command {
     LUMI_RGB_TOGGLE = 0,
@@ -74,6 +74,8 @@ static uint8_t profile_effect[RGB_PROFILE_COUNT] = {
     LUMI_RGB_EFFECT_REACTIVE,         /* P6 DELTA FORCE */
     LUMI_RGB_EFFECT_SOLID,            /* P7 WUWA */
     LUMI_RGB_EFFECT_SOLID,            /* P8 PC MONITOR */
+    LUMI_RGB_EFFECT_SOLID,            /* P9 RESERVED */
+    LUMI_RGB_EFFECT_SOLID,            /* P10 CONNECTION */
 };
 static struct led_rgb profile_color[RGB_PROFILE_COUNT] = {
     {.r = 255, .g = 120, .b = 0},
@@ -84,6 +86,8 @@ static struct led_rgb profile_color[RGB_PROFILE_COUNT] = {
     {.r = 80, .g = 255, .b = 100},
     {.r = 155, .g = 95, .b = 255},
     {.r = 230, .g = 230, .b = 230},
+    {.r = 120, .g = 120, .b = 120},
+    {.r = 0, .g = 170, .b = 255},
 };
 
 static struct led_rgb scale_rgb(struct led_rgb color, uint8_t scale) {
