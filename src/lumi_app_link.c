@@ -31,8 +31,9 @@ LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
 #define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
-#define LUMIPAD_HELLO_BASE "LUMIPAD|4|FW=" LUMI_FIRMWARE_VERSION
+#define LUMIPAD_HELLO_BASE "LUMIPAD|5|FW=" LUMI_FIRMWARE_VERSION
 #define KEYMAP_AUTOSAVE_INTERVAL_MS 1000
+#define LUMI_PROFILE_COUNT 10
 
 #define LUMI_SERVICE_UUID     BT_UUID_128_ENCODE(0xD8A90001, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
 #define LUMI_CHAR_UUID     BT_UUID_128_ENCODE(0xD8A90002, 0x6B5A, 0x4C3B, 0x9F2A, 0x7C4E4C554D49)
@@ -197,7 +198,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|4|MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST";
+        "CAPS|5|MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST";
 
     if (from_usb) {
         write_text_usb(response);
@@ -483,7 +484,7 @@ static void handle_cfg(char *save) {
         char *profile_s = strtok_r(NULL, "|", &save);
         if (profile_s) {
             int profile = atoi(profile_s);
-            if (profile >= 0 && profile < 10) {
+            if (profile >= 0 && profile < LUMI_PROFILE_COUNT) {
                 zmk_keymap_layer_id_t layer_id =
                     zmk_keymap_layer_index_to_id(
                         (zmk_keymap_layer_index_t)profile);
@@ -1242,6 +1243,41 @@ static void handle_profile_state(bool from_usb) {
     }
 }
 
+static void handle_profile_info(char *save, bool from_usb) {
+    char *index_s = strtok_r(NULL, "|", &save);
+    if (!index_s) {
+        return;
+    }
+
+    int requested = atoi(index_s);
+    if (requested < 0 || requested >= LUMI_PROFILE_COUNT) {
+        return;
+    }
+
+    zmk_keymap_layer_id_t layer_id =
+        zmk_keymap_layer_index_to_id(
+            (zmk_keymap_layer_index_t)requested);
+    const char *name =
+        layer_id == ZMK_KEYMAP_LAYER_ID_INVAL
+            ? NULL
+            : zmk_keymap_layer_name(layer_id);
+
+    char response[64];
+    snprintf(
+        response,
+        sizeof(response),
+        "PROFILEINFO|%d|%s",
+        requested,
+        (name && name[0]) ? name : "PROFILE");
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_saver_state(bool from_usb) {
     const char *response =
         lumi_ui_saver_anim_is_valid()
@@ -1264,7 +1300,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST\r\n");
+                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -1278,6 +1314,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_battery(from_usb);
     } else if (strcmp(root, "PROFILE") == 0) {
         handle_profile_state(from_usb);
+    } else if (strcmp(root, "PROFILEINFO") == 0) {
+        handle_profile_info(save, from_usb);
     } else if (strcmp(root, "PCCFG") == 0) {
         handle_pc_config(save);
     } else if (strcmp(root, "PCMON") == 0) {
