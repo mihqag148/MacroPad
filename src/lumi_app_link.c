@@ -1501,6 +1501,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         strncmp(lumi_status, "PANEL|", 6) != 0 &&
         strncmp(lumi_status, "BAT|", 4) != 0 &&
         strncmp(lumi_status, "PROFILE|", 8) != 0 &&
+        strncmp(lumi_status, "PROFILEINFO|", 12) != 0 &&
         strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
         strncmp(lumi_status, "CAPS|", 5) != 0 &&
         strncmp(lumi_status, "ACTION|", 7) != 0 &&
@@ -1519,6 +1520,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         strncmp(lumi_status, "PANEL|", 6) == 0 ||
         strncmp(lumi_status, "BAT|", 4) == 0 ||
         strncmp(lumi_status, "PROFILE|", 8) == 0 ||
+        strncmp(lumi_status, "PROFILEINFO|", 12) == 0 ||
         strncmp(lumi_status, "SAVERSTATE|", 11) == 0 ||
         strncmp(lumi_status, "CAPS|", 5) == 0 ||
         strncmp(lumi_status, "ACTION|", 7) == 0) {
