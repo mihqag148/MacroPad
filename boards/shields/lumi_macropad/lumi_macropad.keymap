@@ -117,12 +117,12 @@
                 &none &none &none &none
                 &none &none &none &none
                 &none &none &none &none
-                &to 9
+                &to 8
             >;
             sensor-bindings = <&inc_dec_kp PG_UP PG_DN>;
         };
 
-        reserved9 { // Profile 9 - reserved, skipped by the encoder profile cycle
+        reserved9 { // Profile 9 - reserved
             display-name = "RESERVED";
             bindings = <
                 &none &none &none &none
