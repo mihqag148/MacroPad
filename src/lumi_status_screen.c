@@ -6,6 +6,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
@@ -154,7 +155,9 @@ static lv_obj_t *sleep_overlay;
 static lv_obj_t *boot_overlay;
 static lv_obj_t *boot_progress;
 static uint32_t boot_started_ms;
+static bool boot_low_power_wake;
 #define BOOT_BACKLIGHT_DELAY_MS 500U
+#define BOOT_WAKE_BACKLIGHT_DELAY_MS 40U
 #define BOOT_SPLASH_VISIBLE_MS 1500U
 
 static lv_obj_t *pc_monitor_overlay;
@@ -3715,6 +3718,25 @@ static void refresh_pc_monitor_timer(lv_timer_t *timer) {
     }
 }
 
+static bool detect_low_power_wake(void) {
+    uint32_t cause = 0U;
+
+    if (hwinfo_get_reset_cause(&cause) != 0) {
+        return false;
+    }
+
+    bool woke_from_system_off =
+        (cause & RESET_LOW_POWER_WAKE) != 0U;
+
+    /* Clear the sticky OFF reason so a later software/reset-button reboot
+     * returns to the normal boot splash instead of being mistaken for another
+     * deep-sleep wake.
+     */
+    (void)hwinfo_clear_reset_cause();
+
+    return woke_from_system_off;
+}
+
 static void refresh_boot_splash(lv_timer_t *timer) {
     if (!boot_overlay || !boot_progress) {
         lv_timer_del(timer);
@@ -3857,6 +3879,8 @@ static void init_boot_splash(lv_obj_t *screen) {
 }
 
 lv_obj_t *zmk_display_status_screen(void) {
+    boot_low_power_wake = detect_low_power_wake();
+
     (void)lumi_panel_init();
     (void)saver_flash_load_metadata();
     lv_obj_t *screen = lv_obj_create(NULL);
@@ -3871,10 +3895,13 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Put boot UI on LVGL's top layer before creating the main menu.
-     * This prevents the main menu from flashing for one frame at startup.
+    /* Cold power-on keeps the normal loading splash. A GPIO wake from
+     * nRF52840 System OFF skips it completely so the very first wake event
+     * produces a visible UI as soon as the display is ready.
      */
-    init_boot_splash(screen);
+    if (!boot_low_power_wake) {
+        init_boot_splash(screen);
+    }
 
     for (uint8_t i = 0; i < KEY_COUNT; i++) {
         tiles[i] = lv_obj_create(screen);
@@ -4155,12 +4182,15 @@ screensaver_lv_timer = lv_timer_create(
 
 k_work_schedule(&lumi_sleep_work, K_SECONDS(1));
 
-/* P0.08/BLK stays LOW through display init. Wait 0.5 s after the UI is built,
- * then reveal the already-rendered splash for about 1.5 s.
+/* Cold boot keeps the existing splash timing. Deep-sleep GPIO wake skips the
+ * splash and turns BLK on almost immediately after the main UI is built.
  */
 (void)k_work_schedule(
     &lumi_panel_backlight_on_work,
-    K_MSEC(BOOT_BACKLIGHT_DELAY_MS));
+    K_MSEC(
+        boot_low_power_wake
+            ? BOOT_WAKE_BACKLIGHT_DELAY_MS
+            : BOOT_BACKLIGHT_DELAY_MS));
 
 return screen;
 }
