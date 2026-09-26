@@ -60,12 +60,31 @@
         status = "okay";
     };
 
-    /* Deep-sleep wake helpers. The normal EC11 stays responsible while the
-     * keyboard is awake; these GPIO-key trigger devices are used by ZMK
-     * soft-off so either encoder phase can wake from System OFF.
+    /* Dedicated System OFF wake inputs.
+     *
+     * Do not resume the complete matrix kscan while entering soft-off. Using
+     * direct row level-sense inputs avoids scan/debounce latency and makes one
+     * key press wake the nRF52840 immediately. For this col2row matrix all five
+     * columns are driven HIGH while sleeping, and any row going HIGH wakes.
+     *
+     * EC11 A/B are passive contacts to GND, so both phases use direct
+     * active-low level sensing. A single encoder transition can therefore wake
+     * without waiting for the normal EC11 driver to start.
      */
-    encoder_wake_keys: encoder_wake_keys {
+    deep_wake_keys: deep_wake_keys {
         compatible = "gpio-keys";
+
+        deep_wake_row0_key: deep_wake_row0_key {
+            gpios = <&gpio0 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+        };
+
+        deep_wake_row1_key: deep_wake_row1_key {
+            gpios = <&gpio0 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+        };
+
+        deep_wake_row2_key: deep_wake_row2_key {
+            gpios = <&gpio1 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+        };
 
         encoder_wake_a_key: encoder_wake_a_key {
             gpios = <&gpio1 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
@@ -74,6 +93,42 @@
         encoder_wake_b_key: encoder_wake_b_key {
             gpios = <&gpio1 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         };
+    };
+
+    deep_wake_row0: deep_wake_row0 {
+        compatible = "zmk,gpio-key-wakeup-trigger";
+        trigger = <&deep_wake_row0_key>;
+        wakeup-source;
+        extra-gpios =
+            <&gpio1 13 GPIO_ACTIVE_HIGH>,
+            <&gpio1 15 GPIO_ACTIVE_HIGH>,
+            <&gpio0 2 GPIO_ACTIVE_HIGH>,
+            <&gpio0 29 GPIO_ACTIVE_HIGH>,
+            <&gpio0 31 GPIO_ACTIVE_HIGH>;
+    };
+
+    deep_wake_row1: deep_wake_row1 {
+        compatible = "zmk,gpio-key-wakeup-trigger";
+        trigger = <&deep_wake_row1_key>;
+        wakeup-source;
+        extra-gpios =
+            <&gpio1 13 GPIO_ACTIVE_HIGH>,
+            <&gpio1 15 GPIO_ACTIVE_HIGH>,
+            <&gpio0 2 GPIO_ACTIVE_HIGH>,
+            <&gpio0 29 GPIO_ACTIVE_HIGH>,
+            <&gpio0 31 GPIO_ACTIVE_HIGH>;
+    };
+
+    deep_wake_row2: deep_wake_row2 {
+        compatible = "zmk,gpio-key-wakeup-trigger";
+        trigger = <&deep_wake_row2_key>;
+        wakeup-source;
+        extra-gpios =
+            <&gpio1 13 GPIO_ACTIVE_HIGH>,
+            <&gpio1 15 GPIO_ACTIVE_HIGH>,
+            <&gpio0 2 GPIO_ACTIVE_HIGH>,
+            <&gpio0 29 GPIO_ACTIVE_HIGH>,
+            <&gpio0 31 GPIO_ACTIVE_HIGH>;
     };
 
     encoder_wake_a: encoder_wake_a {
@@ -90,7 +145,12 @@
 
     soft_off_wakers: soft_off_wakers {
         compatible = "zmk,soft-off-wakeup-sources";
-        wakeup-sources = <&kscan0 &encoder_wake_a &encoder_wake_b>;
+        wakeup-sources =
+            <&deep_wake_row0
+             &deep_wake_row1
+             &deep_wake_row2
+             &encoder_wake_a
+             &encoder_wake_b>;
     };
 
     sensors: sensors {
