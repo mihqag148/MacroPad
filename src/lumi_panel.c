@@ -19,6 +19,29 @@ static const struct gpio_dt_spec dc = GPIO_DT_SPEC_GET(PANEL, cmd_data_gpios);
 static const struct device *const bl_gpio =
     DEVICE_DT_GET(DT_NODELABEL(gpio0));
 static bool bl_ready;
+static bool panel_sleeping;
+
+static int lumi_panel_send_command(uint8_t command) {
+    if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
+        return -ENODEV;
+    }
+
+    struct spi_buf buffer = {
+        .buf = &command,
+        .len = sizeof(command),
+    };
+    const struct spi_buf_set buffers = {
+        .buffers = &buffer,
+        .count = 1,
+    };
+
+    int err = gpio_pin_set_dt(&dc, 1);
+    if (err == 0) {
+        err = spi_write_dt(&bus, &buffers);
+    }
+
+    return err;
+}
 
 static int lumi_panel_backlight_init(void) {
     if (!device_is_ready(bl_gpio)) {
@@ -102,38 +125,70 @@ int lumi_panel_init(void) {
 int lumi_panel_set_sleep(bool sleeping) {
     if (!spi_is_ready_dt(&bus) || !gpio_is_ready_dt(&dc)) {
         lumi_diag_report('E', "Panel %s: SPI/DC not ready",
-                         sleeping ? "off" : "on");
+                         sleeping ? "sleep" : "wake");
         return -ENODEV;
     }
 
-    /* Soft sleep deliberately uses DISPOFF instead of SLPIN. Keeping the
-     * controller awake makes wake reliable and avoids the 120 ms SLPOUT
-     * recovery window that previously lost the first LVGL/Now Playing redraw.
-     */
-    uint8_t command = sleeping ? 0x28 : 0x29; /* DISPOFF / DISPON */
-    struct spi_buf buffer = {.buf = &command, .len = sizeof(command)};
-    const struct spi_buf_set buffers = {.buffers = &buffer, .count = 1};
-
-    int err = gpio_pin_set_dt(&dc, 1);
-    if (err == 0) {
-        err = spi_write_dt(&bus, &buffers);
+    if (sleeping == panel_sleeping) {
+        if (sleeping) {
+            (void)lumi_panel_set_backlight(false);
+        }
+        return 0;
     }
+
+    /* Backlight is always dark while changing ST7789 power state. */
+    (void)lumi_panel_set_backlight(false);
+
+    int err;
+
+    if (sleeping) {
+        /* DISPOFF + SLPIN drops the ST7789 controller into its low-current
+         * sleep state. The old DISPOFF-only path left the controller fully
+         * powered and was a measurable source of soft-sleep drain.
+         */
+        err = lumi_panel_send_command(0x28); /* DISPOFF */
+        if (err == 0) {
+            k_msleep(5);
+            err = lumi_panel_send_command(0x10); /* SLPIN */
+        }
+        if (err == 0) {
+            /* ST7789 requires >=120 ms after SLPIN before power removal. */
+            k_msleep(120);
+        }
+    } else {
+        /* Wake is deliberately serialized and waits for SLPOUT before DISPON.
+         * This fixes the first-redraw loss that originally motivated the
+         * higher-current DISPOFF-only soft sleep.
+         */
+        err = lumi_panel_send_command(0x11); /* SLPOUT */
+        if (err == 0) {
+            k_msleep(120);
+            err = lumi_panel_send_command(0x29); /* DISPON */
+        }
+        if (err == 0) {
+            k_msleep(20);
+        }
+    }
+
     if (err) {
-        LOG_ERR("Panel %s failed: %d", sleeping ? "off" : "on", err);
+        LOG_ERR("Panel %s failed: %d", sleeping ? "sleep" : "wake", err);
         lumi_diag_report('E', "Panel %s failed rc=%d",
-                         sleeping ? "off" : "on", err);
+                         sleeping ? "sleep" : "wake", err);
         return err;
     }
 
-    k_msleep(sleeping ? 5 : 10);
-
-    if (sleeping) {
-        (void)lumi_panel_set_backlight(false);
-    } else {
-        /* Keep the backlight off until LVGL has invalidated/redrawn the UI. */
-        (void)lumi_panel_set_backlight(false);
-    }
-
-    lumi_diag_report('I', "Panel display %s", sleeping ? "OFF" : "ON");
+    panel_sleeping = sleeping;
+    lumi_diag_report('I', "Panel %s", sleeping ? "SLPIN" : "SLPOUT");
     return 0;
+}
+
+int lumi_panel_enter_deep_sleep(void) {
+    /* Deep sleep is a cold-boot wake path. Ensure the controller is already
+     * in SLPIN before ZMK suspends devices and disables the external VCC rail.
+     */
+    int err = lumi_panel_set_sleep(true);
+    if (err == 0) {
+        lumi_diag_report('I', "Panel ready for VCC power-off");
+    }
+    return err;
 }
