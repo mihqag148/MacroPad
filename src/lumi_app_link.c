@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(lumi_app, CONFIG_ZMK_LOG_LEVEL);
 #define APP_UART_NODE DT_NODELABEL(lumi_app_uart)
 #define LINE_MAX 1200
 #define BITMAP_TMP_MAX LUMI_TITLE_BITMAP_MAX_BYTES
-#define LUMIPAD_HELLO_BASE "LUMIPAD|5|FW=" LUMI_FIRMWARE_VERSION
+#define LUMIPAD_HELLO_BASE "LUMIPAD|6|FW=" LUMI_FIRMWARE_VERSION
 #define KEYMAP_AUTOSAVE_INTERVAL_MS 1000
 #define LUMI_PROFILE_COUNT 10
 
@@ -198,7 +198,7 @@ static void handle_diag_log(char *save, bool from_usb) {
 
 static void handle_caps(bool from_usb) {
     const char *response =
-        "CAPS|5|MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST";
+        "CAPS|6|MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,POWERSTATE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST";
 
     if (from_usb) {
         write_text_usb(response);
@@ -1292,6 +1292,20 @@ static void handle_saver_state(bool from_usb) {
     }
 }
 
+static void handle_power_state(bool from_usb) {
+    const char *response =
+        lumi_ui_is_soft_sleeping()
+            ? "POWER|SLEEP"
+            : "POWER|AWAKE";
+
+    if (from_usb) {
+        write_text_usb(response);
+        write_text_usb("\r\n");
+    } else {
+        snprintf(lumi_status, sizeof(lumi_status), "%s", response);
+    }
+}
+
 static void handle_line(char *line, bool from_usb) {
     char *save = NULL;
     char *root = strtok_r(line, "|", &save);
@@ -1300,7 +1314,7 @@ static void handle_line(char *line, bool from_usb) {
     if (strcmp(root, "HELLO") == 0) {
         if (from_usb) {
             write_text_usb(
-                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST\r\n");
+                LUMIPAD_HELLO_BASE "|CAPS=MEM,PANEL,LOG,SAVERSTATE,PROFILE,PROFILECAT,POWERSTATE,ACTION,ARTVAR,BAT,PCMON,MEDIAFAST\r\n");
         }
     } else if (strcmp(root, "CAPS") == 0) {
         handle_caps(from_usb);
@@ -1316,6 +1330,8 @@ static void handle_line(char *line, bool from_usb) {
         handle_profile_state(from_usb);
     } else if (strcmp(root, "PROFILEINFO") == 0) {
         handle_profile_info(save, from_usb);
+    } else if (strcmp(root, "POWER") == 0) {
+        handle_power_state(from_usb);
     } else if (strcmp(root, "PCCFG") == 0) {
         handle_pc_config(save);
     } else if (strcmp(root, "PCMON") == 0) {
@@ -1502,6 +1518,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         strncmp(lumi_status, "BAT|", 4) != 0 &&
         strncmp(lumi_status, "PROFILE|", 8) != 0 &&
         strncmp(lumi_status, "PROFILEINFO|", 12) != 0 &&
+        strncmp(lumi_status, "POWER|", 6) != 0 &&
         strncmp(lumi_status, "SAVERSTATE|", 11) != 0 &&
         strncmp(lumi_status, "CAPS|", 5) != 0 &&
         strncmp(lumi_status, "ACTION|", 7) != 0 &&
@@ -1521,6 +1538,7 @@ static ssize_t read_lumi(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         strncmp(lumi_status, "BAT|", 4) == 0 ||
         strncmp(lumi_status, "PROFILE|", 8) == 0 ||
         strncmp(lumi_status, "PROFILEINFO|", 12) == 0 ||
+        strncmp(lumi_status, "POWER|", 6) == 0 ||
         strncmp(lumi_status, "SAVERSTATE|", 11) == 0 ||
         strncmp(lumi_status, "CAPS|", 5) == 0 ||
         strncmp(lumi_status, "ACTION|", 7) == 0) {

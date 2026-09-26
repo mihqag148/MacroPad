@@ -60,6 +60,39 @@
         status = "okay";
     };
 
+    /* Deep-sleep wake helpers. The normal EC11 stays responsible while the
+     * keyboard is awake; these GPIO-key trigger devices are used by ZMK
+     * soft-off so either encoder phase can wake from System OFF.
+     */
+    encoder_wake_keys: encoder_wake_keys {
+        compatible = "gpio-keys";
+
+        encoder_wake_a_key: encoder_wake_a_key {
+            gpios = <&gpio1 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        };
+
+        encoder_wake_b_key: encoder_wake_b_key {
+            gpios = <&gpio1 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        };
+    };
+
+    encoder_wake_a: encoder_wake_a {
+        compatible = "zmk,gpio-key-wakeup-trigger";
+        trigger = <&encoder_wake_a_key>;
+        wakeup-source;
+    };
+
+    encoder_wake_b: encoder_wake_b {
+        compatible = "zmk,gpio-key-wakeup-trigger";
+        trigger = <&encoder_wake_b_key>;
+        wakeup-source;
+    };
+
+    soft_off_wakers: soft_off_wakers {
+        compatible = "zmk,soft-off-wakeup-sources";
+        wakeup-sources = <&kscan0 &encoder_wake_a &encoder_wake_b>;
+    };
+
     sensors: sensors {
         compatible = "zmk,keymap-sensors";
         sensors = <&encoder0>;

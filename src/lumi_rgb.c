@@ -250,27 +250,36 @@ static void lumi_rgb_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_rgb_work, lumi_rgb_work_handler);
 
 static int lumi_rgb_push_now(void) {
+    bool running = led_enabled && !led_suspended;
+
     if (!device_is_ready(strip)) {
-        k_work_reschedule(&lumi_rgb_work, K_MSEC(100));
+        if (running) {
+            k_work_reschedule(&lumi_rgb_work, K_MSEC(100));
+        }
         return -ENODEV;
     }
 
     k_mutex_lock(&lumi_rgb_lock, K_FOREVER);
 
-    if (!led_enabled || led_suspended) {
+    if (!running) {
         fill((struct led_rgb){0});
+    } else if (auto_by_layer) {
+        render_auto_profile();
     } else {
-        if (auto_by_layer) {
-            render_auto_profile();
-        } else {
-            render_effect(manual_effect);
-        }
+        render_effect(manual_effect);
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
     k_mutex_unlock(&lumi_rgb_lock);
 
-    k_work_reschedule(&lumi_rgb_work, K_NO_WAIT);
+    /* Never leave the periodic animation work running while LEDs are off or
+     * the keyboard is sleeping. The previous implementation kept waking the
+     * CPU and SPIM3 every 35-100 ms just to retransmit six black pixels.
+     */
+    if (led_enabled && !led_suspended) {
+        k_work_reschedule(&lumi_rgb_work, K_NO_WAIT);
+    }
+
     return err;
 }
 
@@ -369,6 +378,12 @@ void lumi_rgb_set_suspended(bool suspended) {
     if (led_suspended != suspended) {
         lumi_diag_report('I', "RGB %s", suspended ? "suspended" : "resumed");
     }
+
+    if (suspended) {
+        /* Stop future animation wakeups before sending one final all-off frame. */
+        (void)k_work_cancel_delayable(&lumi_rgb_work);
+    }
+
     led_suspended = suspended;
     lumi_rgb_refresh_now();
 }
@@ -376,21 +391,23 @@ void lumi_rgb_set_suspended(bool suspended) {
 static void lumi_rgb_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
+    bool running = led_enabled && !led_suspended;
+
     if (!device_is_ready(strip)) {
-        k_work_reschedule(&lumi_rgb_work, K_MSEC(500));
+        if (running) {
+            k_work_reschedule(&lumi_rgb_work, K_MSEC(500));
+        }
         return;
     }
 
     k_mutex_lock(&lumi_rgb_lock, K_FOREVER);
 
-    if (!led_enabled || led_suspended) {
+    if (!running) {
         fill((struct led_rgb){0});
+    } else if (auto_by_layer) {
+        render_auto_profile();
     } else {
-        if (auto_by_layer) {
-            render_auto_profile();
-        } else {
-            render_effect(manual_effect);
-        }
+        render_effect(manual_effect);
     }
 
     int err = led_strip_update_rgb(strip, pixels, LED_COUNT);
@@ -405,6 +422,10 @@ static void lumi_rgb_work_handler(struct k_work *work) {
     } else if (rgb_update_error_reported) {
         rgb_update_error_reported = false;
         lumi_diag_report('I', "WS2812 update recovered");
+    }
+
+    if (!led_enabled || led_suspended) {
+        return;
     }
 
     uint32_t frame_ms = 140U - ((uint32_t)user_speed_percent * 100U / 100U);
@@ -440,7 +461,7 @@ ZMK_SUBSCRIPTION(lumi_rgb_position, zmk_position_state_changed);
 static int lumi_rgb_layer_listener(const zmk_event_t *eh) {
     ARG_UNUSED(eh);
 
-    if (auto_by_layer) {
+    if (auto_by_layer && led_enabled && !led_suspended) {
         lumi_rgb_refresh_now();
     }
 
