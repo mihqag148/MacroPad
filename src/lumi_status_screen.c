@@ -203,6 +203,7 @@ static uint32_t sleep_delay_ms = 120000U;
 static uint32_t deep_sleep_delay_ms = 900000U;
 static uint32_t rgb_idle_delay_ms = 60000U;
 static bool rgb_idle_suspended;
+static bool deep_sleep_pending;
 static bool saver_enabled = true;
 static uint8_t saver_style = LUMI_SAVER_OFF;
 static uint32_t wallpaper_color_a = 0x000000;
@@ -1222,14 +1223,17 @@ static void poll_page(struct k_work *work) {
     sleeping = soft_sleep;
     k_mutex_unlock(&lumi_ui_config_lock);
 
-    if (!sleeping) {
-        lumi_page_refresh_state(NULL);
-        k_work_submit_to_queue(zmk_display_work_q(), &lumi_page_work);
+    if (sleeping) {
+        /* Stop this polling work completely during soft sleep. The wake path
+         * restarts it after the panel is ready, avoiding a 2-second CPU wakeup
+         * for a screen that is intentionally off.
+         */
+        return;
     }
 
-    k_work_schedule(
-        &page_poll_work,
-        sleeping ? K_SECONDS(2) : K_MSEC(500));
+    lumi_page_refresh_state(NULL);
+    k_work_submit_to_queue(zmk_display_work_q(), &lumi_page_work);
+    k_work_schedule(&page_poll_work, K_MSEC(500));
 }
 
 struct output_state {
@@ -3176,12 +3180,26 @@ static void lumi_panel_sleep_work_handler(struct k_work *work) {
 
 K_WORK_DEFINE(lumi_panel_sleep_work, lumi_panel_sleep_work_handler);
 
+static int lumi_panel_deep_sleep_rc;
+
+static void lumi_panel_deep_sleep_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    lumi_ui_set_eco_timers(true);
+    (void)k_work_cancel_delayable(&lumi_panel_backlight_on_work);
+    lumi_panel_deep_sleep_rc = lumi_panel_enter_deep_sleep();
+}
+
+K_WORK_DEFINE(lumi_panel_deep_sleep_work, lumi_panel_deep_sleep_work_handler);
+
 static void lumi_panel_wake_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     if (lumi_panel_set_sleep(false) == 0) {
         lumi_ui_set_eco_timers(false);
         lumi_panel_refresh_work_handler(NULL);
+        (void)k_work_reschedule(
+            &page_poll_work,
+            K_MSEC(250));
         (void)k_work_schedule(
             &lumi_panel_backlight_on_work,
             K_MSEC(80));
@@ -3197,6 +3215,7 @@ static void lumi_ui_note_activity_internal(bool physical_key) {
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     ui_last_activity_ms = now;
+    deep_sleep_pending = false;
 
     /* RGB uses its own idle timeout, but it shares the same explicit wake
      * sources as the display: physical input, Auto Profile changes, and
@@ -3330,7 +3349,18 @@ void lumi_ui_set_deep_sleep_timeout(uint32_t seconds) {
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     deep_sleep_delay_ms = clamped * 1000U;
+    deep_sleep_pending = false;
     k_mutex_unlock(&lumi_ui_config_lock);
+}
+
+bool lumi_ui_is_soft_sleeping(void) {
+    bool sleeping;
+
+    k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+    sleeping = soft_sleep;
+    k_mutex_unlock(&lumi_ui_config_lock);
+
+    return sleeping;
 }
 
 void lumi_ui_set_rgb_idle_timeout(uint32_t seconds) {
@@ -3379,6 +3409,14 @@ void lumi_ui_wake_now(void) {
 static void lumi_sleep_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(lumi_sleep_work, lumi_sleep_work_handler);
 
+static bool lumi_usb_power_present(void) {
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
+    return zmk_usb_is_powered();
+#else
+    return false;
+#endif
+}
+
 static void lumi_sleep_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
@@ -3389,6 +3427,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     uint32_t last_rgb_activity;
     bool already_sleeping;
     bool rgb_timed_out;
+    bool deep_pending;
 
     k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
     soft_timeout = sleep_delay_ms;
@@ -3398,53 +3437,11 @@ static void lumi_sleep_work_handler(struct k_work *work) {
     last_rgb_activity = rgb_last_activity_ms;
     already_sleeping = soft_sleep;
     rgb_timed_out = rgb_idle_suspended;
+    deep_pending = deep_sleep_pending;
     k_mutex_unlock(&lumi_ui_config_lock);
 
     uint32_t now = k_uptime_get_32();
     uint32_t idle_ms = (uint32_t)(now - last_activity);
-
-    /* Deep sleep is battery-first and intentionally disconnects BLE. Never
-     * power off while USB is supplying the keyboard. If the panel has not
-     * entered soft sleep yet, blank it first and power off on the next pass so
-     * the ST7789 and WS2812 shutdown can finish cleanly.
-     */
-    if (deep_timeout > 0U &&
-        idle_ms >= deep_timeout &&
-        !zmk_usb_is_powered()) {
-
-        if (!already_sleeping) {
-            k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
-            soft_sleep = true;
-            k_mutex_unlock(&lumi_ui_config_lock);
-
-            lumi_rgb_set_suspended(true);
-            k_work_submit_to_queue(
-                zmk_display_work_q(),
-                &lumi_panel_sleep_work);
-            k_work_reschedule(
-                &lumi_sleep_work,
-                K_MSEC(250));
-            return;
-        }
-
-        lumi_diag_report(
-            'I',
-            "Entering deep sleep timeout=%us",
-            (unsigned int)(deep_timeout / 1000U));
-
-        lumi_rgb_set_suspended(true);
-
-        int rc = zmk_pm_suspend_devices();
-        if (rc == 0) {
-            sys_poweroff();
-        }
-
-        lumi_diag_report(
-            'E',
-            "Deep sleep suspend failed rc=%d",
-            rc);
-        zmk_pm_resume_devices();
-    }
 
     if (rgb_timeout > 0U &&
         !rgb_timed_out &&
@@ -3462,9 +3459,7 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         rgb_timed_out = true;
     }
 
-    /* Now Playing suppresses only the screensaver. It does not suppress
-     * soft sleep, so the user's Sleep-after setting still wins.
-     */
+    /* Soft sleep keeps BLE HID available but stops all screen/RGB work. */
     if (soft_timeout > 0U &&
         !already_sleeping &&
         idle_ms >= soft_timeout) {
@@ -3482,9 +3477,70 @@ static void lumi_sleep_work_handler(struct k_work *work) {
         already_sleeping = true;
     }
 
-    k_work_reschedule(
-        &lumi_sleep_work,
-        already_sleeping ? K_SECONDS(5) : K_SECONDS(1));
+    /* True deep sleep is a full hardware power-down path. ZMK soft-off
+     * suspends devices, disables nice!nano external VCC through ext-power,
+     * arms the declared wake sources, then enters nRF52840 System OFF.
+     */
+    if (deep_timeout > 0U &&
+        !deep_pending &&
+        !lumi_usb_power_present() &&
+        idle_ms >= deep_timeout) {
+
+        k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+        deep_sleep_pending = true;
+        soft_sleep = true;
+        k_mutex_unlock(&lumi_ui_config_lock);
+
+        lumi_diag_report(
+            'I',
+            "Entering deep sleep timeout=%us",
+            (unsigned int)(deep_timeout / 1000U));
+
+        lumi_rgb_set_suspended(true);
+
+        struct k_work_sync deep_panel_sync;
+        lumi_panel_deep_sleep_rc = 0;
+        k_work_submit_to_queue(
+            zmk_display_work_q(),
+            &lumi_panel_deep_sleep_work);
+        (void)k_work_flush(
+            &lumi_panel_deep_sleep_work,
+            &deep_panel_sync);
+
+        if (lumi_panel_deep_sleep_rc < 0) {
+            lumi_diag_report(
+                'E',
+                "Deep sleep panel shutdown failed rc=%d",
+                lumi_panel_deep_sleep_rc);
+        }
+
+        int rc = zmk_pm_soft_off();
+        if (rc < 0) {
+            lumi_diag_report('E', "Deep sleep soft-off failed rc=%d", rc);
+
+            k_mutex_lock(&lumi_ui_config_lock, K_FOREVER);
+            deep_sleep_pending = false;
+            k_mutex_unlock(&lumi_ui_config_lock);
+        }
+    }
+
+    /* While sleeping, avoid waking the CPU every five seconds. Check at most
+     * every 30 s for USB/power-state changes, or exactly when the configured
+     * deep-sleep deadline is closer.
+     */
+    uint32_t next_ms = already_sleeping ? 30000U : 1000U;
+
+    if (deep_timeout > 0U &&
+        !deep_pending &&
+        !lumi_usb_power_present() &&
+        idle_ms < deep_timeout) {
+        uint32_t remaining = deep_timeout - idle_ms;
+        if (remaining < next_ms) {
+            next_ms = MAX(remaining, 250U);
+        }
+    }
+
+    k_work_reschedule(&lumi_sleep_work, K_MSEC(next_ms));
 }
 
 static lv_obj_t *pc_monitor_label(
